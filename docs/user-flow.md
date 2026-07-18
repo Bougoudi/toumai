@@ -1,66 +1,75 @@
 # Flux utilisateur principal
 
-Objectif : à partir d'un besoin produit, obtenir une liste classée de fournisseurs
-pertinents, puis suivre la mise en relation.
+Toumai automatise le cycle complet du dropshipping. L'utilisateur (e-commerçant)
+supervise ; le système exécute. Deux vues du même flux : **automatique** et **manuel**.
 
-## Parcours nominal
+## Le flux automatisé (mode « pilote automatique »)
 
 ```
- 1. Définir le produit            2. Lancer la recherche        3. Analyser les résultats
- ┌──────────────────────┐        ┌──────────────────────┐      ┌──────────────────────┐
- │ Nom, catégorie,      │        │ Critères hérités du  │      │ Fournisseurs classés │
- │ mots-clés, prix      │  ───▶  │ produit (ou libres). │ ───▶ │ par score 0–100 +    │
- │ cible, quantité,     │        │ Synchrone ou en file │      │ détail par critère   │
- │ région, certifs      │        └──────────────────────┘      └──────────┬───────────┘
- └──────────────────────┘                                                 │
-                                                                          ▼
- 6. Suivi & réévaluation        5. Prise de contact           4. Comparer & sélectionner
- ┌──────────────────────┐        ┌──────────────────────┐      ┌──────────────────────┐
- │ Le worker rafraîchit │        │ Coordonnées du       │      │ Comparer prix, MOQ,  │
- │ prix/stock ; relancer│  ◀───  │ fournisseur          │ ◀─── │ délai, certifs,      │
- │ la recherche         │        │ (email, site, tel)   │      │ réputation           │
- └──────────────────────┘        └──────────────────────┘      └──────────────────────┘
+   ┌─────────────────────────────────────────────────────────────────────────┐
+   │                        BOUCLE D'AUTOMATISATION                           │
+   │                                                                         │
+   │  [1] marketScan (30 min)                                                │
+   │        │  détecte des opportunités, calcule opportunityScore            │
+   │        ▼                                                                │
+   │  [2] generateProducts (6 h)                                             │
+   │        │  publie les meilleures opportunités en produits ACTIVE         │
+   │        ▼                                                                │
+   │   Produits en vente sur la boutique  ──►  Client passe commande (PAID)  │
+   │                                                    │                    │
+   │  [3] fulfillOrders (1 min)  ◄──────────────────────┘                    │
+   │        │  choisit le fournisseur (moteur pilier 4),                     │
+   │        │  passe le bon d'achat, récupère le suivi                       │
+   │        ▼                                                                │
+   │   Commande SHIPPED (tracking transmis au client)                        │
+   │                                                                         │
+   │  [4] refreshSuppliers (1 h) — garde prix/stock fournisseurs à jour      │
+   └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Étapes détaillées
+L'e-commerçant configure une fois (marge, seuil d'opportunité, quotas dans `.env`),
+puis surveille les tableaux de bord. Tout le reste tourne seul.
 
-### 1. Définir le produit (optionnel mais recommandé)
-`POST /api/products` enregistre le besoin et ses critères cibles (prix, quantité,
-région, certifications). Réutilisable pour relancer des recherches sans re-saisir.
+## Le flux manuel (contrôle pas à pas)
 
-### 2. Lancer la recherche
-`POST /api/search` :
-- avec `productId` → les critères du produit sont repris automatiquement ;
-- ou avec des critères libres (`query`, `category`, `keywords`, ...).
+### Étape 1 — Trouver des produits gagnants (pilier 1)
+`POST /api/market/scan` puis `GET /api/market/opportunities?minScore=70`.
+L'utilisateur inspecte les scores (demande, tendance, concurrence) et marque
+les opportunités à garder (`PATCH .../:id` → `EVALUATED`) ou à écarter (`REJECTED`).
 
-Choix du mode :
-- **Synchrone** (défaut) : résultats immédiats dans la réponse. Idéal UI temps réel.
-- **Asynchrone** (`"async": true`) : réponse 202, traitement par le worker. Idéal
-  pour de gros volumes ou des sources lentes.
+### Étape 2 — Créer les fiches produits (pilier 2)
+`POST /api/products/generate` génère titres, descriptions, images et prix
+(marge appliquée automatiquement). Le résultat est un lot (`GenerationRun`)
+consultable. Les produits peuvent être publiés directement (`autoPublish`) ou
+révisés en `DRAFT` avant mise en ligne.
 
-### 3. Analyser les résultats
-Chaque fournisseur est renvoyé avec :
-- son **rang** et son **score global** (0–100) ;
-- le **détail par critère** (`breakdown`) pour comprendre le classement ;
-- la **meilleure offre** associée (prix, MOQ, délai, stock).
+### Étape 3 — Sécuriser l'approvisionnement (pilier 4)
+Pour un produit, `POST /api/search` classe les fournisseurs par score
+(pertinence, prix, MOQ, délai, région, réputation, certifications). L'utilisateur
+choisit ses partenaires et consulte leurs coordonnées (`GET /api/suppliers/:id`).
 
-### 4. Comparer et sélectionner
-L'utilisateur arbitre selon ses priorités (prix vs délai vs certifications). Les
-pondérations du moteur sont ajustables côté serveur (`WEIGHTS` dans `scoring.ts`).
+### Étape 4 — Vendre et livrer (pilier 3)
+À chaque commande client (`POST /api/orders`, `markPaid: true`), le système
+achète chez le meilleur fournisseur et déclenche l'expédition
+(`POST /api/orders/:id/fulfill` ou via le job automatique). L'utilisateur suit
+l'état (`GET /api/orders/:id`) : bons d'achat, transporteur, numéro de suivi.
 
-### 5. Prise de contact
-Le détail fournisseur (`GET /api/suppliers/:id`) expose les coordonnées
-(email, site, téléphone) pour engager la mise en relation.
-
-### 6. Suivi et réévaluation
-Le job `refreshSuppliers` met à jour périodiquement prix, stock et notes. Relancer
-la recherche (ou consulter l'historique via `GET /api/search`) permet de suivre
-l'évolution du marché et de réévaluer les fournisseurs.
+### Étape 5 — Piloter
+`GET /api/orders?status=SHIPPED`, `GET /api/products/generation-runs`,
+`GET /api/market/opportunities` donnent la vision d'ensemble pour ajuster
+la marge, le seuil d'opportunité ou les quotas.
 
 ## Personas
 
-| Persona                | Besoin principal                                         |
-| ---------------------- | -------------------------------------------------------- |
-| Acheteur / sourcing    | Trouver rapidement des fournisseurs conformes et fiables |
-| Responsable achats     | Comparer et arbitrer sur des critères pondérés           |
-| Intégrateur technique  | Brancher de nouvelles sources via des connecteurs        |
+| Persona                 | Besoin principal                                        |
+| ----------------------- | ------------------------------------------------------- |
+| E-commerçant / dropshipper | Automatiser recherche produit → vente → livraison    |
+| Responsable achats      | Comparer et sélectionner les fournisseurs               |
+| Intégrateur technique   | Brancher de vraies sources via des connecteurs          |
+
+## Cycle de vie des entités
+
+- **Opportunité** : `NEW → EVALUATED → IMPORTED` (ou `REJECTED`)
+- **Produit** : `DRAFT → ACTIVE → ARCHIVED`
+- **Commande** : `PENDING → PAID → FULFILLING → SHIPPED → DELIVERED` (ou `CANCELLED`)
+- **Bon d'achat** : `CREATED → PLACED → SHIPPED → DELIVERED` (ou `FAILED`)

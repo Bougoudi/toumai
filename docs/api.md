@@ -1,126 +1,110 @@
 # Référence API
 
-Base URL : `http://localhost:3000`
-Format : JSON. Les erreurs de validation renvoient `400` avec `details`.
+Base URL : `http://localhost:3000` · Format : JSON.
+Validation par Zod → `400` avec `details` en cas d'erreur.
 
 ## Système
 
-| Méthode | Route     | Description             |
-| ------- | --------- | ----------------------- |
-| GET     | `/health` | État du service         |
-| GET     | `/api`    | Index des endpoints     |
+| Méthode | Route     | Description         |
+| ------- | --------- | ------------------- |
+| GET     | `/health` | État du service     |
+| GET     | `/api`    | Index des 4 piliers |
 
-## Produits — `/api/products`
+---
 
-| Méthode | Route                | Description                    |
-| ------- | -------------------- | ------------------------------ |
-| GET     | `/api/products`      | Liste (filtres `category`, `q`, pagination `take`/`skip`) |
-| POST    | `/api/products`      | Créer un produit               |
-| GET     | `/api/products/:id`  | Détail                         |
-| PATCH   | `/api/products/:id`  | Mise à jour partielle          |
-| DELETE  | `/api/products/:id`  | Suppression                    |
+## Pilier 1 — Analyse marché · `/api/market`
 
-**Corps (création)**
+| Méthode | Route                          | Description                              |
+| ------- | ------------------------------ | ---------------------------------------- |
+| POST    | `/api/market/scan`             | Lance une analyse (filtres `category`, `region`, `limit`) |
+| GET     | `/api/market/opportunities`    | Liste (`status`, `category`, `minScore`, pagination) |
+| GET     | `/api/market/opportunities/:id`| Détail d'une opportunité                 |
+| PATCH   | `/api/market/opportunities/:id`| Change le statut (`NEW`/`EVALUATED`/`IMPORTED`/`REJECTED`) |
+
+Une opportunité expose `demandScore`, `competitionScore`, `trendScore`,
+`opportunityScore` (0–100) et une estimation de prix/marge.
+
+---
+
+## Pilier 2 — Produits & génération · `/api/products`
+
+| Méthode | Route                            | Description                                |
+| ------- | -------------------------------- | ------------------------------------------ |
+| POST    | `/api/products/generate`         | **Génération en masse** depuis les opportunités |
+| GET     | `/api/products/generation-runs`  | Historique des lots de génération          |
+| GET     | `/api/products/generation-runs/:id` | Détail d'un lot                         |
+| GET     | `/api/products`                  | Liste (`category`, `status`, `q`, pagination) |
+| POST    | `/api/products`                  | Créer un produit manuellement              |
+| GET     | `/api/products/:id`              | Détail                                     |
+| PATCH   | `/api/products/:id`              | Mise à jour partielle                      |
+| DELETE  | `/api/products/:id`              | Suppression                                |
+
+**Corps (génération)**
+```json
+{ "limit": 200, "minScore": 60, "category": "electronique", "autoPublish": true }
+```
+Réponse : un `GenerationRun` (`requested`, `generated`, `skipped`, `failed`).
+
+---
+
+## Pilier 3 — Commandes, clients, exécution · `/api/orders`
+
+| Méthode | Route                     | Description                                  |
+| ------- | ------------------------- | -------------------------------------------- |
+| POST    | `/api/orders/customers`   | Créer un client                              |
+| GET     | `/api/orders/customers`   | Lister les clients                           |
+| POST    | `/api/orders`             | Créer une commande (client existant ou à la volée) |
+| GET     | `/api/orders`             | Liste (`status`, pagination)                 |
+| GET     | `/api/orders/:id`         | Détail + bons d'achat fournisseurs           |
+| POST    | `/api/orders/:id/cancel`  | Annuler (si non expédiée)                    |
+| POST    | `/api/orders/:id/fulfill` | **Forcer l'achat + expédition** immédiats    |
+
+**Corps (commande)**
 ```json
 {
-  "sku": "AGRO-SESAME-001",
-  "name": "Graines de sésame",
-  "category": "agroalimentaire",
-  "keywords": "sesame,graines,bio",
-  "targetUnitPrice": 1.3,
-  "targetQuantity": 2000,
-  "region": "Africa",
-  "requiredCertifications": "ISO9001"
+  "customer": { "name": "Aïcha", "email": "aicha@example.com",
+                "city": "Lyon", "country": "France" },
+  "items": [ { "productId": "cmr...", "quantity": 3 } ],
+  "markPaid": true
 }
 ```
+Si `markPaid: true`, la commande est honorée automatiquement au prochain cycle
+`fulfillOrders` (ou immédiatement via `/fulfill`). Chaque bon d'achat porte un
+`trackingNumber` et un `carrier`.
 
-## Fournisseurs — `/api/suppliers`
+---
 
-| Méthode | Route                       | Description                                   |
-| ------- | --------------------------- | --------------------------------------------- |
-| GET     | `/api/suppliers`            | Liste (`region`, `q`, `minRating`, `verified`)|
-| POST    | `/api/suppliers`            | Créer un fournisseur (+ offres imbriquées)    |
-| GET     | `/api/suppliers/:id`        | Détail + offres                               |
-| PATCH   | `/api/suppliers/:id`        | Mise à jour partielle                         |
-| DELETE  | `/api/suppliers/:id`        | Suppression                                   |
-| POST    | `/api/suppliers/:id/offers` | Ajouter une offre                             |
+## Pilier 4 — Fournisseurs & recherche · `/api/suppliers`, `/api/search`
 
-**Corps (création)**
+| Méthode | Route                       | Description                               |
+| ------- | --------------------------- | ----------------------------------------- |
+| GET     | `/api/suppliers`            | Liste (`region`, `q`, `minRating`, `verified`) |
+| POST    | `/api/suppliers`            | Créer (offres imbriquées)                 |
+| GET     | `/api/suppliers/:id`        | Détail + offres                           |
+| PATCH   | `/api/suppliers/:id`        | Mise à jour                               |
+| DELETE  | `/api/suppliers/:id`        | Suppression                               |
+| POST    | `/api/suppliers/:id/offers` | Ajouter une offre                         |
+| POST    | `/api/search`               | Rechercher des fournisseurs (sync ou file)|
+| GET     | `/api/search`               | Historique des recherches                 |
+| GET     | `/api/search/:id`           | Une recherche + résultats classés         |
+
+**Corps (recherche)** — au moins un de `productId`, `query`, `category`, `keywords`.
 ```json
 {
-  "name": "Sahel Agro Supplies",
-  "region": "Africa",
-  "country": "Tchad",
-  "rating": 4.6,
-  "verified": true,
-  "certifications": "ISO9001,HACCP",
-  "leadTimeDays": 14,
-  "offers": [
-    { "title": "Graines de sésame bio", "category": "agroalimentaire",
-      "keywords": "sesame,graines,bio", "unitPrice": 1.2, "moq": 1000 }
-  ]
+  "query": "sesame", "category": "agroalimentaire", "region": "Africa",
+  "targetUnitPrice": 1.3, "targetQuantity": 2000,
+  "requiredCertifications": "ISO9001", "limit": 20, "async": false
 }
 ```
+Réponse : fournisseurs classés par `score` (0–100) avec `breakdown` par critère.
 
-## Recherche — `/api/search`
-
-| Méthode | Route              | Description                                    |
-| ------- | ------------------ | ---------------------------------------------- |
-| POST    | `/api/search`      | Lance une recherche (synchrone ou en file)     |
-| GET     | `/api/search`      | Historique des recherches (`status`, pagination)|
-| GET     | `/api/search/:id`  | Une recherche + ses résultats classés          |
-
-**Corps** — au moins un de `productId`, `query`, `category`, `keywords` requis.
-```json
-{
-  "productId": "cmr...",          // optionnel : hérite des critères du produit
-  "query": "sesame",
-  "category": "agroalimentaire",
-  "keywords": "sesame,bio",
-  "targetUnitPrice": 1.3,
-  "targetQuantity": 2000,
-  "region": "Africa",
-  "requiredCertifications": "ISO9001",
-  "limit": 20,
-  "async": false                  // true → traitement par le worker (HTTP 202)
-}
-```
-
-**Réponse (synchrone)**
-```json
-{
-  "request": { "id": "...", "status": "COMPLETED" },
-  "criteria": { "...": "critères normalisés" },
-  "results": [
-    {
-      "rank": 1,
-      "supplier": { "id": "...", "name": "Sahel Agro Supplies", "rating": 4.6 },
-      "offer": { "title": "Graines de sésame bio", "unitPrice": 1.19, "moq": 1000 },
-      "breakdown": {
-        "relevance": 100, "price": 100, "moq": 100, "leadTime": 76,
-        "region": 100, "reputation": 93, "certifications": 100, "total": 96
-      }
-    }
-  ]
-}
-```
-
-**Réponse (asynchrone, HTTP 202)** — récupérer ensuite via `GET /api/search/:id`.
-```json
-{
-  "message": "Recherche mise en file. Interrogez /api/search/:id pour les résultats.",
-  "request": { "id": "...", "status": "PENDING" }
-}
-```
+---
 
 ## Codes de statut
 
-| Code | Sens                                   |
-| ---- | -------------------------------------- |
-| 200  | Succès                                 |
-| 201  | Ressource créée                        |
-| 202  | Recherche acceptée (traitement en file)|
-| 204  | Suppression réussie                    |
-| 400  | Validation échouée                     |
-| 404  | Ressource introuvable                  |
-| 500  | Erreur interne                         |
+| Code | Sens                    | | Code | Sens                    |
+| ---- | ----------------------- |-| ---- | ----------------------- |
+| 200  | Succès                  | | 400  | Validation échouée      |
+| 201  | Ressource créée         | | 404  | Introuvable             |
+| 202  | Accepté (traité en file)| | 409  | Conflit (ex: annulation)|
+| 204  | Suppression réussie     | | 500  | Erreur interne          |

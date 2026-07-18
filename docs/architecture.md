@@ -1,101 +1,122 @@
 # Architecture
 
+Toumai est une plateforme d'automatisation de dropshipping structurée autour de
+**4 piliers**, chacun exposé en API et automatisé par une tâche planifiée.
+
 ## Vue d'ensemble
 
 ```
-                    ┌─────────────────────────────────────────────┐
-                    │                  Client                      │
-                    │        (web, mobile, autre service)          │
-                    └───────────────────────┬─────────────────────┘
-                                            │ HTTP / JSON
-                    ┌───────────────────────▼─────────────────────┐
-                    │                API Express                   │
-                    │   /api/products   /api/suppliers   /api/search│
-                    └───────┬───────────────┬──────────────┬───────┘
-                            │               │              │
-                    ┌───────▼───┐   ┌───────▼────┐  ┌──────▼───────┐
-                    │  Produits │   │Fournisseurs│  │   Recherche  │
-                    │  service  │   │  service   │  │   service    │
-                    └───────┬───┘   └───────┬────┘  └──────┬───────┘
-                            │               │              │
-                            │               │      ┌───────▼────────┐
-                            │               │      │ Moteur scoring │
-                            │               │      │ (utils/scoring)│
-                            │               │      └───────┬────────┘
-                    ┌───────▼───────────────▼──────────────▼───────┐
-                    │           Prisma ORM  →  SQLite / Postgres    │
-                    └───────────────────────▲──────────────────────┘
-                                            │
-                    ┌───────────────────────┴─────────────────────┐
-                    │            Automatisation (cron)             │
-                    │  refreshSuppliers  │  runPendingSearches     │
-                    │         ▲                                    │
-                    │  ┌──────┴───────┐                            │
-                    │  │ Connecteurs  │  (mock, API B2B, CSV...)   │
-                    │  └──────────────┘                            │
-                    └──────────────────────────────────────────────┘
+                         ┌──────────────────────────────────────────┐
+                         │              API Express                  │
+                         │  /market  /products  /orders  /suppliers  /search │
+                         └───┬─────────┬─────────┬──────────┬────────┘
+                             │         │         │          │
+        ┌────────────────────▼──┐ ┌────▼─────┐ ┌─▼────────┐ ┌▼───────────────┐
+        │ [1] Market service    │ │[2] Génér.│ │[3] Orders│ │[4] Suppliers /  │
+        │  opportunityScore()   │ │ pricing  │ │fulfillment│ │ search scoring  │
+        └───────────┬───────────┘ └────┬─────┘ └────┬─────┘ └───────┬────────┘
+                    │                   │            │               │
+                    └───────────────────┴─────┬──────┴───────────────┘
+                                              │
+                              ┌───────────────▼───────────────┐
+                              │   Prisma ORM → SQLite/Postgres │
+                              └───────────────▲───────────────┘
+                                              │
+        ┌─────────────────────────────────────┴──────────────────────────────┐
+        │                     Automatisation (node-cron)                      │
+        │  marketScan │ generateProducts │ fulfillOrders │ refreshSuppliers │ runSearches │
+        │      │               │                 │               │                        │
+        │  ┌───▼───┐       ┌───▼────┐        ┌───▼─────┐    ┌────▼────┐                   │
+        │  │Market │       │Pricing/│        │Fulfil.  │    │Supplier │  (connecteurs)    │
+        │  │connec.│       │Content │        │connec.  │    │connec.  │                   │
+        │  └───────┘       └────────┘        └─────────┘    └─────────┘                   │
+        └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Modèle de données
+## Modèle de données (9 tables)
 
-| Table            | Rôle                                                              |
-| ---------------- | ---------------------------------------------------------------- |
-| `Product`        | Produit recherché et ses critères de sourcing cibles.            |
-| `Supplier`       | Fournisseur (note, région, certifications, délais...).           |
-| `Offer`          | Produit proposé par un fournisseur (prix, MOQ, délai, stock).    |
-| `SearchRequest`  | Demande de recherche (synchrone ou en file), avec son statut.    |
-| `SupplierMatch`  | Résultat classé : fournisseur candidat + score + détail.         |
+| Table               | Pilier | Rôle                                                     |
+| ------------------- | ------ | -------------------------------------------------------- |
+| `MarketOpportunity` | 1      | Produit gagnant détecté + scores (demande/tendance/concurrence) |
+| `Product`           | 2      | Produit du catalogue (prix d'achat/vente, marge, statut) |
+| `GenerationRun`     | 2      | Traçabilité d'un lot de génération                       |
+| `Customer`          | 3      | Client final                                             |
+| `Order` / `OrderItem` | 3    | Commande client et ses lignes                            |
+| `PurchaseOrder`     | 3      | Bon d'achat fournisseur (suivi d'expédition)             |
+| `Supplier` / `Offer` | 4     | Fournisseur et ses offres (prix, MOQ, délai)             |
+| `SearchRequest` / `SupplierMatch` | 4 | Recherche de fournisseurs et résultats classés  |
 
-Relations : `Supplier 1—N Offer`, `SearchRequest 1—N SupplierMatch`,
-`SupplierMatch N—1 Supplier/Offer`, `Product 1—N SearchRequest`.
+Schéma faisant autorité : [`prisma/schema.prisma`](../prisma/schema.prisma).
 
-Le schéma fait autorité : [`prisma/schema.prisma`](../prisma/schema.prisma).
+## Pilier 1 — Analyse marché
 
-## Moteur de matching (`src/utils/scoring.ts`)
+`marketService.scan()` interroge les `MarketConnector` et upsert des
+`MarketOpportunity`. Chaque opportunité reçoit un **score d'opportunité 0–100**
+(`utils/opportunity.ts`) :
 
-Chaque fournisseur reçoit un **score global 0–100**, moyenne pondérée de
-sept critères. La meilleure offre du fournisseur est utilisée pour les critères
-liés au produit (prix, MOQ, délai).
+```
+score = 0.40 · demande + 0.35 · tendance + 0.25 · (100 − concurrence)
+```
 
-| Critère          | Poids | Logique                                                    |
-| ---------------- | ----- | ---------------------------------------------------------- |
-| `relevance`      | 30 %  | Recouvrement mots-clés (70 %) + correspondance catégorie (30 %) |
-| `price`          | 20 %  | Score max si prix ≤ cible, décroît avec le dépassement     |
-| `moq`            | 10 %  | Score max si MOQ ≤ quantité voulue                          |
-| `leadTime`       | 10 %  | Décroît linéairement jusqu'à 60 jours                      |
-| `region`         | 10 %  | Correspondance de région/pays                              |
-| `reputation`     | 10 %  | Note /5 (80 %) + bonus « vérifié » (20 %)                  |
-| `certifications` | 10 %  | Part des certifications requises couvertes                 |
+Déduplication par `(source, externalId)`. Un re-scan met à jour les signaux
+sans écraser le statut (ex: une opportunité déjà `IMPORTED` le reste).
 
-Un critère « inconnu » (donnée absente) est neutre (0,5) plutôt que pénalisant.
-Les poids se modifient dans la constante `WEIGHTS`. Le détail (`breakdown`) est
-renvoyé et stocké pour être audité et affiché dans l'UI.
+## Pilier 2 — Génération de produits
 
-## Exécution des recherches
+`generationService.generate()` sélectionne les meilleures opportunités
+(`status ∈ {NEW, EVALUATED}`, score ≥ seuil), puis pour chacune :
 
-Deux modes, via le champ `async` du corps de la requête `POST /api/search` :
+- génère titre/description/SKU/images (`utils/productContent.ts`) ;
+- calcule le prix de vente et la marge (`utils/pricing.ts`, markup configurable) ;
+- crée le `Product` (DRAFT ou ACTIVE) et passe l'opportunité en `IMPORTED`.
 
-- **Synchrone** (`async: false`, défaut) — calcule immédiatement, persiste les
-  `SupplierMatch`, renvoie les résultats dans la réponse.
-- **Asynchrone** (`async: true`) — crée une `SearchRequest` en statut `PENDING`
-  (HTTP 202). Le job `runPendingSearches` la traite au prochain cycle cron.
-  Le client récupère les résultats via `GET /api/search/:id`.
+Chaque exécution est tracée dans un `GenerationRun` (demandés/générés/ignorés/échoués).
+Le quota par cycle est plafonné par `PRODUCTS_PER_RUN`.
 
-Cycle de vie d'une recherche : `PENDING → RUNNING → COMPLETED` (ou `FAILED`).
+## Pilier 3 — Achat & expédition
 
-## Automatisation (`src/automation`)
+`orderService.create()` construit la commande et calcule le total. Quand une
+commande est `PAID`, `fulfillmentService.fulfillOrder()` :
 
-- **Connecteurs** (`connectors/`) — implémentent `SupplierConnector` et renvoient
-  des fournisseurs normalisés. `MockConnector` sert de référence/démonstration.
-- **Jobs** (`jobs/`) — `refreshSuppliers` (upsert idempotent des fournisseurs) et
-  `runPendingSearches` (traitement par lots des recherches en file).
-- **Scheduler** (`scheduler.ts`) — planifie les jobs via cron. Intégré au serveur
-  ou exécutable seul (`npm run worker`) pour séparer API et traitements lourds.
+1. passe la commande en `FULFILLING` ;
+2. pour chaque article, choisit le meilleur couple (fournisseur, offre) via le
+   moteur de scoring (`utils/scoring.ts`) ;
+3. crée un `PurchaseOrder` et le passe via le `FulfillmentConnector` ;
+4. enregistre le numéro de suivi ; la commande passe `SHIPPED` si tous les
+   bons d'achat sont acceptés (sinon reste `FULFILLING` pour réessai).
+
+Cycle commande : `PENDING → PAID → FULFILLING → SHIPPED → DELIVERED` (ou `CANCELLED`).
+
+## Pilier 4 — Sourcing fournisseurs
+
+`searchService` + moteur de matching (`utils/scoring.ts`). Score global 0–100,
+moyenne pondérée de 7 critères :
+
+| Critère | Poids | | Critère | Poids |
+|---|---|---|---|---|
+| pertinence | 30 % | | région | 10 % |
+| prix | 20 % | | réputation | 10 % |
+| MOQ | 10 % | | certifications | 10 % |
+| délai | 10 % | | | |
+
+Recherche synchrone (résultats immédiats) ou asynchrone (file traitée par le
+worker). Le même moteur sert aussi à choisir le fournisseur lors du fulfillment.
+
+## Connecteurs (intégrations externes)
+
+Trois familles de connecteurs, toutes remplaçables sans toucher au métier :
+
+| Famille       | Interface             | Mock fourni                | Vraie source visée             |
+| ------------- | --------------------- | -------------------------- | ------------------------------ |
+| Marché        | `MarketConnector`     | `MockMarketConnector`      | API tendances, marketplaces    |
+| Fournisseurs  | `SupplierConnector`   | `MockConnector`            | Annuaires B2B, marketplaces    |
+| Exécution     | `FulfillmentConnector`| `MockFulfillmentConnector` | API du fournisseur / EDI       |
 
 ## Évolutions possibles
 
-- Passer SQLite → PostgreSQL (changer `provider` + `DATABASE_URL`).
-- Authentification / multi-tenant (clé API, JWT) sur les routes.
-- Connecteurs réels (annuaires B2B, marketplaces) + déduplication par `externalId`.
-- File d'attente dédiée (BullMQ/Redis) à la place du cron pour la montée en charge.
-- Enrichissement du scoring (embeddings sémantiques pour la pertinence textuelle).
+- SQLite → PostgreSQL (changer `provider` + `DATABASE_URL`).
+- Génération de contenu par LLM (Claude API) dans `utils/productContent.ts`.
+- File d'attente dédiée (BullMQ/Redis) au lieu du cron pour la montée en charge.
+- Authentification / multi-boutique (clé API, JWT) sur les routes.
+- Webhooks de paiement (Stripe) déclenchant le passage en `PAID`.
+- Synchronisation catalogue vers Shopify/WooCommerce.

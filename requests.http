@@ -1,31 +1,54 @@
-### Exemples de requêtes (compatible REST Client / IntelliJ HTTP)
+### Exemples de requêtes — Toumai (compatible REST Client / IntelliJ HTTP)
 @base = http://localhost:3000
 
-### Santé
+### Santé & index
 GET {{base}}/health
+###
+GET {{base}}/api
 
-### Lister les produits
-GET {{base}}/api/products
+# ─────────────────────────────────────────────────────────────
+# PILIER 1 — ANALYSE MARCHÉ
+# ─────────────────────────────────────────────────────────────
 
-### Créer un produit
-POST {{base}}/api/products
+### Lancer une analyse de marché
+POST {{base}}/api/market/scan
 Content-Type: application/json
 
-{
-  "sku": "TEX-TSHIRT-001",
-  "name": "T-shirts coton",
-  "category": "textile",
-  "keywords": "tshirt,coton,vetement",
-  "targetUnitPrice": 3.0,
-  "targetQuantity": 500,
-  "region": "Africa",
-  "requiredCertifications": "OEKO-TEX"
-}
+{ "region": "EU" }
 
-### Lister les fournisseurs vérifiés bien notés
+### Top opportunités
+GET {{base}}/api/market/opportunities?minScore=70&take=10
+
+### Marquer une opportunité à traiter
+PATCH {{base}}/api/market/opportunities/REMPLACER_PAR_ID
+Content-Type: application/json
+
+{ "status": "EVALUATED" }
+
+# ─────────────────────────────────────────────────────────────
+# PILIER 2 — GÉNÉRATION DE PRODUITS
+# ─────────────────────────────────────────────────────────────
+
+### Générer des produits en masse depuis les opportunités
+POST {{base}}/api/products/generate
+Content-Type: application/json
+
+{ "limit": 100, "minScore": 60, "autoPublish": true }
+
+### Historique des lots de génération
+GET {{base}}/api/products/generation-runs
+
+### Lister les produits actifs
+GET {{base}}/api/products?status=ACTIVE
+
+# ─────────────────────────────────────────────────────────────
+# PILIER 4 — SOURCING FOURNISSEURS
+# ─────────────────────────────────────────────────────────────
+
+### Fournisseurs vérifiés bien notés
 GET {{base}}/api/suppliers?verified=true&minRating=4
 
-### Recherche synchrone (critères libres)
+### Recherche de fournisseurs (synchrone)
 POST {{base}}/api/search
 Content-Type: application/json
 
@@ -38,19 +61,26 @@ Content-Type: application/json
   "requiredCertifications": "ISO9001"
 }
 
-### Recherche asynchrone (traitée par le worker) — renvoie un id
-POST {{base}}/api/search
+# ─────────────────────────────────────────────────────────────
+# PILIER 3 — ACHAT & EXPÉDITION
+# ─────────────────────────────────────────────────────────────
+
+### Créer une commande (client à la volée) — honorée automatiquement
+POST {{base}}/api/orders
 Content-Type: application/json
 
 {
-  "category": "electronique",
-  "keywords": "chargeur,usb",
-  "region": "Asia",
-  "async": true
+  "customer": { "name": "Aïcha", "email": "aicha@example.com",
+                "city": "Lyon", "country": "France", "zip": "69001" },
+  "items": [ { "productId": "REMPLACER_PAR_ID", "quantity": 3 } ],
+  "markPaid": true
 }
 
-### Récupérer une recherche et ses résultats
-GET {{base}}/api/search/REMPLACER_PAR_ID
+### Forcer l'exécution (achat + expédition) d'une commande
+POST {{base}}/api/orders/REMPLACER_PAR_ID/fulfill
 
-### Historique des recherches
-GET {{base}}/api/search?status=COMPLETED
+### Détail d'une commande (bons d'achat + suivi)
+GET {{base}}/api/orders/REMPLACER_PAR_ID
+
+### Commandes expédiées
+GET {{base}}/api/orders?status=SHIPPED

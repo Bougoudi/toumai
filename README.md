@@ -1,124 +1,124 @@
-# Toumai — Système de recherche de fournisseurs
+# Toumai — Plateforme d'automatisation e-commerce (dropshipping)
 
-Toumai est un logiciel de **sourcing** : à partir d'un produit (ou de critères libres),
-il recherche, note et classe les fournisseurs les plus pertinents. Le système est
-composé d'une API REST, d'une base de données, d'un moteur de matching et d'une
-couche d'automatisation (connecteurs de données + tâches planifiées).
+Toumai automatise l'ensemble du cycle du dropshipping, autour de **4 piliers** :
+
+| # | Pilier | Ce que ça fait | Point d'entrée API |
+|---|--------|----------------|--------------------|
+| 1 | **Analyse marché** | Détecte en continu des produits gagnants (demande, tendance, concurrence) | `POST /api/market/scan` |
+| 2 | **Génération de produits** | Crée et publie des centaines de produits/jour depuis les opportunités | `POST /api/products/generate` |
+| 3 | **Achat & expédition** | Achète chez le fournisseur et expédie au client, automatiquement | `POST /api/orders` |
+| 4 | **Sourcing fournisseurs** | Recherche et classe les meilleurs fournisseurs pour un produit | `POST /api/search` |
+
+Chaque pilier est disponible **à la demande** (API) **et en automatique** (tâches planifiées).
 
 ## Pile technique
 
-| Couche          | Choix                                             |
-| --------------- | ------------------------------------------------- |
-| Langage         | TypeScript (Node.js ≥ 18)                         |
-| API             | Express                                            |
-| Base de données | Prisma ORM + SQLite (migrable vers PostgreSQL)    |
-| Validation      | Zod                                               |
-| Automatisation  | node-cron (worker) + connecteurs de sources       |
+| Couche          | Choix                                          |
+| --------------- | ---------------------------------------------- |
+| Langage         | TypeScript (Node.js ≥ 18)                      |
+| API             | Express                                        |
+| Base de données | Prisma ORM + SQLite (migrable vers PostgreSQL) |
+| Validation      | Zod                                            |
+| Automatisation  | node-cron + connecteurs de sources             |
 
 ## Démarrage rapide
 
 ```bash
-# 1. Dépendances
 npm install
-
-# 2. Configuration
 cp .env.example .env
-
-# 3. Base de données + client Prisma
 npm run prisma:generate
 npm run db:push
-
-# 4. Données de démonstration (fournisseurs + produits)
-npm run db:seed
-
-# 5. Lancer l'API (avec le planificateur intégré)
-npm run dev
+npm run db:seed     # déroule les 4 piliers avec des données de démo
+npm run dev         # API + planificateur sur http://localhost:3000
 ```
 
-L'API écoute par défaut sur `http://localhost:3000`.
-Vérification : `curl http://localhost:3000/health`.
+Le seed effectue une démo complète : analyse marché → génération de produits →
+commande client → **achat auto chez le fournisseur + expédition** (avec suivi).
 
-### Lancer une première recherche
+## Le flux automatisé de bout en bout
 
-```bash
-curl -X POST http://localhost:3000/api/search \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "query": "sesame",
-    "category": "agroalimentaire",
-    "region": "Africa",
-    "targetUnitPrice": 1.3,
-    "targetQuantity": 2000,
-    "requiredCertifications": "ISO9001"
-  }'
 ```
-
-Réponse : la liste des fournisseurs classés par score (0–100), avec le détail
-de chaque critère (`breakdown`).
+   [1] ANALYSE MARCHÉ            [2] GÉNÉRATION             [4] SOURCING
+   Scanne les tendances    ->    Crée les produits    ->   Trouve le meilleur
+   -> MarketOpportunity          -> Product (ACTIVE)        fournisseur/offre
+        (score 0-100)                 (prix, marge)              |
+                                                                 v
+   [3] ACHAT & EXPÉDITION  <---  Commande client paye  <---  Produit en vente
+   Bon d'achat fournisseur       (Order PAID)                 sur la boutique
+   -> expédition + tracking
+   -> Order SHIPPED
+```
 
 ## Structure du projet
 
 ```
 toumai/
 ├── prisma/
-│   ├── schema.prisma          # Schéma de la base de données
-│   └── seed.ts                # Peuplement de démonstration
+│   ├── schema.prisma          # 9 tables couvrant les 4 piliers
+│   └── seed.ts                # démonstration bout en bout
 ├── src/
-│   ├── index.ts               # Point d'entrée (serveur + scheduler)
-│   ├── app.ts                 # Application Express, montage des routes
-│   ├── config/env.ts          # Configuration (variables d'environnement)
-│   ├── db/prisma.ts           # Client Prisma (singleton)
-│   ├── middleware/            # Gestion d'erreurs, validation
+│   ├── index.ts               # serveur + planificateur
+│   ├── app.ts                 # montage des routes Express
+│   ├── config/env.ts          # config (marge, quotas, crons)
+│   ├── db/prisma.ts
+│   ├── middleware/            # validation, gestion d'erreurs
 │   ├── modules/
-│   │   ├── products/          # CRUD Produits
-│   │   ├── suppliers/         # CRUD Fournisseurs + Offres
-│   │   └── search/            # Recherche + moteur de matching
+│   │   ├── market/            # [1] analyse marché + opportunités
+│   │   ├── products/          # [2] catalogue + génération en masse
+│   │   ├── orders/            # [3] commandes, clients, fulfillment
+│   │   ├── suppliers/         # [4] fournisseurs + offres
+│   │   └── search/            # [4] recherche + moteur de matching
 │   ├── automation/
-│   │   ├── scheduler.ts       # Tâches cron
-│   │   ├── connectors/        # Sources de données fournisseurs
-│   │   └── jobs/              # Jobs (refresh fournisseurs, recherches en file)
-│   └── utils/
-│       ├── logger.ts
-│       └── scoring.ts         # Algorithme de scoring des fournisseurs
+│   │   ├── scheduler.ts       # 5 tâches cron
+│   │   ├── connectors/        # sources : market / supplier / fulfillment
+│   │   └── jobs/              # 1 job par automatisation
+│   └── utils/                 # scoring, pricing, opportunité, contenu produit
 └── docs/
-    ├── architecture.md        # Architecture & flux techniques
-    ├── api.md                 # Référence des routes API
-    └── user-flow.md           # Flux utilisateur principal
+    ├── architecture.md
+    ├── api.md
+    └── user-flow.md
 ```
 
-## Automatisation
+## Automatisation (tâches planifiées)
 
-Deux tâches tournent en arrière-plan (voir `src/automation`) :
+| Job                  | Pilier | Fréquence par défaut | Rôle                                        |
+| -------------------- | ------ | -------------------- | ------------------------------------------- |
+| `marketScan`         | 1      | toutes les 30 min    | Détecte de nouvelles opportunités           |
+| `generateProducts`   | 2      | toutes les 6 h       | Publie des produits (quota configurable)    |
+| `fulfillOrders`      | 3      | chaque minute        | Achète + expédie les commandes payées       |
+| `refreshSuppliers`   | 4      | horaire              | Synchronise fournisseurs/offres/prix        |
+| `runPendingSearches` | 4      | toutes les 2 min     | Traite les recherches en file               |
 
-1. **Rafraîchissement des fournisseurs** (`CRON_REFRESH_SUPPLIERS`, horaire par défaut)
-   — interroge les connecteurs et synchronise la base fournisseurs/offres.
-2. **Traitement des recherches en file** (`CRON_RUN_SEARCHES`, toutes les 2 min)
-   — exécute les recherches soumises en mode asynchrone (`"async": true`).
-
-Le planificateur est intégré au serveur (`ENABLE_SCHEDULER=true`) ou lançable seul :
+Planificateur intégré au serveur (`ENABLE_SCHEDULER=true`) ou lançable seul :
 
 ```bash
 npm run worker
 ```
 
-Pour brancher une **vraie source** de fournisseurs, créez un connecteur dans
-`src/automation/connectors/` qui implémente `SupplierConnector`, puis
-enregistrez-le dans `refreshSuppliers.job.ts`.
+### Brancher de vraies sources
 
-## Scripts npm
+Tout passe par des **connecteurs** interchangeables (`src/automation/connectors/`) :
 
-| Script                 | Rôle                                       |
-| ---------------------- | ------------------------------------------ |
-| `npm run dev`          | API en mode watch                          |
-| `npm run build`        | Compilation TypeScript                     |
-| `npm start`            | API compilée (`dist/`)                     |
-| `npm run worker`       | Planificateur seul                         |
-| `npm run db:push`      | Applique le schéma à la base               |
-| `npm run db:seed`      | Peuple des données de démonstration        |
-| `npm run typecheck`    | Vérification des types                     |
+- **Marché** — implémentez `MarketConnector.discover()` (API tendances/marketplace).
+- **Fournisseurs** — implémentez `SupplierConnector.fetchSuppliers()` (annuaire B2B).
+- **Exécution** — implémentez `FulfillmentConnector.placeOrder()` (API du fournisseur).
+
+Les connecteurs `mock-*` fournis servent de référence et rendent le système
+fonctionnel immédiatement, sans clé d'API externe.
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — architecture, moteur de scoring, automatisation
+- [`docs/architecture.md`](docs/architecture.md) — architecture, modèle de données, algorithmes
 - [`docs/api.md`](docs/api.md) — référence complète des endpoints
 - [`docs/user-flow.md`](docs/user-flow.md) — flux utilisateur principal
+
+## Scripts npm
+
+| Script              | Rôle                              |
+| ------------------- | --------------------------------- |
+| `npm run dev`       | API + scheduler (watch)           |
+| `npm run worker`    | Planificateur seul                |
+| `npm run build`     | Compilation TypeScript            |
+| `npm run db:push`   | Applique le schéma                |
+| `npm run db:seed`   | Données de démonstration          |
+| `npm run typecheck` | Vérification des types            |

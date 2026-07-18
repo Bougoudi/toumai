@@ -1,5 +1,12 @@
 // Schéma de base de données — Toumai
-// Base : SQLite (par défaut). Peut être migré vers PostgreSQL en changeant `provider`.
+// Plateforme d'automatisation e-commerce / dropshipping.
+// Base : SQLite (par défaut). Migrable vers PostgreSQL en changeant `provider`.
+//
+// Les 4 piliers du logiciel :
+//   1. Analyse marché  -> MarketOpportunity
+//   2. Génération      -> Product / GenerationRun
+//   3. Achat & envoi   -> Customer / Order / OrderItem / PurchaseOrder
+//   4. Sourcing        -> Supplier / Offer / SearchRequest / SupplierMatch
 
 generator client {
   provider = "prisma-client-js"
@@ -10,53 +17,220 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Produit pour lequel l'utilisateur cherche des fournisseurs.
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. ANALYSE MARCHÉ
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Opportunité produit détectée par l'analyse de marché (produit gagnant potentiel).
+model MarketOpportunity {
+  id                 String  @id @default(cuid())
+  source             String // connecteur d'origine (trends, marketplace...)
+  externalId         String // identifiant stable côté source (déduplication)
+  title              String
+  category           String
+  keywords           String  @default("")
+  niche              String?
+  region             String?
+  currency           String  @default("EUR")
+
+  /// Scores 0..100 issus de l'analyse.
+  demandScore        Float   @default(0)
+  competitionScore   Float   @default(0)
+  trendScore         Float   @default(0)
+  /// Score global de recommandation (0..100).
+  opportunityScore   Float   @default(0)
+
+  estimatedCostPrice Float?
+  estimatedSalePrice Float?
+  estimatedMargin    Float?
+
+  /// NEW | EVALUATED | IMPORTED | REJECTED
+  status             String  @default("NEW")
+  /// Métriques brutes de la source (JSON sérialisé).
+  rawMetrics         String  @default("{}")
+
+  products Product[]
+
+  discoveredAt DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([source, externalId])
+  @@index([status])
+  @@index([opportunityScore])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. CATALOGUE / GÉNÉRATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Produit du catalogue (créé manuellement ou généré en masse depuis une opportunité).
 model Product {
-  id                     String   @id @default(cuid())
-  sku                    String?  @unique
+  id                     String             @id @default(cuid())
+  sku                    String?            @unique
   name                   String
   description            String?
   category               String
-  /// Mots-clés séparés par des virgules, utilisés par le moteur de matching.
-  keywords               String   @default("")
+  keywords               String             @default("")
+  currency               String             @default("EUR")
+
+  /// Économie du produit (dropshipping).
+  costPrice              Float? // prix d'achat fournisseur
+  salePrice              Float? // prix de vente client
+  margin                 Float? // marge = salePrice - costPrice
+
+  /// DRAFT | ACTIVE | ARCHIVED
+  status                 String             @default("DRAFT")
+  /// Origine : manual | generated | import
+  source                 String             @default("manual")
+  images                 String             @default("") // URLs séparées par des virgules
+
+  // Critères de sourcing (pilier 4)
   targetUnitPrice        Float?
   targetQuantity         Int?
-  currency               String   @default("EUR")
-  /// Région/zone de sourcing souhaitée (ex: "EU", "Africa", "Asia").
   region                 String?
-  /// Certifications requises, séparées par des virgules (ex: "ISO9001,CE").
-  requiredCertifications String   @default("")
+  requiredCertifications String             @default("")
+
+  opportunityId String?
+  opportunity   MarketOpportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
 
   searchRequests SearchRequest[]
+  orderItems     OrderItem[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  generatedAt DateTime?
+
+  @@index([category])
+  @@index([status])
+}
+
+/// Lot de génération de produits (traçabilité de la fonctionnalité "centaines/jour").
+model GenerationRun {
+  id        String   @id @default(cuid())
+  source    String   @default("opportunities")
+  requested Int      @default(0)
+  generated Int      @default(0)
+  skipped   Int      @default(0)
+  failed    Int      @default(0)
+  /// RUNNING | COMPLETED | FAILED
+  status    String   @default("RUNNING")
+  params    String   @default("{}")
+  error     String?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. COMMANDES / ACHAT & EXPÉDITION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Client final.
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  address   String?
+  city      String?
+  country   String?
+  zip       String?
+
+  orders Order[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([category])
+  @@index([email])
 }
+
+/// Commande client.
+model Order {
+  id          String  @id @default(cuid())
+  orderNumber String  @unique
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  /// PENDING | PAID | FULFILLING | SHIPPED | DELIVERED | CANCELLED
+  status   String  @default("PENDING")
+  currency String  @default("EUR")
+  total    Float   @default(0)
+
+  items          OrderItem[]
+  purchaseOrders PurchaseOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+/// Ligne de commande.
+model OrderItem {
+  id            String @id @default(cuid())
+  orderId       String
+  order         Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product @relation(fields: [productId], references: [id])
+  quantity      Int     @default(1)
+  unitSalePrice Float
+  unitCostPrice Float?
+
+  @@index([orderId])
+}
+
+/// Bon d'achat passé automatiquement chez un fournisseur pour honorer une commande.
+model PurchaseOrder {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  offerId    String?
+  offer      Offer?   @relation(fields: [offerId], references: [id], onDelete: SetNull)
+
+  /// CREATED | PLACED | SHIPPED | DELIVERED | FAILED
+  status         String  @default("CREATED")
+  cost           Float   @default(0)
+  currency       String  @default("EUR")
+  trackingNumber String?
+  carrier        String?
+  error          String?
+
+  createdAt DateTime  @default(now())
+  placedAt  DateTime?
+  shippedAt DateTime?
+
+  @@index([orderId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. SOURCING / FOURNISSEURS
+// ─────────────────────────────────────────────────────────────────────────────
 
 /// Fournisseur référencé dans la base.
 model Supplier {
-  id             String   @id @default(cuid())
+  id             String  @id @default(cuid())
   name           String
   country        String?
   region         String?
   website        String?
   email          String?
   phone          String?
-  /// Note de fiabilité 0..5.
-  rating         Float    @default(0)
-  verified       Boolean  @default(false)
-  /// Certifications détenues, séparées par des virgules.
-  certifications String   @default("")
+  rating         Float   @default(0)
+  verified       Boolean @default(false)
+  certifications String  @default("")
   leadTimeDays   Int?
   minOrderValue  Float?
-  currency       String   @default("EUR")
-  /// Source de la donnée (connecteur d'automatisation, import manuel, etc.).
-  source         String   @default("manual")
+  currency       String  @default("EUR")
+  source         String  @default("manual")
 
-  offers  Offer[]
-  matches SupplierMatch[]
+  offers         Offer[]
+  matches        SupplierMatch[]
+  purchaseOrders PurchaseOrder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -75,12 +249,12 @@ model Offer {
   keywords     String   @default("")
   unitPrice    Float?
   currency     String   @default("EUR")
-  /// Quantité minimale de commande (MOQ).
   moq          Int?
   leadTimeDays Int?
   inStock      Boolean  @default(true)
 
-  matches SupplierMatch[]
+  matches        SupplierMatch[]
+  purchaseOrders PurchaseOrder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -89,12 +263,11 @@ model Offer {
   @@index([category])
 }
 
-/// Demande de recherche de fournisseurs (traitée en synchrone ou en asynchrone).
+/// Demande de recherche de fournisseurs (synchrone ou asynchrone).
 model SearchRequest {
   id                     String   @id @default(cuid())
   productId              String?
   product                Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  /// Requête libre saisie par l'utilisateur.
   query                  String   @default("")
   category               String?
   keywords               String   @default("")
@@ -123,10 +296,8 @@ model SupplierMatch {
   supplier        Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   offerId         String?
   offer           Offer?        @relation(fields: [offerId], references: [id], onDelete: SetNull)
-  /// Score global 0..100.
   score           Float
   rank            Int
-  /// Détail du score (JSON sérialisé).
   breakdown       String        @default("{}")
 
   createdAt DateTime @default(now())

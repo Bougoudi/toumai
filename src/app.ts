@@ -1,5 +1,7 @@
 import express from 'express';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
+import { marketRouter } from './modules/market/market.routes.js';
+import { orderRouter } from './modules/orders/order.routes.js';
 import { productRouter } from './modules/products/product.routes.js';
 import { searchRouter } from './modules/search/search.routes.js';
 import { supplierRouter } from './modules/suppliers/supplier.routes.js';
@@ -16,18 +18,29 @@ export function createApp() {
   app.get('/api', (_req, res) =>
     res.json({
       name: 'Toumai API',
-      version: '0.1.0',
+      version: '0.2.0',
+      description: 'Plateforme d’automatisation e-commerce / dropshipping',
+      pillars: {
+        '1. Analyse marché': '/api/market',
+        '2. Génération produits': '/api/products/generate',
+        '3. Achat & expédition': '/api/orders',
+        '4. Sourcing fournisseurs': '/api/search',
+      },
       endpoints: {
+        market: '/api/market',
         products: '/api/products',
         suppliers: '/api/suppliers',
         search: '/api/search',
+        orders: '/api/orders',
       },
     }),
   );
 
-  app.use('/api/products', productRouter);
-  app.use('/api/suppliers', supplierRouter);
-  app.use('/api/search', searchRouter);
+  app.use('/api/market', marketRouter); // pilier 1
+  app.use('/api/products', productRouter); // pilier 2
+  app.use('/api/orders', orderRouter); // pilier 3
+  app.use('/api/suppliers', supplierRouter); // pilier 4
+  app.use('/api/search', searchRouter); // pilier 4
 
   app.use(notFound);
   app.use(errorHandler);

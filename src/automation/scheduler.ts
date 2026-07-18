@@ -1,43 +1,46 @@
 import cron from 'node-cron';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
+import { fulfillOrdersJob } from './jobs/fulfillOrders.job.js';
+import { generateProductsJob } from './jobs/generateProducts.job.js';
+import { marketScanJob } from './jobs/marketScan.job.js';
 import { refreshSuppliersJob } from './jobs/refreshSuppliers.job.js';
 import { runPendingSearchesJob } from './jobs/runPendingSearches.job.js';
 
 let started = false;
 
+/** Exécute un job en capturant les erreurs pour ne pas casser le cron. */
+function safe(name: string, fn: () => Promise<unknown>) {
+  return async () => {
+    try {
+      await fn();
+    } catch (err) {
+      logger.error(`Job ${name} a échoué`, { err: err instanceof Error ? err.message : String(err) });
+    }
+  };
+}
+
 /**
- * Démarre les tâches planifiées (cron).
- * Peut être appelé depuis le serveur HTTP (ENABLE_SCHEDULER=true)
- * ou exécuté de façon autonome via `npm run worker`.
+ * Démarre toutes les tâches planifiées (les 4 piliers).
+ * Intégré au serveur (ENABLE_SCHEDULER=true) ou lançable seul (`npm run worker`).
  */
 export function startScheduler() {
   if (started) return;
   started = true;
+  const s = env.scheduler;
 
-  cron.schedule(env.scheduler.refreshSuppliersCron, async () => {
-    try {
-      await refreshSuppliersJob();
-    } catch (err) {
-      logger.error('refreshSuppliersJob a échoué', {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    }
-  });
-
-  cron.schedule(env.scheduler.runSearchesCron, async () => {
-    try {
-      await runPendingSearchesJob();
-    } catch (err) {
-      logger.error('runPendingSearchesJob a échoué', {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    }
-  });
+  cron.schedule(s.marketScanCron, safe('marketScan', () => marketScanJob())); // pilier 1
+  cron.schedule(s.generateProductsCron, safe('generateProducts', () => generateProductsJob())); // pilier 2
+  cron.schedule(s.fulfillOrdersCron, safe('fulfillOrders', () => fulfillOrdersJob())); // pilier 3
+  cron.schedule(s.refreshSuppliersCron, safe('refreshSuppliers', () => refreshSuppliersJob())); // pilier 4
+  cron.schedule(s.runSearchesCron, safe('runSearches', () => runPendingSearchesJob())); // pilier 4
 
   logger.info('Planificateur démarré', {
-    refreshSuppliers: env.scheduler.refreshSuppliersCron,
-    runSearches: env.scheduler.runSearchesCron,
+    marketScan: s.marketScanCron,
+    generateProducts: s.generateProductsCron,
+    fulfillOrders: s.fulfillOrdersCron,
+    refreshSuppliers: s.refreshSuppliersCron,
+    runSearches: s.runSearchesCron,
   });
 }
 
