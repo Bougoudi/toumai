@@ -30,6 +30,12 @@ supervise ; le système exécute. Deux vues du même flux : **automatique** et *
 L'e-commerçant configure une fois (marge, seuil d'opportunité, quotas dans `.env`),
 puis surveille les tableaux de bord. Tout le reste tourne seul.
 
+**Lancer le pilote automatique :** `npm run autopilot` (boucle autonome) ou
+`npm run dev` (API + cycle au démarrage). Suivre l'activité : `GET /api/dashboard`.
+Forcer un cycle : `POST /api/autopilot/run`. Le simulateur de demande
+(`SIMULATE_DEMAND=true`) génère des commandes pour la démo ; en production, elles
+viennent de la vraie boutique (webhook paiement).
+
 ## Le flux manuel (contrôle pas à pas)
 
 ### Étape 1 — Trouver des produits gagnants (pilier 1)

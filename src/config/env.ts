@@ -28,6 +28,19 @@ export const env = {
     fulfillOrdersCron: process.env.CRON_FULFILL_ORDERS ?? '*/1 * * * *',
     refreshSuppliersCron: process.env.CRON_REFRESH_SUPPLIERS ?? '0 * * * *',
     runSearchesCron: process.env.CRON_RUN_SEARCHES ?? '*/2 * * * *',
+    simulateDemandCron: process.env.CRON_SIMULATE_DEMAND ?? '*/3 * * * *',
+  },
+
+  /** Mode pilote automatique. */
+  autopilot: {
+    /** Exécute un cycle complet dès le démarrage (sans attendre le cron). */
+    runOnStart: (process.env.AUTOPILOT_RUN_ON_START ?? 'true') === 'true',
+    /** Intervalle (secondes) entre deux cycles en exécution autonome (`npm run autopilot`). */
+    intervalSeconds: Number(process.env.AUTOPILOT_INTERVAL_SECONDS ?? 60),
+    /** Simule des commandes clients pour faire tourner le pilier 3 sans boutique réelle. */
+    simulateDemand: (process.env.SIMULATE_DEMAND ?? 'true') === 'true',
+    /** Nombre de commandes simulées par cycle. */
+    ordersPerCycle: Number(process.env.SIMULATED_ORDERS_PER_CYCLE ?? 3),
   },
 } as const;
 

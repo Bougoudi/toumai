@@ -6,6 +6,7 @@ import { generateProductsJob } from './jobs/generateProducts.job.js';
 import { marketScanJob } from './jobs/marketScan.job.js';
 import { refreshSuppliersJob } from './jobs/refreshSuppliers.job.js';
 import { runPendingSearchesJob } from './jobs/runPendingSearches.job.js';
+import { simulateDemandJob } from './jobs/simulateDemand.job.js';
 
 let started = false;
 
@@ -35,12 +36,21 @@ export function startScheduler() {
   cron.schedule(s.refreshSuppliersCron, safe('refreshSuppliers', () => refreshSuppliersJob())); // pilier 4
   cron.schedule(s.runSearchesCron, safe('runSearches', () => runPendingSearchesJob())); // pilier 4
 
+  // Simulateur de demande (fait tourner le pilier 3 sans boutique réelle).
+  if (env.autopilot.simulateDemand) {
+    cron.schedule(
+      s.simulateDemandCron,
+      safe('simulateDemand', () => simulateDemandJob(env.autopilot.ordersPerCycle)),
+    );
+  }
+
   logger.info('Planificateur démarré', {
     marketScan: s.marketScanCron,
     generateProducts: s.generateProductsCron,
     fulfillOrders: s.fulfillOrdersCron,
     refreshSuppliers: s.refreshSuppliersCron,
     runSearches: s.runSearchesCron,
+    simulateDemand: env.autopilot.simulateDemand ? s.simulateDemandCron : 'off',
   });
 }
 

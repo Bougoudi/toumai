@@ -67,6 +67,49 @@ const CATALOG: Omit<NormalizedSupplier, 'externalId'>[] = [
       { title: 'Cartons ondulés recyclés', category: 'emballage', keywords: 'carton,emballage,recycle', unitPrice: 0.45, moq: 1000, leadTimeDays: 7 },
     ],
   },
+  {
+    name: 'HomeGoods Wholesale',
+    country: 'Pologne',
+    region: 'EU',
+    website: 'https://homegoods.example',
+    rating: 4.3,
+    verified: true,
+    certifications: 'CE,ISO9001',
+    leadTimeDays: 12,
+    minOrderValue: 400,
+    offers: [
+      { title: 'Accessoires cuisine & maison (lot)', category: 'maison', keywords: 'maison,cuisine,accessoire,organiseur', unitPrice: 4.5, moq: 200, leadTimeDays: 12 },
+      { title: 'Articles animalerie (lot)', category: 'animalerie', keywords: 'animalerie,chat,chien,fontaine,brosse', unitPrice: 5.2, moq: 150, leadTimeDays: 15 },
+    ],
+  },
+  {
+    name: 'FitLife Manufacturing',
+    country: 'Turquie',
+    region: 'EU',
+    website: 'https://fitlife.example',
+    rating: 4.1,
+    verified: true,
+    certifications: 'CE',
+    leadTimeDays: 20,
+    minOrderValue: 500,
+    offers: [
+      { title: 'Équipement sport & fitness', category: 'sport', keywords: 'sport,fitness,yoga,resistance,bouteille', unitPrice: 6.9, moq: 100, leadTimeDays: 20 },
+    ],
+  },
+  {
+    name: 'GlowBeauty Supplies',
+    country: 'Chine',
+    region: 'Asia',
+    website: 'https://glowbeauty.example',
+    rating: 3.8,
+    verified: false,
+    certifications: 'CE,RoHS',
+    leadTimeDays: 30,
+    minOrderValue: 300,
+    offers: [
+      { title: 'Accessoires beauté & soin', category: 'beaute', keywords: 'beaute,massage,miroir,lisseur,soin', unitPrice: 3.4, moq: 300, leadTimeDays: 30 },
+    ],
+  },
 ];
 
 export class MockConnector implements SupplierConnector {

@@ -16,6 +16,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
     "worker": "tsx src/automation/scheduler.ts",
+    "autopilot": "tsx src/automation/autopilot.ts",
     "typecheck": "tsc --noEmit"
   },
   "prisma": {

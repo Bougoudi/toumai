@@ -7,6 +7,16 @@ GET {{base}}/health
 GET {{base}}/api
 
 # ─────────────────────────────────────────────────────────────
+# PILOTE AUTOMATIQUE & TABLEAU DE BORD
+# ─────────────────────────────────────────────────────────────
+
+### Vue d'ensemble (opportunités, produits, commandes, CA, profit)
+GET {{base}}/api/dashboard
+
+### Déclencher un cycle complet des 4 piliers à la demande
+POST {{base}}/api/autopilot/run
+
+# ─────────────────────────────────────────────────────────────
 # PILIER 1 — ANALYSE MARCHÉ
 # ─────────────────────────────────────────────────────────────
 

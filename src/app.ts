@@ -1,5 +1,6 @@
 import express from 'express';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
+import { autopilotRouter, dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { marketRouter } from './modules/market/market.routes.js';
 import { orderRouter } from './modules/orders/order.routes.js';
 import { productRouter } from './modules/products/product.routes.js';
@@ -27,6 +28,8 @@ export function createApp() {
         '4. Sourcing fournisseurs': '/api/search',
       },
       endpoints: {
+        dashboard: '/api/dashboard',
+        autopilot: '/api/autopilot/run',
         market: '/api/market',
         products: '/api/products',
         suppliers: '/api/suppliers',
@@ -36,6 +39,8 @@ export function createApp() {
     }),
   );
 
+  app.use('/api/dashboard', dashboardRouter); // vue d'ensemble
+  app.use('/api/autopilot', autopilotRouter); // pilote automatique
   app.use('/api/market', marketRouter); // pilier 1
   app.use('/api/products', productRouter); // pilier 2
   app.use('/api/orders', orderRouter); // pilier 3

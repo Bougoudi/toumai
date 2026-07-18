@@ -10,6 +10,25 @@ Validation par Zod → `400` avec `details` en cas d'erreur.
 | GET     | `/health` | État du service     |
 | GET     | `/api`    | Index des 4 piliers |
 
+## Pilote automatique & tableau de bord
+
+| Méthode | Route                 | Description                                        |
+| ------- | --------------------- | ------------------------------------------------- |
+| GET     | `/api/dashboard`      | Vue d'ensemble : opportunités, produits, commandes, CA, profit estimé |
+| POST    | `/api/autopilot/run`  | Déclenche un **cycle complet** des 4 piliers à la demande |
+
+`POST /api/autopilot/run` renvoie un rapport de cycle :
+```json
+{
+  "message": "Cycle du pilote automatique exécuté",
+  "report": {
+    "opportunities": 18, "productsGenerated": 13, "suppliers": 7,
+    "ordersCreated": 3, "ordersFulfilled": 3, "searchesProcessed": 0,
+    "durationMs": 514
+  }
+}
+```
+
 ---
 
 ## Pilier 1 — Analyse marché · `/api/market`
