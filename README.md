@@ -21,19 +21,52 @@ Chaque pilier est disponible **à la demande** (API) **et en automatique** (tâc
 | Validation      | Zod                                            |
 | Automatisation  | node-cron + connecteurs de sources             |
 
-## Démarrage rapide
+## Démarrage rapide (le logiciel)
+
+Toumai est avant tout un **logiciel qu'on lance dans le terminal** : un menu
+interactif d'où l'on pilote toute l'automatisation (pas besoin de navigateur).
 
 ```bash
 npm install
 cp .env.example .env
 npm run prisma:generate
 npm run db:push
-npm run dev         # API + pilote automatique sur http://localhost:3000
+npm start            # ← lance le logiciel (menu interactif)
 ```
 
-Au démarrage, le serveur exécute **immédiatement un cycle complet** (les 4 piliers
-s'enchaînent) puis continue seul via le planificateur. Consultez le résultat en
-direct : `curl http://localhost:3000/api/dashboard`.
+```
+╔══════════════════════════════════════════════════════════╗
+║   TOUMAI — Logiciel d’automatisation e-commerce          ║
+╚══════════════════════════════════════════════════════════╝
+
+  Pilote automatique : ○ arrêté
+
+  1  Tableau de bord
+  2  Lancer un cycle complet maintenant
+  3  Démarrer le pilote automatique
+  4  [1] Analyser le marché
+  5  [2] Générer des produits
+  6  [4] Rechercher des fournisseurs
+  7  [3] Voir les commandes
+  8  Voir les produits
+  0  Quitter
+```
+
+Depuis ce menu on lance l'analyse marché, on génère des produits, on cherche des
+fournisseurs, on suit les commandes et le chiffre d'affaires, et on active le
+**pilote automatique** (le logiciel travaille alors seul en arrière-plan).
+
+### Autres façons de lancer
+
+| Commande         | Ce que ça fait                                         |
+| ---------------- | ------------------------------------------------------ |
+| `npm start`      | **Le logiciel** — menu interactif (recommandé)         |
+| `npm run autopilot` | Pilote automatique seul, en boucle, sans menu       |
+| `npm run serve`  | Serveur API (HTTP) pour intégrer Toumai à un autre outil |
+
+> Le serveur API (`npm run serve`) reste disponible pour brancher Toumai à une
+> boutique ou un autre système ; ce n'est pas une interface web à utiliser au
+> quotidien. L'usage normal, c'est le logiciel `npm start`.
 
 ## 🛫 Pilote automatique (le logiciel tourne seul)
 
@@ -94,7 +127,10 @@ toumai/
 │   ├── schema.prisma          # 9 tables couvrant les 4 piliers
 │   └── seed.ts                # démonstration bout en bout
 ├── src/
-│   ├── index.ts               # serveur + planificateur
+│   ├── cli/                   # LE LOGICIEL : application terminal interactive
+│   │   ├── index.ts           #   menu principal + actions
+│   │   └── ui.ts              #   affichage (couleurs, tableaux)
+│   ├── index.ts               # serveur API (intégration) + planificateur
 │   ├── app.ts                 # montage des routes Express
 │   ├── config/env.ts          # config (marge, quotas, crons)
 │   ├── db/prisma.ts
@@ -152,12 +188,13 @@ fonctionnel immédiatement, sans clé d'API externe.
 
 ## Scripts npm
 
-| Script               | Rôle                              |
-| -------------------- | --------------------------------- |
-| `npm run dev`        | API + pilote automatique (watch)  |
-| `npm run autopilot`  | Pilote automatique seul (boucle)  |
-| `npm run worker`     | Planificateur cron seul           |
-| `npm run build`      | Compilation TypeScript            |
-| `npm run db:push`    | Applique le schéma                |
-| `npm run db:seed`    | Données de démonstration          |
-| `npm run typecheck`  | Vérification des types            |
+| Script               | Rôle                                    |
+| -------------------- | --------------------------------------- |
+| `npm start`          | **Le logiciel** — menu interactif       |
+| `npm run autopilot`  | Pilote automatique seul (boucle)        |
+| `npm run serve`      | Serveur API HTTP (intégration)          |
+| `npm run worker`     | Planificateur cron seul                 |
+| `npm run build`      | Compilation TypeScript                  |
+| `npm run db:push`    | Applique le schéma                      |
+| `npm run db:seed`    | Données de démonstration                |
+| `npm run typecheck`  | Vérification des types                  |

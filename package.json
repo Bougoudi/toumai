@@ -1,15 +1,17 @@
 {
   "name": "toumai",
   "version": "0.1.0",
-  "description": "Toumai — système de recherche et de sourcing de fournisseurs pour des produits.",
+  "description": "Toumai — logiciel d'automatisation e-commerce (analyse marché, génération produits, sourcing, achat & expédition).",
   "type": "module",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
+    "app": "tsx src/cli/index.ts",
+    "start": "tsx src/cli/index.ts",
+    "serve": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
