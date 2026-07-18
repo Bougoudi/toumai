@@ -1,0 +1,136 @@
+// Schéma de base de données — Toumai
+// Base : SQLite (par défaut). Peut être migré vers PostgreSQL en changeant `provider`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Produit pour lequel l'utilisateur cherche des fournisseurs.
+model Product {
+  id                     String   @id @default(cuid())
+  sku                    String?  @unique
+  name                   String
+  description            String?
+  category               String
+  /// Mots-clés séparés par des virgules, utilisés par le moteur de matching.
+  keywords               String   @default("")
+  targetUnitPrice        Float?
+  targetQuantity         Int?
+  currency               String   @default("EUR")
+  /// Région/zone de sourcing souhaitée (ex: "EU", "Africa", "Asia").
+  region                 String?
+  /// Certifications requises, séparées par des virgules (ex: "ISO9001,CE").
+  requiredCertifications String   @default("")
+
+  searchRequests SearchRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+}
+
+/// Fournisseur référencé dans la base.
+model Supplier {
+  id             String   @id @default(cuid())
+  name           String
+  country        String?
+  region         String?
+  website        String?
+  email          String?
+  phone          String?
+  /// Note de fiabilité 0..5.
+  rating         Float    @default(0)
+  verified       Boolean  @default(false)
+  /// Certifications détenues, séparées par des virgules.
+  certifications String   @default("")
+  leadTimeDays   Int?
+  minOrderValue  Float?
+  currency       String   @default("EUR")
+  /// Source de la donnée (connecteur d'automatisation, import manuel, etc.).
+  source         String   @default("manual")
+
+  offers  Offer[]
+  matches SupplierMatch[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([region])
+  @@index([rating])
+}
+
+/// Offre (produit proposé) d'un fournisseur. Alimentée par les connecteurs.
+model Offer {
+  id           String   @id @default(cuid())
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  title        String
+  category     String
+  keywords     String   @default("")
+  unitPrice    Float?
+  currency     String   @default("EUR")
+  /// Quantité minimale de commande (MOQ).
+  moq          Int?
+  leadTimeDays Int?
+  inStock      Boolean  @default(true)
+
+  matches SupplierMatch[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([supplierId])
+  @@index([category])
+}
+
+/// Demande de recherche de fournisseurs (traitée en synchrone ou en asynchrone).
+model SearchRequest {
+  id                     String   @id @default(cuid())
+  productId              String?
+  product                Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  /// Requête libre saisie par l'utilisateur.
+  query                  String   @default("")
+  category               String?
+  keywords               String   @default("")
+  targetUnitPrice        Float?
+  targetQuantity         Int?
+  region                 String?
+  requiredCertifications String   @default("")
+  /// PENDING | RUNNING | COMPLETED | FAILED
+  status                 String   @default("PENDING")
+  error                  String?
+
+  matches SupplierMatch[]
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([status])
+}
+
+/// Résultat de matching : un fournisseur candidat classé pour une recherche.
+model SupplierMatch {
+  id              String        @id @default(cuid())
+  searchRequestId String
+  searchRequest   SearchRequest @relation(fields: [searchRequestId], references: [id], onDelete: Cascade)
+  supplierId      String
+  supplier        Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  offerId         String?
+  offer           Offer?        @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  /// Score global 0..100.
+  score           Float
+  rank            Int
+  /// Détail du score (JSON sérialisé).
+  breakdown       String        @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([searchRequestId])
+  @@index([score])
+}
