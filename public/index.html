@@ -12,6 +12,38 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <!-- ÉCRAN DE CONNEXION -->
+    <div id="auth-screen" class="auth-screen" hidden>
+      <div class="auth-card">
+        <div class="auth-brand">
+          <img src="/icons/icon-192.png" alt="" width="46" height="46" />
+          <h1>Toumai</h1>
+          <p>Automatisation e-commerce</p>
+        </div>
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-auth="login">Connexion</button>
+          <button class="auth-tab" data-auth="register">Créer un compte</button>
+        </div>
+        <form id="auth-form">
+          <div class="field" id="field-name" hidden>
+            <label>Nom</label>
+            <input class="input" id="a-name" autocomplete="name" placeholder="Votre nom" />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input class="input" id="a-email" type="email" autocomplete="email" placeholder="email@exemple.com" />
+          </div>
+          <div class="field">
+            <label>Mot de passe</label>
+            <input class="input" id="a-password" type="password" autocomplete="current-password" placeholder="••••••••" />
+          </div>
+          <div id="auth-error" class="auth-error" hidden></div>
+          <button class="btn btn-primary auth-submit" id="a-submit" type="submit">Se connecter</button>
+        </form>
+        <p class="auth-hint" id="auth-hint">Première utilisation ? Le premier compte créé devient administrateur.</p>
+      </div>
+    </div>
+
     <header class="topbar">
       <div class="brand">
         <img src="/icons/icon-192.png" alt="" width="34" height="34" />
@@ -24,6 +56,8 @@
         <span id="autopilot-pill" class="pill pill-off">○ Pilote arrêté</span>
         <button id="autopilot-toggle" class="btn btn-primary">Démarrer le pilote</button>
         <button id="install-btn" class="btn btn-ghost" hidden>⤓ Installer</button>
+        <span id="user-chip" class="pill pill-off" hidden></span>
+        <button id="logout-btn" class="btn btn-ghost" hidden>Déconnexion</button>
       </div>
     </header>
 

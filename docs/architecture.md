@@ -33,10 +33,11 @@ Toumai est une plateforme d'automatisation de dropshipping structurée autour de
         └─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Modèle de données (9 tables)
+## Modèle de données (10 tables)
 
 | Table               | Pilier | Rôle                                                     |
 | ------------------- | ------ | -------------------------------------------------------- |
+| `User`              | —      | Comptes / authentification (JWT + mot de passe scrypt)   |
 | `MarketOpportunity` | 1      | Produit gagnant détecté + scores (demande/tendance/concurrence) |
 | `Product`           | 2      | Produit du catalogue (prix d'achat/vente, marge, statut) |
 | `GenerationRun`     | 2      | Traçabilité d'un lot de génération                       |

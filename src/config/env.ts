@@ -48,6 +48,14 @@ export const env = {
     fulfillment: { url: process.env.FULFILLMENT_API_URL ?? '', key: process.env.FULFILLMENT_API_KEY ?? '' },
   },
 
+  /** Authentification (JWT). */
+  auth: {
+    /** Clé de signature des jetons. À changer impérativement en production. */
+    jwtSecret: process.env.JWT_SECRET ?? 'dev-secret-change-me',
+    /** Durée de validité d'un jeton, en secondes (défaut 7 jours). */
+    jwtTtlSeconds: Number(process.env.JWT_TTL_SECONDS ?? 7 * 24 * 3600),
+  },
+
   /** Paiement Stripe (cartes Visa / Mastercard, etc.). */
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY ?? '',

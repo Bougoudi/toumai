@@ -10,13 +10,22 @@ const el = (html) => {
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
 
+// ── Authentification (jeton) ───────────────────────────────
+const TOKEN_KEY = 'toumai_token';
+const getToken = () => localStorage.getItem(TOKEN_KEY);
+const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
+
 async function api(path, { method = 'GET', body } = {}) {
-  const res = await fetch(path, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const headers = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  const token = getToken();
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && !path.startsWith('/api/auth')) {
+    setToken(null);
+    showAuth();
+  }
   if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
   return data;
 }
@@ -549,12 +558,78 @@ $('#autopilot-toggle').addEventListener('click', async (ev) => {
 
 // ── Rafraîchissement périodique ────────────────────────────
 setInterval(async () => {
+  if (!getToken()) return; // seulement une fois connecté
   await refreshAutopilot();
   if ($('#modal').hidden === false) return; // ne pas rafraîchir sous une modale
   const active = document.querySelector('.tab.active')?.dataset.tab;
   if (active === 'dashboard') loadDashboard();
   if (active === 'orders') loadOrders();
 }, 5000);
+
+// ── Écran de connexion ─────────────────────────────────────
+let authMode = 'login';
+function showAuth() {
+  $('#auth-screen').hidden = false;
+  $('#user-chip').hidden = true;
+  $('#logout-btn').hidden = true;
+}
+function hideAuth() {
+  $('#auth-screen').hidden = true;
+}
+document.querySelectorAll('.auth-tab').forEach((t) =>
+  t.addEventListener('click', () => {
+    authMode = t.dataset.auth;
+    document.querySelectorAll('.auth-tab').forEach((x) => x.classList.remove('active'));
+    t.classList.add('active');
+    $('#field-name').hidden = authMode !== 'register';
+    $('#a-submit').textContent = authMode === 'register' ? 'Créer le compte' : 'Se connecter';
+    $('#a-password').autocomplete = authMode === 'register' ? 'new-password' : 'current-password';
+    $('#auth-error').hidden = true;
+  }),
+);
+$('#auth-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const email = $('#a-email').value.trim();
+  const password = $('#a-password').value;
+  const name = $('#a-name').value.trim();
+  const errBox = $('#auth-error');
+  errBox.hidden = true;
+  const btn = $('#a-submit');
+  busy(btn, true, '...');
+  try {
+    const path = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+    const body = authMode === 'register' ? { name, email, password } : { email, password };
+    const res = await api(path, { method: 'POST', body });
+    setToken(res.token);
+    onAuthed(res.user);
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.hidden = false;
+  } finally {
+    busy(btn, false);
+  }
+});
+$('#logout-btn').addEventListener('click', () => {
+  setToken(null);
+  location.reload();
+});
+
+function onAuthed(user) {
+  hideAuth();
+  $('#user-chip').textContent = '👤 ' + user.name + (user.role === 'admin' ? ' (admin)' : '');
+  $('#user-chip').hidden = false;
+  $('#logout-btn').hidden = false;
+  startApp();
+}
+
+let appStarted = false;
+function startApp() {
+  if (appStarted) return;
+  appStarted = true;
+  api('/api/payments/status').then((s) => (paymentsEnabled = !!s.enabled)).catch(() => {});
+  loadDashboard();
+  refreshAutopilot();
+}
 
 // ── Installation PWA ───────────────────────────────────────
 let deferredPrompt = null;
@@ -571,11 +646,8 @@ $('#install-btn').addEventListener('click', async () => {
   $('#install-btn').hidden = true;
 });
 
-// ── Paiement (Stripe) : disponible ? ───────────────────────
+// ── Paiement (Stripe) ──────────────────────────────────────
 let paymentsEnabled = false;
-api('/api/payments/status')
-  .then((s) => (paymentsEnabled = !!s.enabled))
-  .catch(() => {});
 
 // Retour de paiement (redirection Stripe)
 const params = new URLSearchParams(location.search);
@@ -592,6 +664,13 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 }
 
-// ── Démarrage ──────────────────────────────────────────────
-loadDashboard();
-refreshAutopilot();
+// ── Démarrage : vérifie la session, sinon affiche la connexion ─
+(async function init() {
+  if (!getToken()) return showAuth();
+  try {
+    const user = await api('/api/auth/me');
+    onAuthed(user);
+  } catch {
+    showAuth();
+  }
+})();

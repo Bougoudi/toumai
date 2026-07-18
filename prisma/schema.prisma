@@ -17,6 +17,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Utilisateur de l'application (authentification).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  /// admin | user
+  role         String   @default("user")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. ANALYSE MARCHÉ
 // ─────────────────────────────────────────────────────────────────────────────

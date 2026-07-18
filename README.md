@@ -38,6 +38,19 @@ npm start            # ← lance l'application
 Puis ouvrez **http://localhost:3000**. Un bouton **« ⤓ Installer »** apparaît
 dans la barre du haut (navigateurs compatibles) pour l'installer comme application.
 
+### Connexion (comptes)
+
+L'application est protégée par une **authentification**. Au premier lancement :
+
+- Soit vous **créez un compte** depuis l'écran de connexion (le **premier compte
+  créé devient administrateur**).
+- Soit, après `npm run db:seed`, vous utilisez le compte de démonstration :
+  **`admin@toumai.local` / `toumai1234`**.
+
+Techniquement : jeton **JWT** signé (clé `JWT_SECRET`), mots de passe hachés en
+**scrypt**. Toutes les routes `/api/*` exigent un jeton, sauf `/api/auth/*`,
+`/health` et le webhook Stripe.
+
 ### L'interface
 
 Une seule fenêtre, cinq onglets, et le **pilote automatique** en haut à droite :
@@ -134,7 +147,7 @@ toumai/
 ├── scripts/
 │   └── make-icons.mjs         # génère les icônes PNG (npm run icons)
 ├── prisma/
-│   ├── schema.prisma          # 9 tables couvrant les 4 piliers
+│   ├── schema.prisma          # 10 tables (4 piliers + comptes)
 │   └── seed.ts                # démonstration bout en bout
 ├── src/
 │   ├── index.ts               # serveur : sert l'app web + l'API + planificateur

@@ -10,6 +10,24 @@ Validation par Zod → `400` avec `details` en cas d'erreur.
 | GET     | `/health` | État du service     |
 | GET     | `/api`    | Index des 4 piliers |
 
+## Authentification — `/api/auth`
+
+Toutes les routes `/api/*` exigent l'en-tête `Authorization: Bearer <jeton>`,
+**sauf** `/api/auth/*`, `/health` et `/api/webhooks/stripe`.
+
+| Méthode | Route                | Description                                    |
+| ------- | -------------------- | ---------------------------------------------- |
+| POST    | `/api/auth/register` | Crée un compte (1er compte = admin) → `{ token, user }` |
+| POST    | `/api/auth/login`    | Connexion → `{ token, user }`                  |
+| GET     | `/api/auth/me`       | Profil de l'utilisateur connecté (jeton requis) |
+
+**Corps (inscription)**
+```json
+{ "name": "Aïcha", "email": "aicha@exemple.com", "password": "motdepasse1" }
+```
+Le jeton est un **JWT** (HS256) signé avec `JWT_SECRET` ; les mots de passe sont
+hachés en **scrypt**. Une requête protégée sans jeton valide renvoie `401`.
+
 ## Pilote automatique & tableau de bord
 
 | Méthode | Route                  | Description                                        |

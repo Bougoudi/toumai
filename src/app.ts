@@ -1,7 +1,9 @@
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import { requireAuth } from './middleware/requireAuth.js';
 import { asyncHandler } from './middleware/validate.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
+import { authRouter } from './modules/auth/auth.routes.js';
 import { autopilotRouter, dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { marketRouter } from './modules/market/market.routes.js';
 import { paymentController } from './modules/payments/payment.controller.js';
@@ -49,9 +51,16 @@ export function createApp() {
         search: '/api/search',
         orders: '/api/orders',
         payments: '/api/payments',
+        auth: '/api/auth',
       },
     }),
   );
+
+  // Authentification : routes publiques (inscription / connexion).
+  app.use('/api/auth', authRouter);
+
+  // À partir d'ici, toutes les routes /api exigent un jeton valide.
+  app.use('/api', requireAuth);
 
   app.use('/api/dashboard', dashboardRouter); // vue d'ensemble
   app.use('/api/autopilot', autopilotRouter); // pilote automatique

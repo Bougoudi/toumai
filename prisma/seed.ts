@@ -4,6 +4,7 @@ import { marketScanJob } from '../src/automation/jobs/marketScan.job.js';
 import { generationService } from '../src/modules/products/generation.service.js';
 import { orderService } from '../src/modules/orders/order.service.js';
 import { fulfillmentService } from '../src/modules/orders/fulfillment.service.js';
+import { hashPassword } from '../src/utils/auth.js';
 
 /**
  * Peuple la base en déroulant les 4 piliers :
@@ -13,6 +14,20 @@ import { fulfillmentService } from '../src/modules/orders/fulfillment.service.js
  *   3. Achat & envoi   -> une commande de démonstration honorée automatiquement
  */
 async function main() {
+  console.log('→ [auth] Création du compte administrateur de démonstration...');
+  const adminEmail = 'admin@toumai.local';
+  if (!(await prisma.user.findUnique({ where: { email: adminEmail } }))) {
+    await prisma.user.create({
+      data: {
+        name: 'Administrateur',
+        email: adminEmail,
+        passwordHash: await hashPassword('toumai1234'),
+        role: 'admin',
+      },
+    });
+    console.log(`   Compte : ${adminEmail} / toumai1234`);
+  }
+
   console.log('→ [4] Synchronisation des fournisseurs (connecteur mock)...');
   await refreshSuppliersJob();
 
