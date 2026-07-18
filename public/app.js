@@ -497,12 +497,128 @@ async function openNewOrder() {
   });
 }
 
+// ── Canaux de vente (Etsy / eBay / Amazon) ─────────────────
+const CHANNEL_LABEL = { etsy: 'Etsy', ebay: 'eBay', amazon: 'Amazon' };
+async function loadChannels() {
+  try {
+    const list = await api('/api/channels');
+    const rows = list.map((c) => {
+      const actions =
+        `<button class="btn btn-ghost btn-xs" data-sync="${c.id}">Synchroniser</button> ` +
+        `<button class="btn btn-ghost btn-xs" data-del="${c.id}">Déconnecter</button>`;
+      return [
+        `<b>${CHANNEL_LABEL[c.type] || c.type}</b>`,
+        esc(c.name),
+        badge(c.status),
+        c.error ? `<span class="muted">${esc(c.error)}</span>` : (c.lastSyncAt ? 'synchro ' + dt(c.lastSyncAt) : '—'),
+        actions,
+      ];
+    });
+    $('#channels-table').innerHTML = tableHtml(['Canal', 'Nom', 'Statut', 'Détail', 'Actions'], rows);
+    document.querySelectorAll('#channels-table [data-sync]').forEach((b) =>
+      b.addEventListener('click', () => syncChannel(b.dataset.sync)),
+    );
+    document.querySelectorAll('#channels-table [data-del]').forEach((b) =>
+      b.addEventListener('click', () => deleteChannel(b.dataset.del)),
+    );
+  } catch (e) {
+    toast(e.message);
+  }
+}
+async function syncChannel(id) {
+  try {
+    const r = await api(`/api/channels/${id}/sync`, { method: 'POST' });
+    toast(`${r.imported} commande(s) importée(s)`);
+    loadChannels();
+    loadOrders();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+async function deleteChannel(id) {
+  try {
+    await api(`/api/channels/${id}`, { method: 'DELETE' });
+    toast('Canal déconnecté');
+    loadChannels();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+$('#sync-all-channels').addEventListener('click', async (ev) => {
+  busy(ev.currentTarget, true, 'Synchro...');
+  try {
+    const list = await api('/api/channels');
+    let total = 0;
+    for (const c of list.filter((x) => x.status === 'CONNECTED')) {
+      const r = await api(`/api/channels/${c.id}/sync`, { method: 'POST' }).catch(() => ({ imported: 0 }));
+      total += r.imported || 0;
+    }
+    toast(total + ' commande(s) importée(s)');
+    loadChannels();
+    loadOrders();
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    busy(ev.currentTarget, false);
+  }
+});
+$('#connect-channel').addEventListener('click', async () => {
+  let types;
+  try {
+    types = await api('/api/channels/types');
+  } catch (e) {
+    return toast(e.message);
+  }
+  const typeOpts = types.map((t) => `<option value="${t.type}">${t.label}</option>`).join('');
+  openModal(
+    '<h2>Connecter un canal de vente</h2>' +
+      '<div class="field" style="margin-top:12px"><label>Plateforme</label><select class="input" id="ch-type">' + typeOpts + '</select></div>' +
+      '<div class="field"><label>Nom (pour vous repérer)</label><input class="input" id="ch-name" placeholder="Ma boutique Etsy"/></div>' +
+      '<h4>Identifiants</h4><div id="ch-fields"></div>' +
+      '<p class="muted" id="ch-help" style="margin-top:10px"></p>' +
+      '<div class="form-actions"><button class="btn btn-ghost" data-close>Annuler</button>' +
+      '<button class="btn btn-primary" id="ch-save">Connecter</button></div>',
+  );
+  $('#modal-content [data-close]').addEventListener('click', closeModal);
+  const renderFields = () => {
+    const t = types.find((x) => x.type === $('#ch-type').value);
+    $('#ch-fields').innerHTML = t.configFields
+      .map(
+        (f) =>
+          `<div class="field"><label>${esc(f.label)}${f.help ? ' <span class="muted">— ' + esc(f.help) + '</span>' : ''}</label>` +
+          `<input class="input ch-cfg" data-key="${f.key}" type="${f.secret ? 'password' : 'text'}" placeholder="${f.secret ? '••••••' : ''}"/></div>`,
+      )
+      .join('');
+  };
+  renderFields();
+  $('#ch-type').addEventListener('change', renderFields);
+  $('#ch-save').addEventListener('click', async (ev) => {
+    const type = $('#ch-type').value;
+    const name = $('#ch-name').value.trim() || (CHANNEL_LABEL[type] || type);
+    const config = {};
+    document.querySelectorAll('#ch-fields .ch-cfg').forEach((i) => {
+      if (i.value.trim()) config[i.dataset.key] = i.value.trim();
+    });
+    busy(ev.currentTarget, true, 'Connexion...');
+    try {
+      const c = await api('/api/channels', { method: 'POST', body: { type, name, config } });
+      toast(c.status === 'CONNECTED' ? 'Canal connecté ✓' : 'Enregistré — ' + (c.error || 'à compléter'));
+      closeModal();
+      loadChannels();
+    } catch (e) {
+      toast(e.message);
+      busy(ev.currentTarget, false);
+    }
+  });
+});
+
 const loaders = {
   dashboard: loadDashboard,
   market: loadMarket,
   products: loadProducts,
   suppliers: loadDirectory,
   orders: loadOrders,
+  channels: loadChannels,
 };
 
 // ── Cycle complet ──────────────────────────────────────────

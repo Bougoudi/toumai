@@ -17,6 +17,49 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Canal de vente connecté (Etsy, eBay, Amazon...).
+model SalesChannel {
+  id         String   @id @default(cuid())
+  /// etsy | ebay | amazon
+  type       String
+  name       String
+  /// CONNECTED | DISCONNECTED | ERROR
+  status     String   @default("DISCONNECTED")
+  /// Identifiants / jetons OAuth (JSON sérialisé). Jamais renvoyé tel quel par l'API.
+  config     String   @default("{}")
+  error      String?
+  lastSyncAt DateTime?
+
+  listings ChannelListing[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([status])
+}
+
+/// Annonce d'un produit publiée sur un canal de vente.
+model ChannelListing {
+  id         String       @id @default(cuid())
+  channelId  String
+  channel    SalesChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// Identifiant de l'annonce côté marketplace.
+  externalId String?
+  /// PUBLISHED | DRAFT | ERROR | UNPUBLISHED
+  status     String       @default("DRAFT")
+  url        String?
+  error      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([channelId, productId])
+  @@index([channelId])
+}
+
 /// Utilisateur de l'application (authentification).
 model User {
   id           String   @id @default(cuid())
@@ -107,6 +150,7 @@ model Product {
 
   searchRequests SearchRequest[]
   orderItems     OrderItem[]
+  listings       ChannelListing[]
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -170,12 +214,18 @@ model Order {
   currency String  @default("EUR")
   total    Float   @default(0)
 
+  /// Origine de la commande : manual | etsy | ebay | amazon
+  channel    String  @default("manual")
+  /// Identifiant de la commande côté marketplace (déduplication à l'import).
+  externalId String?
+
   items          OrderItem[]
   purchaseOrders PurchaseOrder[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([channel, externalId])
   @@index([status])
 }
 

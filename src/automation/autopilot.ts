@@ -6,6 +6,7 @@ import { marketScanJob } from './jobs/marketScan.job.js';
 import { refreshSuppliersJob } from './jobs/refreshSuppliers.job.js';
 import { runPendingSearchesJob } from './jobs/runPendingSearches.job.js';
 import { simulateDemandJob } from './jobs/simulateDemand.job.js';
+import { syncChannelsJob } from './jobs/syncChannels.job.js';
 
 export interface CycleReport {
   opportunities: number;
@@ -62,9 +63,13 @@ export async function runFullCycle(): Promise<CycleReport> {
     const run = await generateProductsJob();
     report.productsGenerated = run.generated;
   });
+  // Importe les commandes des canaux de vente connectés (Etsy/eBay/Amazon).
+  await step('syncChannels', async () => {
+    report.ordersCreated += await syncChannelsJob();
+  });
   if (env.autopilot.simulateDemand) {
     await step('simulateDemand', async () => {
-      report.ordersCreated = await simulateDemandJob(env.autopilot.ordersPerCycle);
+      report.ordersCreated += await simulateDemandJob(env.autopilot.ordersPerCycle);
     });
   }
   await step('fulfillOrders', async () => {

@@ -29,6 +29,7 @@ export const env = {
     refreshSuppliersCron: process.env.CRON_REFRESH_SUPPLIERS ?? '0 * * * *',
     runSearchesCron: process.env.CRON_RUN_SEARCHES ?? '*/2 * * * *',
     simulateDemandCron: process.env.CRON_SIMULATE_DEMAND ?? '*/3 * * * *',
+    syncChannelsCron: process.env.CRON_SYNC_CHANNELS ?? '*/5 * * * *',
   },
 
   autopilot: {

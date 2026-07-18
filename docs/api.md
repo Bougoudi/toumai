@@ -143,6 +143,29 @@ Réponse : fournisseurs classés par `score` (0–100) avec `breakdown` par crit
 
 ---
 
+## Canaux de vente — `/api/channels` (Etsy / eBay / Amazon)
+
+| Méthode | Route                                   | Description                              |
+| ------- | --------------------------------------- | ---------------------------------------- |
+| GET     | `/api/channels/types`                   | Canaux disponibles + champs de config    |
+| GET     | `/api/channels`                         | Liste des canaux connectés (config masquée) |
+| POST    | `/api/channels`                         | Connecter un canal `{ type, name, config }` (teste les identifiants) |
+| PATCH   | `/api/channels/:id`                     | Mettre à jour la config et re-tester     |
+| DELETE  | `/api/channels/:id`                     | Déconnecter un canal                     |
+| POST    | `/api/channels/:id/test`                | Re-tester la connexion                   |
+| POST    | `/api/channels/:id/sync`                | Importer les commandes du canal          |
+| POST    | `/api/channels/:id/publish/:productId`  | Publier un produit en annonce            |
+
+Les commandes importées (statut `PAID`) déclenchent l'achat & expédition
+automatiques. Un job `syncChannels` importe les commandes de tous les canaux
+connectés toutes les 5 min. Les identifiants (`config`) ne sont jamais renvoyés
+en clair par l'API (valeurs secrètes masquées).
+
+**Ce que chaque canal exige** (identifiants développeur à créer côté plateforme) :
+- **Etsy** : `apiKey` (keystring), `accessToken` (OAuth2), `shopId`.
+- **eBay** : `accessToken` (OAuth2) + IDs de politiques (fulfillment/payment/return) + `merchantLocationKey`.
+- **Amazon** : `lwaClientId`, `lwaClientSecret`, `refreshToken`, `region`, `marketplaceId`, `sellerId` (compte vendeur Pro + SP-API validée).
+
 ## Paiement — `/api/payments` (Stripe)
 
 | Méthode | Route                            | Description                                   |

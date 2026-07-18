@@ -224,6 +224,23 @@ message clair) et le reste du logiciel fonctionne normalement.
 > Test en local du webhook : `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
 > (Stripe CLI) fournit un `STRIPE_WEBHOOK_SECRET` de test.
 
+### Canaux de vente (Etsy / eBay / Amazon)
+
+Depuis l'onglet **« Canaux de vente »**, connectez vos boutiques marketplace :
+Toumai importe automatiquement les commandes clients (→ achat & expédition auto)
+et peut publier vos produits en annonces.
+
+| Canal   | Identifiants requis (à créer côté plateforme)                          |
+| ------- | ---------------------------------------------------------------------- |
+| Etsy    | Keystring (x-api-key), jeton OAuth2, Shop ID — *Etsy Developers*        |
+| eBay    | Jeton OAuth2 + IDs de politiques + merchant location — *eBay Developers* |
+| Amazon  | LWA client id/secret, refresh token, marketplace/seller — *SP-API* (compte Pro + inscription validée) |
+
+Sans identifiants, chaque canal reste **« Non connecté »** — le reste de
+l'application fonctionne normalement. Les commandes importées déclenchent le
+même flux d'expédition automatique que les commandes internes. Un job importe
+les commandes des canaux connectés toutes les 5 minutes.
+
 ## Documentation
 
 - [`docs/architecture.md`](docs/architecture.md) — architecture, modèle de données, algorithmes

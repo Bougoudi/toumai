@@ -7,6 +7,7 @@ import { marketScanJob } from './jobs/marketScan.job.js';
 import { refreshSuppliersJob } from './jobs/refreshSuppliers.job.js';
 import { runPendingSearchesJob } from './jobs/runPendingSearches.job.js';
 import { simulateDemandJob } from './jobs/simulateDemand.job.js';
+import { syncChannelsJob } from './jobs/syncChannels.job.js';
 
 let started = false;
 
@@ -35,6 +36,7 @@ export function startScheduler() {
   cron.schedule(s.fulfillOrdersCron, safe('fulfillOrders', () => fulfillOrdersJob())); // pilier 3
   cron.schedule(s.refreshSuppliersCron, safe('refreshSuppliers', () => refreshSuppliersJob())); // pilier 4
   cron.schedule(s.runSearchesCron, safe('runSearches', () => runPendingSearchesJob())); // pilier 4
+  cron.schedule(s.syncChannelsCron, safe('syncChannels', () => syncChannelsJob())); // canaux de vente
 
   // Simulateur de demande (fait tourner le pilier 3 sans boutique réelle).
   if (env.autopilot.simulateDemand) {

@@ -67,6 +67,7 @@
       <button class="tab" data-tab="products">Produits</button>
       <button class="tab" data-tab="suppliers">Fournisseurs</button>
       <button class="tab" data-tab="orders">Commandes</button>
+      <button class="tab" data-tab="channels">Canaux de vente</button>
     </nav>
 
     <main>
@@ -161,6 +162,22 @@
           <button id="refresh-orders" class="btn btn-ghost">↻ Actualiser</button>
         </div>
         <div class="card"><div id="orders-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- CANAUX DE VENTE -->
+      <section class="panel" id="tab-channels">
+        <div class="toolbar">
+          <button id="connect-channel" class="btn btn-primary">＋ Connecter un canal</button>
+          <button id="sync-all-channels" class="btn btn-ghost">↻ Synchroniser les commandes</button>
+        </div>
+        <div class="card"><div id="channels-table" class="table-wrap"></div></div>
+        <div class="card">
+          <h3>Comment ça marche</h3>
+          <p class="muted">Connectez vos boutiques <b>Etsy</b>, <b>eBay</b> et <b>Amazon</b> : Toumai importe
+          automatiquement les commandes clients, puis achète chez le fournisseur et expédie. Chaque canal
+          nécessite vos identifiants développeur de la plateforme (clé API / jeton OAuth). Amazon requiert
+          un compte vendeur Professionnel et une inscription SP-API validée.</p>
+        </div>
       </section>
     </main>
 

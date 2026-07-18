@@ -72,6 +72,7 @@ body {
 .btn-primary { background: var(--accent); color: #06212a; border-color: var(--accent); font-weight: 600; }
 .btn-primary:hover { background: var(--accent-2); }
 .btn-ghost { background: transparent; }
+.btn-xs { padding: 5px 10px; font-size: 12px; }
 .btn:disabled { opacity: 0.55; cursor: default; }
 
 /* Tabs */

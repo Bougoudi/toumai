@@ -4,6 +4,7 @@ import { requireAuth } from './middleware/requireAuth.js';
 import { asyncHandler } from './middleware/validate.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { authRouter } from './modules/auth/auth.routes.js';
+import { channelRouter } from './modules/channels/channel.routes.js';
 import { autopilotRouter, dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { marketRouter } from './modules/market/market.routes.js';
 import { paymentController } from './modules/payments/payment.controller.js';
@@ -51,6 +52,7 @@ export function createApp() {
         search: '/api/search',
         orders: '/api/orders',
         payments: '/api/payments',
+        channels: '/api/channels',
         auth: '/api/auth',
       },
     }),
@@ -70,6 +72,7 @@ export function createApp() {
   app.use('/api/suppliers', supplierRouter); // pilier 4
   app.use('/api/search', searchRouter); // pilier 4
   app.use('/api/payments', paymentRouter); // paiement (Stripe)
+  app.use('/api/channels', channelRouter); // canaux de vente (Etsy/eBay/Amazon)
 
   app.use(notFound);
   app.use(errorHandler);
