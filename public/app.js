@@ -7,6 +7,8 @@ const el = (html) => {
   t.innerHTML = html.trim();
   return t.content.firstChild;
 };
+const esc = (s) =>
+  String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
 
 async function api(path, { method = 'GET', body } = {}) {
   const res = await fetch(path, {
@@ -21,11 +23,12 @@ async function api(path, { method = 'GET', body } = {}) {
 
 const money = (n, c = 'EUR') =>
   (n ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + c;
+const dt = (s) => new Date(s).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
 
 function badge(status) {
   const s = String(status).toUpperCase();
   const ok = ['SHIPPED', 'DELIVERED', 'COMPLETED', 'ACTIVE', 'PAID', 'IMPORTED'];
-  const wait = ['FULFILLING', 'RUNNING', 'PENDING', 'EVALUATED', 'NEW', 'DRAFT'];
+  const wait = ['FULFILLING', 'RUNNING', 'PENDING', 'EVALUATED', 'NEW', 'DRAFT', 'CREATED', 'PLACED'];
   const cls = ok.includes(s) ? 'ok' : wait.includes(s) ? 'wait' : 'bad';
   return `<span class="badge ${cls}">${s}</span>`;
 }
@@ -36,7 +39,7 @@ function tableHtml(headers, rows) {
     '<table><thead><tr>' +
     headers.map((h) => `<th>${h}</th>`).join('') +
     '</tr></thead><tbody>' +
-    rows.map((r) => '<tr>' + r.map((c) => `<td>${c}</td>`).join('') + '</tr>').join('') +
+    rows.map((r) => `<tr${r._attr || ''}>` + r.map((c) => `<td>${c}</td>`).join('') + '</tr>').join('') +
     '</tbody></table>'
   );
 }
@@ -60,6 +63,20 @@ function busy(btn, on, label) {
     btn.disabled = false;
   }
 }
+
+// ── Modale ─────────────────────────────────────────────────
+function openModal(html) {
+  $('#modal-content').innerHTML = html;
+  $('#modal').hidden = false;
+}
+function closeModal() {
+  $('#modal').hidden = true;
+  $('#modal-content').innerHTML = '';
+}
+document.querySelectorAll('[data-close]').forEach((n) => n.addEventListener('click', closeModal));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
 
 // ── Onglets ────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach((tab) => {
@@ -89,8 +106,13 @@ async function loadDashboard() {
       <div class="f"><div class="l">Profit estimé</div><div class="v num" style="color:var(--green)">${money(d.finance.estimatedProfit)}</div></div>`;
     $('#recent-orders').innerHTML = tableHtml(
       ['N°', 'Client', 'Statut', 'Total', 'Articles'],
-      d.recent.orders.map((o) => [o.orderNumber, o.customer, badge(o.status), `<span class="num">${money(o.total)}</span>`, o.items]),
+      d.recent.orders.map((o) => {
+        const r = [esc(o.orderNumber), esc(o.customer), badge(o.status), `<span class="num">${money(o.total)}</span>`, o.items];
+        r._attr = ` class="clickable" data-order="${o.id}"`;
+        return r;
+      }),
     );
+    bindOrderRows('#recent-orders');
   } catch (e) {
     toast(e.message);
   }
@@ -103,8 +125,8 @@ async function loadMarket() {
     $('#market-table').innerHTML = tableHtml(
       ['Produit', 'Catégorie', 'Score', 'Demande', 'Concur.', 'Prix vente', 'Statut'],
       d.items.map((o) => [
-        o.title,
-        o.category,
+        esc(o.title),
+        esc(o.category),
         `<b class="num">${Math.round(o.opportunityScore)}</b>`,
         `<span class="num">${Math.round(o.demandScore)}</span>`,
         `<span class="num">${Math.round(o.competitionScore)}</span>`,
@@ -132,25 +154,36 @@ $('#scan-market').addEventListener('click', async (ev) => {
   }
 });
 
-// ── Produits ───────────────────────────────────────────────
+// ── Produits (avec filtres) ────────────────────────────────
 async function loadProducts() {
   try {
-    const d = await api('/api/products?take=25');
-    $('#products-table').innerHTML = tableHtml(
-      ['Nom', 'Catégorie', 'Achat', 'Vente', 'Marge', 'Statut'],
-      d.items.map((p) => [
-        p.name,
-        p.category,
-        `<span class="num">${p.costPrice ? money(p.costPrice) : '—'}</span>`,
-        `<span class="num">${p.salePrice ? money(p.salePrice) : '—'}</span>`,
-        `<span class="num">${p.margin ? money(p.margin) : '—'}</span>`,
-        badge(p.status),
-      ]),
-    );
+    const params = new URLSearchParams({ take: '50' });
+    const q = $('#p-search').value.trim();
+    const cat = $('#p-category').value.trim();
+    const status = $('#p-status').value;
+    if (q) params.set('q', q);
+    if (cat) params.set('category', cat);
+    if (status) params.set('status', status);
+    const d = await api('/api/products?' + params.toString());
+    $('#products-table').innerHTML =
+      `<div class="muted" style="margin-bottom:10px">${d.total} produit(s)</div>` +
+      tableHtml(
+        ['Nom', 'Catégorie', 'Achat', 'Vente', 'Marge', 'Statut'],
+        d.items.map((p) => [
+          esc(p.name),
+          esc(p.category),
+          `<span class="num">${p.costPrice ? money(p.costPrice) : '—'}</span>`,
+          `<span class="num">${p.salePrice ? money(p.salePrice) : '—'}</span>`,
+          `<span class="num">${p.margin ? money(p.margin) : '—'}</span>`,
+          badge(p.status),
+        ]),
+      );
   } catch (e) {
     toast(e.message);
   }
 }
+$('#p-filter').addEventListener('click', loadProducts);
+$('#p-search').addEventListener('keydown', (e) => e.key === 'Enter' && loadProducts());
 
 $('#generate').addEventListener('click', async (ev) => {
   const btn = ev.currentTarget;
@@ -168,7 +201,7 @@ $('#generate').addEventListener('click', async (ev) => {
   }
 });
 
-// ── Fournisseurs ───────────────────────────────────────────
+// ── Fournisseurs : recherche par produit ───────────────────
 $('#search-suppliers').addEventListener('click', async (ev) => {
   const btn = ev.currentTarget;
   const query = $('#s-query').value.trim();
@@ -182,15 +215,20 @@ $('#search-suppliers').addEventListener('click', async (ev) => {
     });
     $('#suppliers-table').innerHTML = tableHtml(
       ['#', 'Fournisseur', 'Pays', 'Note', 'Score', 'Meilleure offre'],
-      r.results.map((m) => [
-        m.rank,
-        m.supplier.name,
-        m.supplier.country || '—',
-        `${m.supplier.rating}/5`,
-        `<b class="num">${m.breakdown.total}</b>`,
-        m.offer ? `${m.offer.title} <span class="muted num">(${money(m.offer.unitPrice)})</span>` : '—',
-      ]),
+      r.results.map((m) => {
+        const row = [
+          m.rank,
+          `<span class="link">${esc(m.supplier.name)}</span>`,
+          esc(m.supplier.country || '—'),
+          `${m.supplier.rating}/5`,
+          `<b class="num">${m.breakdown.total}</b>`,
+          m.offer ? `${esc(m.offer.title)} <span class="muted num">(${money(m.offer.unitPrice)})</span>` : '—',
+        ];
+        row._attr = ` class="clickable" data-supplier="${m.supplier.id}"`;
+        return row;
+      }),
     );
+    bindSupplierRows('#suppliers-table');
     toast(`${r.results.length} fournisseurs classés`);
   } catch (e) {
     toast(e.message);
@@ -199,27 +237,253 @@ $('#search-suppliers').addEventListener('click', async (ev) => {
   }
 });
 
-// ── Commandes ──────────────────────────────────────────────
+// ── Fournisseurs : annuaire (liste + filtres) ──────────────
+async function loadDirectory() {
+  try {
+    const params = new URLSearchParams({ take: '50' });
+    const region = $('#d-region').value.trim();
+    const rating = $('#d-rating').value;
+    if (region) params.set('region', region);
+    if (rating) params.set('minRating', rating);
+    if ($('#d-verified').checked) params.set('verified', 'true');
+    const d = await api('/api/suppliers?' + params.toString());
+    $('#directory-table').innerHTML =
+      `<div class="muted" style="margin-bottom:10px">${d.total} fournisseur(s)</div>` +
+      tableHtml(
+        ['Fournisseur', 'Pays', 'Région', 'Note', 'Vérifié', 'Offres'],
+        d.items.map((s) => {
+          const row = [
+            `<span class="link">${esc(s.name)}</span>`,
+            esc(s.country || '—'),
+            esc(s.region || '—'),
+            `${s.rating}/5`,
+            s.verified ? '✅' : '—',
+            s._count?.offers ?? 0,
+          ];
+          row._attr = ` class="clickable" data-supplier="${s.id}"`;
+          return row;
+        }),
+      );
+    bindSupplierRows('#directory-table');
+  } catch (e) {
+    toast(e.message);
+  }
+}
+$('#d-list').addEventListener('click', loadDirectory);
+
+// ── Détail fournisseur (modale) ────────────────────────────
+function bindSupplierRows(sel) {
+  document.querySelectorAll(`${sel} [data-supplier]`).forEach((row) =>
+    row.addEventListener('click', () => showSupplier(row.dataset.supplier)),
+  );
+}
+async function showSupplier(id) {
+  try {
+    const s = await api('/api/suppliers/' + id);
+    openModal(`
+      <h2>${esc(s.name)}</h2>
+      <div class="muted">${esc(s.region || '')} ${s.country ? '· ' + esc(s.country) : ''}</div>
+      <div class="kv">
+        <div class="k">Note</div><div>${s.rating}/5 ${s.verified ? '· ✅ vérifié' : ''}</div>
+        <div class="k">Certifications</div><div>${esc(s.certifications || '—')}</div>
+        <div class="k">Délai</div><div>${s.leadTimeDays != null ? s.leadTimeDays + ' j' : '—'}</div>
+        <div class="k">Commande min.</div><div>${s.minOrderValue != null ? money(s.minOrderValue, s.currency) : '—'}</div>
+        <div class="k">Contact</div><div>${esc(s.email || s.website || '—')}</div>
+      </div>
+      <h4>Offres (${s.offers.length})</h4>
+      <div class="table-wrap">${tableHtml(
+        ['Titre', 'Catégorie', 'Prix', 'MOQ', 'Délai', 'Stock'],
+        s.offers.map((o) => [
+          esc(o.title),
+          esc(o.category),
+          `<span class="num">${o.unitPrice != null ? money(o.unitPrice, o.currency) : '—'}</span>`,
+          o.moq ?? '—',
+          o.leadTimeDays != null ? o.leadTimeDays + ' j' : '—',
+          o.inStock ? '✅' : '❌',
+        ]),
+      )}</div>`);
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+// ── Commandes (filtre + détail) ────────────────────────────
 async function loadOrders() {
   try {
-    const d = await api('/api/orders?take=30');
+    const params = new URLSearchParams({ take: '40' });
+    const status = $('#o-status').value;
+    if (status) params.set('status', status);
+    const d = await api('/api/orders?' + params.toString());
     $('#orders-table').innerHTML = tableHtml(
       ['N°', 'Client', 'Statut', 'Total', 'Créée'],
-      d.items.map((o) => [
-        o.orderNumber,
-        o.customer?.name || '—',
-        badge(o.status),
-        `<span class="num">${money(o.total)}</span>`,
-        new Date(o.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }),
-      ]),
+      d.items.map((o) => {
+        const row = [
+          esc(o.orderNumber),
+          esc(o.customer?.name || '—'),
+          badge(o.status),
+          `<span class="num">${money(o.total)}</span>`,
+          dt(o.createdAt),
+        ];
+        row._attr = ` class="clickable" data-order="${o.id}"`;
+        return row;
+      }),
     );
+    bindOrderRows('#orders-table');
   } catch (e) {
     toast(e.message);
   }
 }
 $('#refresh-orders').addEventListener('click', loadOrders);
+$('#o-status').addEventListener('change', loadOrders);
 
-const loaders = { dashboard: loadDashboard, market: loadMarket, products: loadProducts, orders: loadOrders };
+function bindOrderRows(sel) {
+  document.querySelectorAll(`${sel} [data-order]`).forEach((row) =>
+    row.addEventListener('click', () => showOrder(row.dataset.order)),
+  );
+}
+
+async function showOrder(id) {
+  try {
+    const o = await api('/api/orders/' + id);
+    const items = tableHtml(
+      ['Produit', 'Qté', 'PU vente', 'Sous-total'],
+      o.items.map((it) => [
+        esc(it.product?.name || it.productId),
+        it.quantity,
+        `<span class="num">${money(it.unitSalePrice)}</span>`,
+        `<span class="num">${money(it.unitSalePrice * it.quantity)}</span>`,
+      ]),
+    );
+    const pos = tableHtml(
+      ['Fournisseur', 'Statut', 'Coût', 'Transporteur', 'Suivi'],
+      o.purchaseOrders.map((p) => [
+        esc(p.supplier?.name || '—'),
+        badge(p.status),
+        `<span class="num">${money(p.cost, p.currency)}</span>`,
+        esc(p.carrier || '—'),
+        esc(p.trackingNumber || '—'),
+      ]),
+    );
+    const canCancel = !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(o.status);
+    openModal(`
+      <h2>Commande ${esc(o.orderNumber)}</h2>
+      <div class="muted">${esc(o.customer?.name || '')} · ${esc(o.customer?.city || '')} ${esc(o.customer?.country || '')}</div>
+      <div class="kv">
+        <div class="k">Statut</div><div>${badge(o.status)}</div>
+        <div class="k">Total</div><div class="num">${money(o.total, o.currency)}</div>
+        <div class="k">Créée le</div><div>${dt(o.createdAt)}</div>
+      </div>
+      <h4>Articles</h4><div class="table-wrap">${items}</div>
+      <h4>Achats fournisseurs (expédition)</h4><div class="table-wrap">${pos}</div>
+      <div class="form-actions">
+        ${o.status === 'PAID' || o.status === 'FULFILLING' ? `<button class="btn btn-primary" id="m-fulfill">Relancer l'expédition</button>` : ''}
+        ${canCancel ? `<button class="btn btn-ghost" id="m-cancel">Annuler</button>` : ''}
+      </div>`);
+    $('#m-fulfill')?.addEventListener('click', async (ev) => {
+      busy(ev.currentTarget, true, '...');
+      try {
+        await api(`/api/orders/${id}/fulfill`, { method: 'POST' });
+        toast('Expédition relancée');
+        showOrder(id);
+        loadOrders();
+      } catch (e) {
+        toast(e.message);
+      }
+    });
+    $('#m-cancel')?.addEventListener('click', async (ev) => {
+      busy(ev.currentTarget, true, '...');
+      try {
+        await api(`/api/orders/${id}/cancel`, { method: 'POST' });
+        toast('Commande annulée');
+        showOrder(id);
+        loadOrders();
+      } catch (e) {
+        toast(e.message);
+      }
+    });
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+// ── Nouvelle commande (modale) ─────────────────────────────
+$('#new-order').addEventListener('click', openNewOrder);
+
+async function openNewOrder() {
+  let products = [];
+  try {
+    const d = await api('/api/products?status=ACTIVE&take=100');
+    products = d.items.filter((p) => p.salePrice);
+  } catch (e) {
+    return toast(e.message);
+  }
+  if (!products.length) return toast('Aucun produit actif à vendre. Générez des produits d’abord.');
+
+  const options = products.map((p) => `<option value="${p.id}">${esc(p.name)} — ${money(p.salePrice)}</option>`).join('');
+  openModal(`
+    <h2>Nouvelle commande</h2>
+    <h4>Client</h4>
+    <div class="form-grid">
+      <div class="field"><label>Nom</label><input class="input" id="c-name" placeholder="Nom du client" /></div>
+      <div class="field"><label>Email</label><input class="input" id="c-email" placeholder="email@exemple.com" /></div>
+      <div class="field"><label>Ville</label><input class="input" id="c-city" /></div>
+      <div class="field"><label>Pays</label><input class="input" id="c-country" /></div>
+    </div>
+    <h4>Articles</h4>
+    <div id="order-lines">
+      <div class="line-row">
+        <select class="input line-product">${options}</select>
+        <input class="input input-sm line-qty" type="number" min="1" value="1" />
+      </div>
+    </div>
+    <button class="btn btn-ghost" id="add-line" type="button">＋ Ajouter un article</button>
+    <div class="form-actions">
+      <label class="check"><input type="checkbox" id="c-paid" checked /> Marquer payée (expédition auto)</label>
+      <button class="btn btn-ghost" data-close>Annuler</button>
+      <button class="btn btn-primary" id="create-order">Créer la commande</button>
+    </div>`);
+
+  $('#modal-content [data-close]').addEventListener('click', closeModal);
+  $('#add-line').addEventListener('click', () => {
+    $('#order-lines').appendChild(
+      el(`<div class="line-row"><select class="input line-product">${options}</select><input class="input input-sm line-qty" type="number" min="1" value="1" /></div>`),
+    );
+  });
+  $('#create-order').addEventListener('click', async (ev) => {
+    const name = $('#c-name').value.trim();
+    const email = $('#c-email').value.trim();
+    if (!name || !email) return toast('Nom et email du client requis');
+    const items = [...document.querySelectorAll('#order-lines .line-row')].map((row) => ({
+      productId: row.querySelector('.line-product').value,
+      quantity: Number(row.querySelector('.line-qty').value) || 1,
+    }));
+    busy(ev.currentTarget, true, 'Création...');
+    try {
+      const order = await api('/api/orders', {
+        method: 'POST',
+        body: {
+          customer: { name, email, city: $('#c-city').value.trim() || undefined, country: $('#c-country').value.trim() || undefined },
+          items,
+          markPaid: $('#c-paid').checked,
+        },
+      });
+      toast(`Commande ${order.orderNumber} créée`);
+      closeModal();
+      loadOrders();
+    } catch (e) {
+      toast(e.message);
+      busy(ev.currentTarget, false);
+    }
+  });
+}
+
+const loaders = {
+  dashboard: loadDashboard,
+  market: loadMarket,
+  products: loadProducts,
+  suppliers: loadDirectory,
+  orders: loadOrders,
+};
 
 // ── Cycle complet ──────────────────────────────────────────
 $('#run-cycle').addEventListener('click', async (ev) => {
@@ -252,13 +516,11 @@ function renderAutopilot(state) {
     toggle.textContent = 'Démarrer le pilote';
   }
 }
-
 async function refreshAutopilot() {
   try {
     renderAutopilot(await api('/api/autopilot'));
   } catch { /* ignore */ }
 }
-
 $('#autopilot-toggle').addEventListener('click', async (ev) => {
   const btn = ev.currentTarget;
   busy(btn, true, '...');
@@ -274,9 +536,10 @@ $('#autopilot-toggle').addEventListener('click', async (ev) => {
   }
 });
 
-// ── Rafraîchissement périodique (quand le pilote tourne) ───
+// ── Rafraîchissement périodique ────────────────────────────
 setInterval(async () => {
   await refreshAutopilot();
+  if ($('#modal').hidden === false) return; // ne pas rafraîchir sous une modale
   const active = document.querySelector('.tab.active')?.dataset.tab;
   if (active === 'dashboard') loadDashboard();
   if (active === 'orders') loadOrders();

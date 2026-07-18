@@ -65,6 +65,17 @@
       <!-- PRODUITS -->
       <section class="panel" id="tab-products">
         <div class="toolbar">
+          <input id="p-search" class="input" placeholder="Rechercher un produit (nom, mots-clés)…" />
+          <input id="p-category" class="input input-sm" placeholder="Catégorie" />
+          <select id="p-status" class="input input-sm">
+            <option value="">Tous statuts</option>
+            <option value="ACTIVE">Actifs</option>
+            <option value="DRAFT">Brouillons</option>
+            <option value="ARCHIVED">Archivés</option>
+          </select>
+          <button id="p-filter" class="btn btn-ghost">Filtrer</button>
+        </div>
+        <div class="toolbar">
           <input id="gen-count" class="input input-sm" type="number" min="1" value="20" />
           <button id="generate" class="btn btn-primary">🏭 Générer des produits</button>
           <span id="gen-status" class="muted"></span>
@@ -74,23 +85,59 @@
 
       <!-- FOURNISSEURS -->
       <section class="panel" id="tab-suppliers">
-        <div class="toolbar">
-          <input id="s-query" class="input" placeholder="Produit / mots-clés (ex: sesame)" />
-          <input id="s-category" class="input input-sm" placeholder="Catégorie" />
-          <input id="s-region" class="input input-sm" placeholder="Région" />
-          <button id="search-suppliers" class="btn btn-primary">🤝 Rechercher</button>
+        <div class="card">
+          <h3>Rechercher par produit (classement)</h3>
+          <div class="toolbar">
+            <input id="s-query" class="input" placeholder="Produit / mots-clés (ex: sesame)" />
+            <input id="s-category" class="input input-sm" placeholder="Catégorie" />
+            <input id="s-region" class="input input-sm" placeholder="Région" />
+            <button id="search-suppliers" class="btn btn-primary">🤝 Rechercher</button>
+          </div>
+          <div id="suppliers-table" class="table-wrap"></div>
         </div>
-        <div class="card"><div id="suppliers-table" class="table-wrap"></div></div>
+        <div class="card">
+          <h3>Annuaire des fournisseurs</h3>
+          <div class="toolbar">
+            <input id="d-region" class="input input-sm" placeholder="Région" />
+            <select id="d-rating" class="input input-sm">
+              <option value="">Toute note</option>
+              <option value="4">≥ 4 ★</option>
+              <option value="4.5">≥ 4,5 ★</option>
+            </select>
+            <label class="check"><input type="checkbox" id="d-verified" /> Vérifiés</label>
+            <button id="d-list" class="btn btn-ghost">Lister</button>
+          </div>
+          <div id="directory-table" class="table-wrap"></div>
+        </div>
       </section>
 
       <!-- COMMANDES -->
       <section class="panel" id="tab-orders">
         <div class="toolbar">
+          <button id="new-order" class="btn btn-primary">＋ Nouvelle commande</button>
+          <select id="o-status" class="input input-sm">
+            <option value="">Tous statuts</option>
+            <option value="PENDING">En attente</option>
+            <option value="PAID">Payées</option>
+            <option value="FULFILLING">En traitement</option>
+            <option value="SHIPPED">Expédiées</option>
+            <option value="DELIVERED">Livrées</option>
+            <option value="CANCELLED">Annulées</option>
+          </select>
           <button id="refresh-orders" class="btn btn-ghost">↻ Actualiser</button>
         </div>
         <div class="card"><div id="orders-table" class="table-wrap"></div></div>
       </section>
     </main>
+
+    <!-- Modale générique -->
+    <div id="modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-box" role="dialog" aria-modal="true">
+        <button class="modal-close" data-close aria-label="Fermer">×</button>
+        <div id="modal-content"></div>
+      </div>
+    </div>
 
     <div id="toast" class="toast" hidden></div>
     <script src="/app.js"></script>
