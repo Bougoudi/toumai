@@ -57,6 +57,14 @@ export const env = {
     jwtTtlSeconds: Number(process.env.JWT_TTL_SECONDS ?? 7 * 24 * 3600),
   },
 
+  /** Sécurité. */
+  security: {
+    /** Clé de chiffrement des données sensibles en base (identifiants des canaux). */
+    encryptionKey: process.env.ENCRYPTION_KEY ?? process.env.JWT_SECRET ?? 'dev-secret-change-me',
+    /** Origines autorisées pour les requêtes cross-origin (vide = même origine uniquement). */
+    corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+  },
+
   /** Paiement Stripe (cartes Visa / Mastercard, etc.). */
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY ?? '',

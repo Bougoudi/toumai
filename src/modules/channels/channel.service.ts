@@ -8,6 +8,7 @@ import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { computeSalePrice } from '../../utils/pricing.js';
+import { decryptJson, encryptJson } from '../../utils/crypto.js';
 
 function connectorFor(type: string) {
   const c = getChannelConnector(type);
@@ -18,7 +19,7 @@ function connectorFor(type: string) {
 /** Masque les valeurs secrètes de la config avant de la renvoyer. */
 function maskConfig(type: string, configJson: string) {
   const connector = getChannelConnector(type);
-  const config = JSON.parse(configJson || '{}') as Record<string, string>;
+  const config = decryptJson<Record<string, string>>(configJson);
   const out: Record<string, string> = {};
   for (const field of connector?.configFields ?? []) {
     const val = config[field.key];
@@ -75,7 +76,7 @@ export const channelService = {
       error = err instanceof Error ? err.message : 'Échec de connexion';
     }
     const ch = await prisma.salesChannel.create({
-      data: { type: input.type, name: input.name, config: JSON.stringify(input.config), status, error },
+      data: { type: input.type, name: input.name, config: encryptJson(input.config), status, error },
     });
     return publicChannel(ch);
   },
@@ -83,7 +84,7 @@ export const channelService = {
   /** Met à jour la configuration (fusion) et re-teste. */
   async update(id: string, config: Record<string, string>) {
     const ch = await this.getRaw(id);
-    const merged = { ...JSON.parse(ch.config || '{}'), ...config };
+    const merged = { ...decryptJson(ch.config), ...config };
     const connector = connectorFor(ch.type);
     let status = 'DISCONNECTED';
     let error: string | null = null;
@@ -97,7 +98,7 @@ export const channelService = {
     }
     const updated = await prisma.salesChannel.update({
       where: { id },
-      data: { config: JSON.stringify(merged), status, error },
+      data: { config: encryptJson(merged), status, error },
     });
     return publicChannel(updated);
   },
@@ -106,7 +107,7 @@ export const channelService = {
     const ch = await this.getRaw(id);
     const connector = connectorFor(ch.type);
     try {
-      const info = await connector.testConnection(JSON.parse(ch.config || '{}'));
+      const info = await connector.testConnection(decryptJson(ch.config));
       await prisma.salesChannel.update({
         where: { id },
         data: { status: info.ok ? 'CONNECTED' : 'ERROR', error: info.ok ? null : info.detail },
@@ -138,7 +139,7 @@ export const channelService = {
     });
 
     try {
-      const res = await connector.publishListing(JSON.parse(ch.config || '{}'), {
+      const res = await connector.publishListing(decryptJson(ch.config), {
         sku: product.sku,
         name: product.name,
         description: product.description,
@@ -163,7 +164,7 @@ export const channelService = {
   async syncOrders(channelId: string) {
     const ch = await this.getRaw(channelId);
     const connector = connectorFor(ch.type);
-    const orders = await connector.fetchOrders(JSON.parse(ch.config || '{}'), ch.lastSyncAt ?? undefined);
+    const orders = await connector.fetchOrders(decryptJson(ch.config), ch.lastSyncAt ?? undefined);
     let imported = 0;
     for (const o of orders) {
       const created = await this.importOrder(ch.type, o);

@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import { apiLimiter, authLimiter, securityHeaders } from './middleware/security.js';
 import { requireAuth } from './middleware/requireAuth.js';
 import { asyncHandler } from './middleware/validate.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
@@ -25,11 +26,22 @@ const publicDir = fileURLToPath(new URL('../public', import.meta.url));
 export function createApp() {
   const app = express();
 
+  // Derrière un proxy (HTTPS, load balancer) : nécessaire pour un rate-limit correct par IP.
+  app.set('trust proxy', 1);
+  app.disable('x-powered-by');
+
+  // En-têtes de sécurité + CSP (Helmet).
+  app.use(securityHeaders);
+
   // Webhook Stripe : corps BRUT requis pour vérifier la signature.
   // Monté AVANT express.json() qui parserait (et casserait) la vérification.
   app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyncHandler(paymentController.webhook));
 
-  app.use(express.json());
+  // Corps JSON limité (anti-abus).
+  app.use(express.json({ limit: '1mb' }));
+
+  // Limitation de débit sur toute l'API.
+  app.use('/api', apiLimiter);
 
   // Application web (PWA) : fichiers statiques servis à la racine.
   app.use(express.static(publicDir));
@@ -70,8 +82,8 @@ export function createApp() {
     }),
   );
 
-  // Authentification : routes publiques (inscription / connexion).
-  app.use('/api/auth', authRouter);
+  // Authentification : routes publiques (inscription / connexion), débit strict (anti-force brute).
+  app.use('/api/auth', authLimiter, authRouter);
 
   // À partir d'ici, toutes les routes /api exigent un jeton valide.
   app.use('/api', requireAuth);
