@@ -21,52 +21,53 @@ Chaque pilier est disponible **à la demande** (API) **et en automatique** (tâc
 | Validation      | Zod                                            |
 | Automatisation  | node-cron + connecteurs de sources             |
 
-## Démarrage rapide (le logiciel)
+## Démarrage rapide (l'application)
 
-Toumai est avant tout un **logiciel qu'on lance dans le terminal** : un menu
-interactif d'où l'on pilote toute l'automatisation (pas besoin de navigateur).
+Toumai est une **application web installable** (PWA) : on la lance, on l'ouvre
+dans le navigateur, et on peut **l'installer** comme une vraie application (sur le
+bureau ou le téléphone) — elle fonctionne alors dans sa propre fenêtre.
 
 ```bash
 npm install
 cp .env.example .env
 npm run prisma:generate
 npm run db:push
-npm start            # ← lance le logiciel (menu interactif)
+npm start            # ← lance l'application
 ```
 
-```
-╔══════════════════════════════════════════════════════════╗
-║   TOUMAI — Logiciel d’automatisation e-commerce          ║
-╚══════════════════════════════════════════════════════════╝
+Puis ouvrez **http://localhost:3000**. Un bouton **« ⤓ Installer »** apparaît
+dans la barre du haut (navigateurs compatibles) pour l'installer comme application.
 
-  Pilote automatique : ○ arrêté
+### L'interface
 
-  1  Tableau de bord
-  2  Lancer un cycle complet maintenant
-  3  Démarrer le pilote automatique
-  4  [1] Analyser le marché
-  5  [2] Générer des produits
-  6  [4] Rechercher des fournisseurs
-  7  [3] Voir les commandes
-  8  Voir les produits
-  0  Quitter
-```
+Une seule fenêtre, cinq onglets, et le **pilote automatique** en haut à droite :
 
-Depuis ce menu on lance l'analyse marché, on génère des produits, on cherche des
-fournisseurs, on suit les commandes et le chiffre d'affaires, et on active le
-**pilote automatique** (le logiciel travaille alors seul en arrière-plan).
+| Onglet          | Ce qu'on y fait                                              |
+| --------------- | ----------------------------------------------------------- |
+| Tableau de bord | KPIs, finances (CA / coûts / **profit**), dernières commandes, bouton « Lancer un cycle » |
+| Marché          | Analyser le marché · opportunités classées par score        |
+| Produits        | Générer des produits en masse · catalogue                   |
+| Fournisseurs    | Rechercher et classer les fournisseurs                      |
+| Commandes       | Suivi des commandes et de leur statut                       |
+
+Le bouton **« Démarrer le pilote »** lance l'automatisation en arrière-plan côté
+serveur : l'application travaille alors seule (le tableau de bord se rafraîchit
+tout seul), même si vous fermez l'onglet.
+
+### Installable (PWA)
+
+- **Manifeste** (`public/manifest.webmanifest`) + **icônes** + **service worker**
+  (`public/sw.js`) → l'application est installable et garde sa coquille hors-ligne.
+- Sur ordinateur : icône d'installation dans la barre d'adresse du navigateur.
+- Sur mobile : « Ajouter à l'écran d'accueil ».
 
 ### Autres façons de lancer
 
-| Commande         | Ce que ça fait                                         |
-| ---------------- | ------------------------------------------------------ |
-| `npm start`      | **Le logiciel** — menu interactif (recommandé)         |
-| `npm run autopilot` | Pilote automatique seul, en boucle, sans menu       |
-| `npm run serve`  | Serveur API (HTTP) pour intégrer Toumai à un autre outil |
-
-> Le serveur API (`npm run serve`) reste disponible pour brancher Toumai à une
-> boutique ou un autre système ; ce n'est pas une interface web à utiliser au
-> quotidien. L'usage normal, c'est le logiciel `npm start`.
+| Commande            | Ce que ça fait                                        |
+| ------------------- | ----------------------------------------------------- |
+| `npm start`         | **L'application web** (recommandé)                    |
+| `npm run autopilot` | Pilote automatique seul, en boucle (sans interface)   |
+| `npm run cli`       | Version terminal (menu texte), sans navigateur        |
 
 ## 🛫 Pilote automatique (le logiciel tourne seul)
 
@@ -123,15 +124,24 @@ fournisseur + expédition** (avec numéro de suivi).
 
 ```
 toumai/
+├── public/                    # L'APPLICATION WEB (PWA)
+│   ├── index.html             #   interface (onglets, tableau de bord)
+│   ├── styles.css             #   thème professionnel (sombre)
+│   ├── app.js                 #   logique client (appels API, rendu)
+│   ├── manifest.webmanifest   #   manifeste PWA (installable)
+│   ├── sw.js                  #   service worker (installabilité / hors-ligne)
+│   └── icons/                 #   icônes de l'application
+├── scripts/
+│   └── make-icons.mjs         # génère les icônes PNG (npm run icons)
 ├── prisma/
 │   ├── schema.prisma          # 9 tables couvrant les 4 piliers
 │   └── seed.ts                # démonstration bout en bout
 ├── src/
-│   ├── cli/                   # LE LOGICIEL : application terminal interactive
-│   │   ├── index.ts           #   menu principal + actions
-│   │   └── ui.ts              #   affichage (couleurs, tableaux)
-│   ├── index.ts               # serveur API (intégration) + planificateur
-│   ├── app.ts                 # montage des routes Express
+│   ├── index.ts               # serveur : sert l'app web + l'API + planificateur
+│   ├── app.ts                 # Express : fichiers statiques + routes API
+│   ├── cli/                   # version terminal (menu texte) — optionnelle
+│   │   ├── index.ts
+│   │   └── ui.ts
 │   ├── config/env.ts          # config (marge, quotas, crons)
 │   ├── db/prisma.ts
 │   ├── middleware/            # validation, gestion d'erreurs
@@ -190,10 +200,11 @@ fonctionnel immédiatement, sans clé d'API externe.
 
 | Script               | Rôle                                    |
 | -------------------- | --------------------------------------- |
-| `npm start`          | **Le logiciel** — menu interactif       |
+| `npm start`          | **L'application web** (PWA) + API        |
+| `npm run cli`        | Version terminal (menu texte)           |
 | `npm run autopilot`  | Pilote automatique seul (boucle)        |
-| `npm run serve`      | Serveur API HTTP (intégration)          |
 | `npm run worker`     | Planificateur cron seul                 |
+| `npm run icons`      | (Re)génère les icônes de l'application   |
 | `npm run build`      | Compilation TypeScript                  |
 | `npm run db:push`    | Applique le schéma                      |
 | `npm run db:seed`    | Données de démonstration                |

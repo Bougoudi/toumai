@@ -101,6 +101,57 @@ export async function runAutopilotLoop(intervalSeconds = env.autopilot.intervalS
   logger.info('Pilote automatique arrêté.');
 }
 
+// ─────────────────────────────────────────────────────────────
+// Contrôle du pilote en arrière-plan (piloté par l'application web)
+// ─────────────────────────────────────────────────────────────
+
+let bgTimer: NodeJS.Timeout | null = null;
+let bgRunning = false; // évite le chevauchement de cycles
+let lastRunAt: string | null = null;
+let lastReport: CycleReport | null = null;
+
+export function getAutopilotState() {
+  return {
+    running: bgTimer !== null,
+    intervalSeconds: env.autopilot.intervalSeconds,
+    lastRunAt,
+    lastReport,
+  };
+}
+
+/** Démarre le pilote en arrière-plan (cycles à intervalle régulier). */
+export function startAutopilotBackground() {
+  if (bgTimer) return getAutopilotState();
+  const tick = async () => {
+    if (bgRunning) return;
+    bgRunning = true;
+    try {
+      lastReport = await runFullCycle();
+      lastRunAt = new Date().toISOString();
+    } catch (err) {
+      logger.error('Cycle du pilote (arrière-plan) en échec', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      bgRunning = false;
+    }
+  };
+  void tick(); // premier cycle immédiat
+  bgTimer = setInterval(() => void tick(), env.autopilot.intervalSeconds * 1000);
+  logger.info('Pilote automatique (arrière-plan) démarré');
+  return getAutopilotState();
+}
+
+/** Arrête le pilote en arrière-plan. */
+export function stopAutopilotBackground() {
+  if (bgTimer) {
+    clearInterval(bgTimer);
+    bgTimer = null;
+    logger.info('Pilote automatique (arrière-plan) arrêté');
+  }
+  return getAutopilotState();
+}
+
 // Exécution autonome : `npm run autopilot`
 const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {

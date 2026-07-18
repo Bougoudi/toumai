@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Toumai — Automatisation e-commerce</title>
+    <meta name="description" content="Analyse marché, génération de produits, sourcing, achat & expédition automatiques." />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img src="/icons/icon-192.png" alt="" width="34" height="34" />
+        <div>
+          <h1>Toumai</h1>
+          <p>Automatisation e-commerce</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="autopilot-pill" class="pill pill-off">○ Pilote arrêté</span>
+        <button id="autopilot-toggle" class="btn btn-primary">Démarrer le pilote</button>
+        <button id="install-btn" class="btn btn-ghost" hidden>⤓ Installer</button>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="dashboard">Tableau de bord</button>
+      <button class="tab" data-tab="market">Marché</button>
+      <button class="tab" data-tab="products">Produits</button>
+      <button class="tab" data-tab="suppliers">Fournisseurs</button>
+      <button class="tab" data-tab="orders">Commandes</button>
+    </nav>
+
+    <main>
+      <!-- TABLEAU DE BORD -->
+      <section class="panel active" id="tab-dashboard">
+        <div class="toolbar">
+          <button id="run-cycle" class="btn btn-primary">⚙️ Lancer un cycle complet</button>
+          <span id="cycle-status" class="muted"></span>
+        </div>
+        <div class="kpi-grid" id="kpis"></div>
+        <div class="card">
+          <h3>Finances</h3>
+          <div class="finance" id="finance"></div>
+        </div>
+        <div class="card">
+          <h3>Dernières commandes</h3>
+          <div id="recent-orders" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- MARCHÉ -->
+      <section class="panel" id="tab-market">
+        <div class="toolbar">
+          <input id="market-region" class="input" placeholder="Région (EU / Asia / Africa) — vide = toutes" />
+          <button id="scan-market" class="btn btn-primary">🔎 Analyser le marché</button>
+        </div>
+        <div class="card"><div id="market-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- PRODUITS -->
+      <section class="panel" id="tab-products">
+        <div class="toolbar">
+          <input id="gen-count" class="input input-sm" type="number" min="1" value="20" />
+          <button id="generate" class="btn btn-primary">🏭 Générer des produits</button>
+          <span id="gen-status" class="muted"></span>
+        </div>
+        <div class="card"><div id="products-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- FOURNISSEURS -->
+      <section class="panel" id="tab-suppliers">
+        <div class="toolbar">
+          <input id="s-query" class="input" placeholder="Produit / mots-clés (ex: sesame)" />
+          <input id="s-category" class="input input-sm" placeholder="Catégorie" />
+          <input id="s-region" class="input input-sm" placeholder="Région" />
+          <button id="search-suppliers" class="btn btn-primary">🤝 Rechercher</button>
+        </div>
+        <div class="card"><div id="suppliers-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- COMMANDES -->
+      <section class="panel" id="tab-orders">
+        <div class="toolbar">
+          <button id="refresh-orders" class="btn btn-ghost">↻ Actualiser</button>
+        </div>
+        <div class="card"><div id="orders-table" class="table-wrap"></div></div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

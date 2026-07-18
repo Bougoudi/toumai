@@ -12,10 +12,16 @@ Validation par Zod → `400` avec `details` en cas d'erreur.
 
 ## Pilote automatique & tableau de bord
 
-| Méthode | Route                 | Description                                        |
-| ------- | --------------------- | ------------------------------------------------- |
-| GET     | `/api/dashboard`      | Vue d'ensemble : opportunités, produits, commandes, CA, profit estimé |
-| POST    | `/api/autopilot/run`  | Déclenche un **cycle complet** des 4 piliers à la demande |
+| Méthode | Route                  | Description                                        |
+| ------- | ---------------------- | ------------------------------------------------- |
+| GET     | `/api/dashboard`       | Vue d'ensemble : opportunités, produits, commandes, CA, profit estimé |
+| GET     | `/api/autopilot`       | État du pilote (`running`, `intervalSeconds`, `lastRunAt`, `lastReport`) |
+| POST    | `/api/autopilot/run`   | Déclenche un **cycle complet** des 4 piliers à la demande |
+| POST    | `/api/autopilot/start` | Démarre le pilote en arrière-plan (cycles réguliers) |
+| POST    | `/api/autopilot/stop`  | Arrête le pilote en arrière-plan                  |
+
+> L'application web (PWA) est servie à la racine `/` par ce même serveur ;
+> `/api/*` fournit les données consommées par l'interface.
 
 `POST /api/autopilot/run` renvoie un rapport de cycle :
 ```json

@@ -10,6 +10,8 @@ async function main() {
 
   const server = app.listen(env.port, () => {
     logger.info('Serveur Toumai démarré', { port: env.port, env: env.nodeEnv });
+    // eslint-disable-next-line no-console
+    console.log(`\n  🚀 Application Toumai : http://localhost:${env.port}\n`);
   });
 
   if (env.scheduler.enabled) {

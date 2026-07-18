@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { autopilotRouter, dashboardRouter } from './modules/dashboard/dashboard.routes.js';
@@ -7,10 +8,15 @@ import { productRouter } from './modules/products/product.routes.js';
 import { searchRouter } from './modules/search/search.routes.js';
 import { supplierRouter } from './modules/suppliers/supplier.routes.js';
 
+const publicDir = fileURLToPath(new URL('../public', import.meta.url));
+
 export function createApp() {
   const app = express();
 
   app.use(express.json());
+
+  // Application web (PWA) : fichiers statiques servis à la racine.
+  app.use(express.static(publicDir));
 
   // Santé / disponibilité
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'toumai' }));
