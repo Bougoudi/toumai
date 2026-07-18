@@ -68,6 +68,11 @@
       <button class="tab" data-tab="suppliers">Fournisseurs</button>
       <button class="tab" data-tab="orders">Commandes</button>
       <button class="tab" data-tab="channels">Canaux de vente</button>
+      <button class="tab" data-tab="discovery">Recherche</button>
+      <button class="tab" data-tab="competitors">Compétiteurs</button>
+      <button class="tab" data-tab="ads">Publicités</button>
+      <button class="tab" data-tab="reports">Tableur</button>
+      <button class="tab" data-tab="settings">Paramètres</button>
     </nav>
 
     <main>
@@ -177,6 +182,87 @@
           automatiquement les commandes clients, puis achète chez le fournisseur et expédie. Chaque canal
           nécessite vos identifiants développeur de la plateforme (clé API / jeton OAuth). Amazon requiert
           un compte vendeur Professionnel et une inscription SP-API validée.</p>
+        </div>
+      </section>
+
+      <!-- RECHERCHE (texte / photo / code-barres) + FAVORIS -->
+      <section class="panel" id="tab-discovery">
+        <div class="card">
+          <h3>Trouver des produits</h3>
+          <div class="toolbar">
+            <select id="d-mode" class="input input-sm">
+              <option value="text">Par écriture</option>
+              <option value="photo">Par photo (indice)</option>
+              <option value="barcode">Par code-barres</option>
+            </select>
+            <input id="d-input" class="input" placeholder="Mot-clé, indice photo, ou code-barres…" />
+            <button id="d-go" class="btn btn-primary">🔎 Rechercher</button>
+          </div>
+          <div id="discovery-results" class="table-wrap"></div>
+        </div>
+        <div class="card">
+          <h3>Générateur de titres optimisés</h3>
+          <div class="toolbar">
+            <input id="t-name" class="input" placeholder="Nom du produit (ex: gourde isotherme)" />
+            <input id="t-kw" class="input input-sm" placeholder="mots-clés" />
+            <button id="t-go" class="btn btn-ghost">Générer</button>
+          </div>
+          <div id="titles-out"></div>
+        </div>
+        <div class="card">
+          <h3>Mes favoris</h3>
+          <div id="favorites-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- COMPÉTITEURS -->
+      <section class="panel" id="tab-competitors">
+        <div class="toolbar">
+          <button id="add-competitor" class="btn btn-primary">＋ Ajouter une boutique</button>
+        </div>
+        <div class="card">
+          <h3>Boutiques suivies</h3>
+          <div id="competitors-table" class="table-wrap"></div>
+        </div>
+        <div class="card">
+          <h3>Produits gagnants détectés</h3>
+          <div id="winning-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- PUBLICITÉS -->
+      <section class="panel" id="tab-ads">
+        <div class="toolbar">
+          <select id="ad-product" class="input"></select>
+          <select id="ad-platform" class="input input-sm">
+            <option value="meta">Meta</option>
+            <option value="google">Google</option>
+            <option value="tiktok">TikTok</option>
+            <option value="ebay">eBay</option>
+          </select>
+          <button id="ad-generate" class="btn btn-primary">✨ Générer une pub</button>
+        </div>
+        <div class="card"><div id="ads-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- TABLEUR (P&L) -->
+      <section class="panel" id="tab-reports">
+        <div class="toolbar">
+          <button id="export-csv" class="btn btn-ghost">⤓ Exporter en CSV</button>
+        </div>
+        <div class="kpi-grid" id="pnl-kpis"></div>
+        <div class="card"><h3>Revenus / Coûts / Bénéfices par jour</h3><div id="pnl-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- PARAMÈTRES -->
+      <section class="panel" id="tab-settings">
+        <div class="card">
+          <h3>Réglages de l'application</h3>
+          <div class="form-grid" id="settings-form"></div>
+          <div class="form-actions">
+            <button id="settings-reset" class="btn btn-ghost">Réinitialiser</button>
+            <button id="settings-save" class="btn btn-primary">Enregistrer</button>
+          </div>
         </div>
       </section>
     </main>

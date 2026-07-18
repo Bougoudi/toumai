@@ -17,6 +17,90 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Réglage de l'application (clé/valeur).
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+/// Boutique concurrente suivie (veille marché).
+model Competitor {
+  id         String    @id @default(cuid())
+  /// ebay | etsy | amazon
+  platform   String    @default("ebay")
+  shopName   String
+  shopUrl    String?
+  /// Suivie automatiquement pour les nouveaux produits.
+  followed   Boolean   @default(false)
+  status     String    @default("ACTIVE")
+  lastScanAt DateTime?
+
+  products CompetitorProduct[]
+
+  createdAt DateTime @default(now())
+
+  @@index([platform])
+}
+
+/// Produit gagnant détecté chez un concurrent.
+model CompetitorProduct {
+  id           String     @id @default(cuid())
+  competitorId String
+  competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  externalId   String?
+  title        String
+  category     String     @default("divers")
+  price        Float?
+  currency     String     @default("EUR")
+  soldCount    Int        @default(0)
+  imageUrl     String?
+  url          String?
+  favorited    Boolean    @default(false)
+
+  foundAt DateTime @default(now())
+
+  @@unique([competitorId, externalId])
+  @@index([competitorId])
+  @@index([soldCount])
+}
+
+/// Produit mis en favori (issu d'une recherche ou d'un concurrent) à sourcer/publier.
+model Favorite {
+  id        String   @id @default(cuid())
+  /// competitor | search-text | search-photo | search-barcode | manual
+  source    String   @default("manual")
+  title     String
+  category  String   @default("divers")
+  keywords  String   @default("")
+  price     Float?
+  currency  String   @default("EUR")
+  imageUrl  String?
+  url       String?
+  /// Renseigné une fois le favori transformé en produit du catalogue.
+  productId String?
+
+  createdAt DateTime @default(now())
+}
+
+/// Publicité générée pour un produit.
+model Ad {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// meta | google | ebay | tiktok
+  platform  String  @default("meta")
+  headline  String
+  body      String
+  budget    Float   @default(0)
+  /// DRAFT | ACTIVE | PAUSED
+  status    String  @default("DRAFT")
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
 /// Canal de vente connecté (Etsy, eBay, Amazon...).
 model SalesChannel {
   id         String   @id @default(cuid())
@@ -151,6 +235,7 @@ model Product {
   searchRequests SearchRequest[]
   orderItems     OrderItem[]
   listings       ChannelListing[]
+  ads            Ad[]
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

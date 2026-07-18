@@ -1,5 +1,7 @@
 import { env } from '../config/env.js';
+import { getSettings } from '../modules/settings/settings.service.js';
 import { logger } from '../utils/logger.js';
+import { competitorService } from '../modules/competitors/competitor.service.js';
 import { fulfillOrdersJob } from './jobs/fulfillOrders.job.js';
 import { generateProductsJob } from './jobs/generateProducts.job.js';
 import { marketScanJob } from './jobs/marketScan.job.js';
@@ -63,13 +65,18 @@ export async function runFullCycle(): Promise<CycleReport> {
     const run = await generateProductsJob();
     report.productsGenerated = run.generated;
   });
+  // Veille : scanne les boutiques concurrentes suivies (nouveaux produits gagnants).
+  await step('scanCompetitors', async () => {
+    await competitorService.scanFollowed();
+  });
   // Importe les commandes des canaux de vente connectés (Etsy/eBay/Amazon).
   await step('syncChannels', async () => {
     report.ordersCreated += await syncChannelsJob();
   });
-  if (env.autopilot.simulateDemand) {
+  const settings = getSettings();
+  if (settings.simulateDemand) {
     await step('simulateDemand', async () => {
-      report.ordersCreated += await simulateDemandJob(env.autopilot.ordersPerCycle);
+      report.ordersCreated += await simulateDemandJob(settings.ordersPerCycle);
     });
   }
   await step('fulfillOrders', async () => {

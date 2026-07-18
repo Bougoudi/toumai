@@ -612,6 +612,205 @@ $('#connect-channel').addEventListener('click', async () => {
   });
 });
 
+// ── Recherche + favoris + titres ───────────────────────────
+async function doSearch() {
+  const mode = $('#d-mode').value;
+  const val = $('#d-input').value.trim();
+  try {
+    let res;
+    if (mode === 'text') res = await api('/api/discovery/search/text?q=' + encodeURIComponent(val));
+    else if (mode === 'photo') res = await api('/api/discovery/search/photo', { method: 'POST', body: { hint: val } });
+    else res = await api('/api/discovery/search/barcode/' + encodeURIComponent(val));
+    const rows = res.results.map((r, i) => {
+      const row = [esc(r.title), esc(r.category), `<span class="num">${money(r.estimatedPrice)}</span>`,
+        `<button class="btn btn-ghost btn-xs" data-fav="${i}">☆ Favori</button>`];
+      return row;
+    });
+    $('#discovery-results').innerHTML = tableHtml(['Produit', 'Catégorie', 'Prix estimé', ''], rows);
+    document.querySelectorAll('#discovery-results [data-fav]').forEach((b) =>
+      b.addEventListener('click', async () => {
+        const r = res.results[Number(b.dataset.fav)];
+        await api('/api/favorites', { method: 'POST', body: { source: r.source, title: r.title, category: r.category, keywords: r.keywords, price: r.estimatedPrice, imageUrl: r.imageUrl } });
+        toast('Ajouté aux favoris');
+        loadFavorites();
+      }),
+    );
+  } catch (e) {
+    toast(e.message);
+  }
+}
+$('#d-go').addEventListener('click', doSearch);
+$('#d-input').addEventListener('keydown', (e) => e.key === 'Enter' && doSearch());
+$('#t-go').addEventListener('click', async () => {
+  const name = $('#t-name').value.trim();
+  if (!name) return toast('Entrez un nom de produit');
+  try {
+    const r = await api('/api/tools/titles', { method: 'POST', body: { name, keywords: $('#t-kw').value.trim() } });
+    $('#titles-out').innerHTML = r.titles.map((t) => `<div class="line-copy">${esc(t)}</div>`).join('');
+  } catch (e) {
+    toast(e.message);
+  }
+});
+async function loadFavorites() {
+  try {
+    const list = await api('/api/favorites');
+    const rows = list.map((f) => [
+      esc(f.title), esc(f.category), `<span class="num">${f.price ? money(f.price) : '—'}</span>`,
+      f.productId ? '<span class="badge ok">SOURCÉ</span>' : '<span class="badge wait">À SOURCER</span>',
+      `<button class="btn btn-ghost btn-xs" data-src="${f.id}">Sourcer</button> <button class="btn btn-ghost btn-xs" data-pub="${f.id}">Publier</button> <button class="btn btn-ghost btn-xs" data-delf="${f.id}">✕</button>`,
+    ]);
+    $('#favorites-table').innerHTML = tableHtml(['Produit', 'Catégorie', 'Prix', 'Statut', 'Actions'], rows);
+    document.querySelectorAll('#favorites-table [data-src]').forEach((b) => b.addEventListener('click', () => sourceFav(b.dataset.src)));
+    document.querySelectorAll('#favorites-table [data-pub]').forEach((b) => b.addEventListener('click', () => publishFav(b.dataset.pub)));
+    document.querySelectorAll('#favorites-table [data-delf]').forEach((b) => b.addEventListener('click', async () => { await api('/api/favorites/' + b.dataset.delf, { method: 'DELETE' }); loadFavorites(); }));
+  } catch (e) {
+    toast(e.message);
+  }
+}
+function loadDiscovery() { loadFavorites(); }
+async function sourceFav(id) {
+  try {
+    const r = await api('/api/favorites/' + id + '/source', { method: 'POST' });
+    toast(`Produit créé : ${r.product.name}` + (r.bestSupplier ? ` · fournisseur : ${r.bestSupplier.name}` : ''));
+    loadFavorites();
+  } catch (e) { toast(e.message); }
+}
+async function publishFav(id) {
+  try {
+    const channels = await api('/api/channels');
+    const connected = channels.filter((c) => c.status === 'CONNECTED');
+    if (!connected.length) return toast('Connectez d’abord un canal (onglet Canaux de vente).');
+    const c = connected[0];
+    await api(`/api/favorites/${id}/publish/${c.id}`, { method: 'POST' });
+    toast('Produit sourcé et publié sur ' + c.name);
+    loadFavorites();
+  } catch (e) { toast(e.message); }
+}
+
+// ── Compétiteurs ───────────────────────────────────────────
+async function loadCompetitors() {
+  try {
+    const list = await api('/api/competitors');
+    const rows = list.map((c) => [
+      `<b>${esc(c.shopName)}</b>`, esc(c.platform),
+      `<label class="check"><input type="checkbox" ${c.followed ? 'checked' : ''} data-follow="${c.id}"/> suivi</label>`,
+      c.lastScanAt ? dt(c.lastScanAt) : '—', `${c._count?.products ?? 0} produits`,
+      `<button class="btn btn-ghost btn-xs" data-scan="${c.id}">Scanner</button> <button class="btn btn-ghost btn-xs" data-delc="${c.id}">✕</button>`,
+    ]);
+    $('#competitors-table').innerHTML = tableHtml(['Boutique', 'Plateforme', 'Suivi', 'Dernier scan', 'Produits', 'Actions'], rows);
+    document.querySelectorAll('#competitors-table [data-scan]').forEach((b) => b.addEventListener('click', async () => { b.textContent = '…'; try { const r = await api(`/api/competitors/${b.dataset.scan}/scan`, { method: 'POST' }); toast(r.found + ' produits gagnants'); loadCompetitors(); } catch (e) { toast(e.message); } }));
+    document.querySelectorAll('#competitors-table [data-delc]').forEach((b) => b.addEventListener('click', async () => { await api('/api/competitors/' + b.dataset.delc, { method: 'DELETE' }); loadCompetitors(); }));
+    document.querySelectorAll('#competitors-table [data-follow]').forEach((b) => b.addEventListener('change', async () => { await api(`/api/competitors/${b.dataset.follow}/follow`, { method: 'PATCH', body: { followed: b.checked } }); toast(b.checked ? 'Boutique suivie' : 'Suivi arrêté'); }));
+    const winning = await api('/api/competitors/winning?take=30');
+    const wrows = winning.map((w) => [
+      esc(w.title), esc(w.category), `<b class="num">${w.soldCount}</b>`, `<span class="num">${money(w.price)}</span>`,
+      esc(w.competitor?.shopName || ''), w.favorited ? '★' : `<button class="btn btn-ghost btn-xs" data-wfav="${w.id}">☆ Favori</button>`,
+    ]);
+    $('#winning-table').innerHTML = tableHtml(['Produit', 'Catégorie', 'Ventes', 'Prix', 'Boutique', ''], wrows);
+    document.querySelectorAll('#winning-table [data-wfav]').forEach((b) => b.addEventListener('click', async () => { await api(`/api/competitors/products/${b.dataset.wfav}/favorite`, { method: 'POST' }); toast('Ajouté aux favoris'); loadCompetitors(); }));
+  } catch (e) { toast(e.message); }
+}
+$('#add-competitor').addEventListener('click', () => {
+  openModal('<h2>Ajouter une boutique concurrente</h2>' +
+    '<div class="form-grid"><div class="field"><label>Plateforme</label><select class="input" id="nc-plat"><option value="ebay">eBay</option><option value="etsy">Etsy</option><option value="amazon">Amazon</option></select></div>' +
+    '<div class="field"><label>Nom de la boutique</label><input class="input" id="nc-name" placeholder="ex: TopDealsFR"/></div>' +
+    '<div class="field full"><label>URL (optionnel)</label><input class="input" id="nc-url" placeholder="https://…"/></div></div>' +
+    '<div class="form-actions"><label class="check"><input type="checkbox" id="nc-follow" checked/> Suivre pour les nouveautés</label>' +
+    '<button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="nc-save">Ajouter</button></div>');
+  $('#modal-content [data-close]').addEventListener('click', closeModal);
+  $('#nc-save').addEventListener('click', async () => {
+    const shopName = $('#nc-name').value.trim();
+    if (!shopName) return toast('Nom de boutique requis');
+    const body = { platform: $('#nc-plat').value, shopName, followed: $('#nc-follow').checked };
+    const url = $('#nc-url').value.trim(); if (url) body.shopUrl = url;
+    try { const c = await api('/api/competitors', { method: 'POST', body }); await api(`/api/competitors/${c.id}/scan`, { method: 'POST' }).catch(() => {}); toast('Boutique ajoutée et scannée'); closeModal(); loadCompetitors(); }
+    catch (e) { toast(e.message); }
+  });
+});
+
+// ── Publicités ─────────────────────────────────────────────
+async function loadAds() {
+  try {
+    const prods = await api('/api/products?status=ACTIVE&take=100');
+    $('#ad-product').innerHTML = prods.items.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    const ads = await api('/api/ads');
+    const rows = ads.map((a) => [
+      esc(a.product?.name || ''), esc(a.platform), esc(a.headline), badge(a.status),
+      `<span class="num">${money(a.budget)}</span>`,
+      `<button class="btn btn-ghost btn-xs" data-adstat="${a.id}" data-next="${a.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}">${a.status === 'ACTIVE' ? 'Pause' : 'Activer'}</button> <button class="btn btn-ghost btn-xs" data-adel="${a.id}">✕</button>`,
+    ]);
+    $('#ads-table').innerHTML = tableHtml(['Produit', 'Plateforme', 'Accroche', 'Statut', 'Budget/j', 'Actions'], rows);
+    document.querySelectorAll('#ads-table [data-adstat]').forEach((b) => b.addEventListener('click', async () => { await api(`/api/ads/${b.dataset.adstat}/status`, { method: 'PATCH', body: { status: b.dataset.next } }); loadAds(); }));
+    document.querySelectorAll('#ads-table [data-adel]').forEach((b) => b.addEventListener('click', async () => { await api('/api/ads/' + b.dataset.adel, { method: 'DELETE' }); loadAds(); }));
+  } catch (e) { toast(e.message); }
+}
+$('#ad-generate').addEventListener('click', async (ev) => {
+  const productId = $('#ad-product').value;
+  if (!productId) return toast('Aucun produit');
+  busy(ev.currentTarget, true, '...');
+  try { await api('/api/ads/generate', { method: 'POST', body: { productId, platform: $('#ad-platform').value } }); toast('Publicité générée'); loadAds(); }
+  catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+
+// ── Tableur (P&L) ──────────────────────────────────────────
+async function loadReports() {
+  try {
+    const r = await api('/api/reports/pnl');
+    const t = r.totals;
+    $('#pnl-kpis').innerHTML =
+      kpiCard('accent', 'Commandes', t.orders, '') +
+      kpiCard('', 'Revenus', money(t.revenue), '') +
+      kpiCard('', 'Coûts', money(t.cost), '') +
+      kpiCard('green', 'Bénéfice', money(t.profit), 'marge ' + t.margin + '%');
+    const rows = r.rows.map((x) => [x.date, x.orders, `<span class="num">${money(x.revenue)}</span>`, `<span class="num">${money(x.cost)}</span>`, `<span class="num" style="color:${x.profit >= 0 ? 'var(--green)' : 'var(--red)'}">${money(x.profit)}</span>`]);
+    $('#pnl-table').innerHTML = tableHtml(['Date', 'Commandes', 'Revenus', 'Coûts', 'Bénéfice'], rows);
+  } catch (e) { toast(e.message); }
+}
+const kpiCard = (cls, l, v, s) => `<div class="kpi ${cls}"><div class="label">${l}</div><div class="value num">${v}</div><div class="sub">${s}</div></div>`;
+$('#export-csv').addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/reports/pnl.csv', { headers: { Authorization: 'Bearer ' + getToken() } });
+    const blob = await res.blob();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'toumai-pnl.csv'; a.click();
+    toast('CSV exporté');
+  } catch (e) { toast(e.message); }
+});
+
+// ── Paramètres ─────────────────────────────────────────────
+const SETTING_FIELDS = [
+  { key: 'defaultMarkup', label: 'Marge (multiplicateur prix de vente)', type: 'number', step: '0.1' },
+  { key: 'minOpportunityScore', label: 'Score minimum pour générer', type: 'number' },
+  { key: 'productsPerRun', label: 'Produits générés par cycle', type: 'number' },
+  { key: 'currency', label: 'Devise', type: 'text' },
+  { key: 'autopilotIntervalSeconds', label: 'Cadence du pilote (secondes)', type: 'number' },
+  { key: 'ordersPerCycle', label: 'Commandes simulées par cycle', type: 'number' },
+];
+async function loadSettingsTab() {
+  try {
+    const s = await api('/api/settings');
+    $('#settings-form').innerHTML = SETTING_FIELDS.map((f) =>
+      `<div class="field"><label>${f.label}</label><input class="input set-f" data-key="${f.key}" type="${f.type}" ${f.step ? 'step=' + f.step : ''} value="${esc(s[f.key])}"/></div>`,
+    ).join('') +
+      `<div class="field"><label>Demande simulée (démo)</label><select class="input set-f" data-key="simulateDemand"><option value="true" ${s.simulateDemand ? 'selected' : ''}>Activée</option><option value="false" ${!s.simulateDemand ? 'selected' : ''}>Désactivée</option></select></div>`;
+  } catch (e) { toast(e.message); }
+}
+$('#settings-save').addEventListener('click', async (ev) => {
+  const patch = {};
+  document.querySelectorAll('#settings-form .set-f').forEach((i) => {
+    const k = i.dataset.key;
+    if (k === 'currency') patch[k] = i.value.trim();
+    else if (k === 'simulateDemand') patch[k] = i.value === 'true';
+    else patch[k] = Number(i.value);
+  });
+  busy(ev.currentTarget, true, '...');
+  try { await api('/api/settings', { method: 'PATCH', body: patch }); toast('Réglages enregistrés'); }
+  catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+$('#settings-reset').addEventListener('click', async () => {
+  try { await api('/api/settings/reset', { method: 'POST' }); toast('Réglages réinitialisés'); loadSettingsTab(); }
+  catch (e) { toast(e.message); }
+});
+
 const loaders = {
   dashboard: loadDashboard,
   market: loadMarket,
@@ -619,6 +818,11 @@ const loaders = {
   suppliers: loadDirectory,
   orders: loadOrders,
   channels: loadChannels,
+  discovery: loadDiscovery,
+  competitors: loadCompetitors,
+  ads: loadAds,
+  reports: loadReports,
+  settings: loadSettingsTab,
 };
 
 // ── Cycle complet ──────────────────────────────────────────

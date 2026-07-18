@@ -3,12 +3,18 @@ import express from 'express';
 import { requireAuth } from './middleware/requireAuth.js';
 import { asyncHandler } from './middleware/validate.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
+import { adRouter } from './modules/ads/ad.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { channelRouter } from './modules/channels/channel.routes.js';
+import { competitorRouter } from './modules/competitors/competitor.routes.js';
 import { autopilotRouter, dashboardRouter } from './modules/dashboard/dashboard.routes.js';
+import { discoveryRouter, favoriteRouter } from './modules/discovery/discovery.routes.js';
+import { reportRouter } from './modules/reports/report.routes.js';
+import { toolsRouter } from './modules/tools/tools.routes.js';
 import { marketRouter } from './modules/market/market.routes.js';
 import { paymentController } from './modules/payments/payment.controller.js';
 import { paymentRouter } from './modules/payments/payment.routes.js';
+import { settingsRouter } from './modules/settings/settings.routes.js';
 import { orderRouter } from './modules/orders/order.routes.js';
 import { productRouter } from './modules/products/product.routes.js';
 import { searchRouter } from './modules/search/search.routes.js';
@@ -53,6 +59,12 @@ export function createApp() {
         orders: '/api/orders',
         payments: '/api/payments',
         channels: '/api/channels',
+        settings: '/api/settings',
+        competitors: '/api/competitors',
+        discovery: '/api/discovery',
+        favorites: '/api/favorites',
+        ads: '/api/ads',
+        reports: '/api/reports',
         auth: '/api/auth',
       },
     }),
@@ -73,6 +85,13 @@ export function createApp() {
   app.use('/api/search', searchRouter); // pilier 4
   app.use('/api/payments', paymentRouter); // paiement (Stripe)
   app.use('/api/channels', channelRouter); // canaux de vente (Etsy/eBay/Amazon)
+  app.use('/api/settings', settingsRouter); // réglages de l'application
+  app.use('/api/competitors', competitorRouter); // veille concurrentielle
+  app.use('/api/discovery', discoveryRouter); // recherche produits (texte/photo/code-barres)
+  app.use('/api/favorites', favoriteRouter); // favoris → sourcing → publication
+  app.use('/api/ads', adRouter); // publicités
+  app.use('/api/tools', toolsRouter); // titres optimisés
+  app.use('/api/reports', reportRouter); // tableur P&L
 
   app.use(notFound);
   app.use(errorHandler);

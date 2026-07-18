@@ -3,9 +3,11 @@ import { env } from './config/env.js';
 import { runFullCycle } from './automation/autopilot.js';
 import { startScheduler } from './automation/scheduler.js';
 import { prisma } from './db/prisma.js';
+import { loadSettings } from './modules/settings/settings.service.js';
 import { logger } from './utils/logger.js';
 
 async function main() {
+  await loadSettings();
   const app = createApp();
 
   const server = app.listen(env.port, () => {

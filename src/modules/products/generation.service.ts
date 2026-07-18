@@ -1,5 +1,5 @@
 import type { MarketOpportunity } from '@prisma/client';
-import { env } from '../../config/env.js';
+import { getSettings } from '../settings/settings.service.js';
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { logger } from '../../utils/logger.js';
@@ -41,8 +41,9 @@ export const generationService = {
    * opportunités marché non encore importées. Trace le lot dans GenerationRun.
    */
   async generate(input: GenerateProductsInput) {
-    const minScore = input.minScore ?? env.pricing.minOpportunityScore;
-    const limit = Math.min(input.limit, env.quotas.productsPerRun);
+    const settings = getSettings();
+    const minScore = input.minScore ?? settings.minOpportunityScore;
+    const limit = Math.min(input.limit, settings.productsPerRun);
 
     const run = await prisma.generationRun.create({
       data: {

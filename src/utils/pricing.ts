@@ -1,4 +1,4 @@
-import { env } from '../config/env.js';
+import { getSettings } from '../modules/settings/settings.service.js';
 
 /** Arrondi « psychologique » à .99 (ex: 24.99). */
 export function toCharmPrice(value: number): number {
@@ -6,8 +6,8 @@ export function toCharmPrice(value: number): number {
   return Number(rounded.toFixed(2));
 }
 
-/** Calcule le prix de vente à partir du prix d'achat et d'un markup. */
-export function computeSalePrice(costPrice: number, markup = env.pricing.defaultMarkup): number {
+/** Calcule le prix de vente à partir du prix d'achat et d'un markup (réglage courant par défaut). */
+export function computeSalePrice(costPrice: number, markup = getSettings().defaultMarkup): number {
   return toCharmPrice(costPrice * markup);
 }
 

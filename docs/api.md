@@ -143,6 +143,48 @@ Réponse : fournisseurs classés par `score` (0–100) avec `breakdown` par crit
 
 ---
 
+## Paramètres — `/api/settings`
+
+| Méthode | Route              | Description                                  |
+| ------- | ------------------ | -------------------------------------------- |
+| GET     | `/api/settings`    | Réglages courants + valeurs par défaut       |
+| PATCH   | `/api/settings`    | Modifier (marge, score min, quota, devise, cadence pilote, demande simulée) |
+| POST    | `/api/settings/reset` | Restaurer les valeurs par défaut          |
+
+## Compétiteurs — `/api/competitors`
+
+| Méthode | Route                                   | Description                          |
+| ------- | --------------------------------------- | ------------------------------------ |
+| GET     | `/api/competitors`                      | Boutiques concurrentes suivies       |
+| POST    | `/api/competitors`                      | Ajouter une boutique `{ platform, shopName, followed }` |
+| POST    | `/api/competitors/:id/scan`             | Scanner les ventes récentes          |
+| PATCH   | `/api/competitors/:id/follow`           | Suivre / ne plus suivre              |
+| DELETE  | `/api/competitors/:id`                  | Retirer                              |
+| GET     | `/api/competitors/winning`              | Produits gagnants (triés par ventes) |
+| POST    | `/api/competitors/products/:id/favorite`| Ajouter un produit gagnant aux favoris |
+
+## Recherche & favoris — `/api/discovery`, `/api/favorites`
+
+| Méthode | Route                                | Description                            |
+| ------- | ------------------------------------ | -------------------------------------- |
+| GET     | `/api/discovery/search/text?q=`      | Recherche par écriture                 |
+| POST    | `/api/discovery/search/photo`        | Recherche par photo (`{ hint }`)       |
+| GET     | `/api/discovery/search/barcode/:code`| Recherche par code-barres              |
+| GET/POST/DELETE | `/api/favorites`             | Gérer les favoris                      |
+| POST    | `/api/favorites/:id/source`          | Transformer en produit + trouver le fournisseur |
+| POST    | `/api/favorites/:id/publish/:channelId` | Sourcer puis publier sur un canal   |
+
+## Outils, publicités, tableur
+
+| Méthode | Route                     | Description                               |
+| ------- | ------------------------- | ----------------------------------------- |
+| POST    | `/api/tools/titles`       | Génère des titres optimisés               |
+| GET     | `/api/ads`                | Liste des publicités                      |
+| POST    | `/api/ads/generate`       | Génère une pub pour un produit            |
+| PATCH   | `/api/ads/:id/status`     | DRAFT / ACTIVE / PAUSED                    |
+| GET     | `/api/reports/pnl`        | Compte de résultat (revenus/coûts/bénéfices) |
+| GET     | `/api/reports/pnl.csv`    | Export CSV du tableur                     |
+
 ## Canaux de vente — `/api/channels` (Etsy / eBay / Amazon)
 
 | Méthode | Route                                   | Description                              |
