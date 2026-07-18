@@ -1,10 +1,10 @@
 import { prisma } from '../../db/prisma.js';
 import { logger } from '../../utils/logger.js';
-import type { NormalizedSupplier, SupplierConnector } from '../connectors/base.connector.js';
-import { MockConnector } from '../connectors/mock.connector.js';
+import type { NormalizedSupplier } from '../connectors/base.connector.js';
+import { getSupplierConnectors } from '../connectors/registry.js';
 
-/** Connecteurs actifs. Ajoutez ici vos vraies sources de données. */
-const connectors: SupplierConnector[] = [new MockConnector()];
+/** Connecteurs fournisseurs (HTTP réel si configuré, sinon mock). */
+const connectors = getSupplierConnectors();
 
 /**
  * Upsert d'un fournisseur normalisé et de ses offres.

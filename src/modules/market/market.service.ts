@@ -1,13 +1,13 @@
-import type { MarketConnector, NormalizedOpportunity } from '../../automation/connectors/market/base.market.connector.js';
-import { MockMarketConnector } from '../../automation/connectors/market/mock.market.connector.js';
+import type { NormalizedOpportunity } from '../../automation/connectors/market/base.market.connector.js';
+import { getMarketConnectors } from '../../automation/connectors/registry.js';
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { opportunityScore } from '../../utils/opportunity.js';
 import type { ScanMarketInput } from './market.schema.js';
 
-/** Connecteurs d'analyse marché actifs. Ajoutez vos vraies sources ici. */
-const connectors: MarketConnector[] = [new MockMarketConnector()];
+/** Connecteurs d'analyse marché (HTTP réel si configuré, sinon mock). */
+const connectors = getMarketConnectors();
 
 async function upsertOpportunity(source: string, o: NormalizedOpportunity) {
   const score = opportunityScore(o);

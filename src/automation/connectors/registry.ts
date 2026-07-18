@@ -1,0 +1,44 @@
+import { env } from '../../config/env.js';
+import { logger } from '../../utils/logger.js';
+import type { SupplierConnector } from './base.connector.js';
+import type { FulfillmentConnector } from './fulfillment/base.fulfillment.connector.js';
+import { HttpFulfillmentConnector } from './fulfillment/http.fulfillment.connector.js';
+import { MockFulfillmentConnector } from './fulfillment/mock.fulfillment.connector.js';
+import { HttpSupplierConnector } from './http.supplier.connector.js';
+import type { MarketConnector } from './market/base.market.connector.js';
+import { HttpMarketConnector } from './market/http.market.connector.js';
+import { MockMarketConnector } from './market/mock.market.connector.js';
+import { MockConnector } from './mock.connector.js';
+
+/**
+ * Sélectionne les connecteurs à utiliser : source HTTP réelle si `url`+`key`
+ * sont configurés, sinon le connecteur de démonstration (mock). Cela permet de
+ * passer en production en ajoutant simplement les variables d'environnement.
+ */
+
+export function getMarketConnectors(): MarketConnector[] {
+  const { url, key } = env.connectors.market;
+  if (url && key) {
+    logger.info('Connecteur marché : HTTP (source réelle)');
+    return [new HttpMarketConnector(url, key)];
+  }
+  return [new MockMarketConnector()];
+}
+
+export function getSupplierConnectors(): SupplierConnector[] {
+  const { url, key } = env.connectors.supplier;
+  if (url && key) {
+    logger.info('Connecteur fournisseurs : HTTP (source réelle)');
+    return [new HttpSupplierConnector(url, key)];
+  }
+  return [new MockConnector()];
+}
+
+export function getFulfillmentConnector(): FulfillmentConnector {
+  const { url, key } = env.connectors.fulfillment;
+  if (url && key) {
+    logger.info('Connecteur exécution : HTTP (source réelle)');
+    return new HttpFulfillmentConnector(url, key);
+  }
+  return new MockFulfillmentConnector();
+}

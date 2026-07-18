@@ -181,14 +181,35 @@ npm run worker
 
 ### Brancher de vraies sources
 
-Tout passe par des **connecteurs** interchangeables (`src/automation/connectors/`) :
+Tout passe par des **connecteurs** interchangeables (`src/automation/connectors/`).
+Un **registre** (`registry.ts`) choisit automatiquement la source HTTP réelle si
+les variables d'environnement sont fournies, sinon le connecteur de démonstration.
 
-- **Marché** — implémentez `MarketConnector.discover()` (API tendances/marketplace).
-- **Fournisseurs** — implémentez `SupplierConnector.fetchSuppliers()` (annuaire B2B).
-- **Exécution** — implémentez `FulfillmentConnector.placeOrder()` (API du fournisseur).
+| Source        | Variables `.env`                          | Connecteur réel            |
+| ------------- | ----------------------------------------- | -------------------------- |
+| Marché        | `MARKET_API_URL` + `MARKET_API_KEY`       | `HttpMarketConnector`      |
+| Fournisseurs  | `SUPPLIER_API_URL` + `SUPPLIER_API_KEY`   | `HttpSupplierConnector`    |
+| Exécution     | `FULFILLMENT_API_URL` + `FULFILLMENT_API_KEY` | `HttpFulfillmentConnector` |
 
-Les connecteurs `mock-*` fournis servent de référence et rendent le système
-fonctionnel immédiatement, sans clé d'API externe.
+Sans ces variables, les connecteurs `mock-*` rendent le système pleinement
+fonctionnel, sans aucune clé d'API. Pour un format de source spécifique, adaptez
+la fonction `mapItem`/`mapSupplier` du connecteur HTTP concerné.
+
+### Paiement par carte (Stripe)
+
+Le paiement passe par **Stripe** (cartes Visa, Mastercard...). Renseignez
+`STRIPE_SECRET_KEY` et `STRIPE_WEBHOOK_SECRET` dans `.env` :
+
+1. Créez une commande **non payée** (décochez « Marquer payée » dans l'UI) → statut `PENDING`.
+2. Bouton **« 💳 Payer par carte »** → redirige vers la page sécurisée Stripe.
+3. Après paiement, le **webhook** `POST /api/webhooks/stripe` marque la commande
+   `PAID` → l'expédition s'enclenche automatiquement.
+
+Sans clé Stripe, le paiement est simplement désactivé (les endpoints renvoient un
+message clair) et le reste du logiciel fonctionne normalement.
+
+> Test en local du webhook : `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
+> (Stripe CLI) fournit un `STRIPE_WEBHOOK_SECRET` de test.
 
 ## Documentation
 

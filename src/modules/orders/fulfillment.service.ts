@@ -1,13 +1,12 @@
 import type { Order } from '@prisma/client';
-import type { FulfillmentConnector } from '../../automation/connectors/fulfillment/base.fulfillment.connector.js';
-import { MockFulfillmentConnector } from '../../automation/connectors/fulfillment/mock.fulfillment.connector.js';
+import { getFulfillmentConnector } from '../../automation/connectors/registry.js';
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { parseList, scoreSupplier, type SearchCriteria } from '../../utils/scoring.js';
 
-/** Connecteur d'exécution actif (remplaçable par une intégration réelle). */
-const connector: FulfillmentConnector = new MockFulfillmentConnector();
+/** Connecteur d'exécution (HTTP réel si configuré, sinon mock). */
+const connector = getFulfillmentConnector();
 
 /** Sélectionne le meilleur couple (fournisseur, offre) pour un produit donné. */
 async function pickBestSupplierOffer(productId: string) {

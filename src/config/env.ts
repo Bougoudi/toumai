@@ -1,23 +1,23 @@
 import 'dotenv/config';
 
+const port = Number(process.env.PORT ?? 3000);
+
 /** Configuration centralisée, lue depuis les variables d'environnement. */
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
-  port: Number(process.env.PORT ?? 3000),
+  port,
   databaseUrl: process.env.DATABASE_URL ?? 'file:./dev.db',
+  /** URL publique (pour les redirections de paiement). */
+  publicUrl: process.env.PUBLIC_URL ?? `http://localhost:${port}`,
 
   /** Règles commerciales (dropshipping). */
   pricing: {
-    /** Marge appliquée au prix d'achat pour fixer le prix de vente (ex: 2.5 = +150 %). */
     defaultMarkup: Number(process.env.DEFAULT_MARKUP ?? 2.5),
-    /** Score d'opportunité minimum pour générer un produit automatiquement. */
     minOpportunityScore: Number(process.env.MIN_OPPORTUNITY_SCORE ?? 60),
     currency: process.env.DEFAULT_CURRENCY ?? 'EUR',
   },
 
-  /** Quotas d'automatisation. */
   quotas: {
-    /** Nombre max de produits générés par cycle de génération. */
     productsPerRun: Number(process.env.PRODUCTS_PER_RUN ?? 200),
   },
 
@@ -31,16 +31,30 @@ export const env = {
     simulateDemandCron: process.env.CRON_SIMULATE_DEMAND ?? '*/3 * * * *',
   },
 
-  /** Mode pilote automatique. */
   autopilot: {
-    /** Exécute un cycle complet dès le démarrage (sans attendre le cron). */
     runOnStart: (process.env.AUTOPILOT_RUN_ON_START ?? 'true') === 'true',
-    /** Intervalle (secondes) entre deux cycles en exécution autonome (`npm run autopilot`). */
     intervalSeconds: Number(process.env.AUTOPILOT_INTERVAL_SECONDS ?? 60),
-    /** Simule des commandes clients pour faire tourner le pilier 3 sans boutique réelle. */
     simulateDemand: (process.env.SIMULATE_DEMAND ?? 'true') === 'true',
-    /** Nombre de commandes simulées par cycle. */
     ordersPerCycle: Number(process.env.SIMULATED_ORDERS_PER_CYCLE ?? 3),
+  },
+
+  /**
+   * Connecteurs de sources externes. Si `url`/`key` sont fournis, le connecteur
+   * HTTP réel est utilisé ; sinon, on retombe sur le connecteur de démonstration.
+   */
+  connectors: {
+    market: { url: process.env.MARKET_API_URL ?? '', key: process.env.MARKET_API_KEY ?? '' },
+    supplier: { url: process.env.SUPPLIER_API_URL ?? '', key: process.env.SUPPLIER_API_KEY ?? '' },
+    fulfillment: { url: process.env.FULFILLMENT_API_URL ?? '', key: process.env.FULFILLMENT_API_KEY ?? '' },
+  },
+
+  /** Paiement Stripe (cartes Visa / Mastercard, etc.). */
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY ?? '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+    get enabled() {
+      return !!process.env.STRIPE_SECRET_KEY;
+    },
   },
 } as const;
 

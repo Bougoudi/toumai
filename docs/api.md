@@ -125,6 +125,19 @@ Réponse : fournisseurs classés par `score` (0–100) avec `breakdown` par crit
 
 ---
 
+## Paiement — `/api/payments` (Stripe)
+
+| Méthode | Route                            | Description                                   |
+| ------- | -------------------------------- | --------------------------------------------- |
+| GET     | `/api/payments/status`           | Indique si le paiement est configuré (`enabled`) |
+| POST    | `/api/payments/checkout/:orderId`| Crée une session Stripe Checkout → renvoie `{ url }` |
+| POST    | `/api/webhooks/stripe`           | Webhook Stripe (corps brut, signature vérifiée) |
+
+- La commande doit être en statut `PENDING`. Le webhook `checkout.session.completed`
+  la passe en `PAID`, ce qui déclenche l'expédition automatique.
+- Sans `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET`, ces endpoints renvoient `501`
+  avec un message explicite ; le reste du logiciel fonctionne normalement.
+
 ## Codes de statut
 
 | Code | Sens                    | | Code | Sens                    |
@@ -133,3 +146,4 @@ Réponse : fournisseurs classés par `score` (0–100) avec `breakdown` par crit
 | 201  | Ressource créée         | | 404  | Introuvable             |
 | 202  | Accepté (traité en file)| | 409  | Conflit (ex: annulation)|
 | 204  | Suppression réussie     | | 500  | Erreur interne          |
+|      |                         | | 501  | Fonction non configurée (ex: Stripe) |

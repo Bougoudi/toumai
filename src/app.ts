@@ -1,8 +1,11 @@
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import { asyncHandler } from './middleware/validate.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { autopilotRouter, dashboardRouter } from './modules/dashboard/dashboard.routes.js';
 import { marketRouter } from './modules/market/market.routes.js';
+import { paymentController } from './modules/payments/payment.controller.js';
+import { paymentRouter } from './modules/payments/payment.routes.js';
 import { orderRouter } from './modules/orders/order.routes.js';
 import { productRouter } from './modules/products/product.routes.js';
 import { searchRouter } from './modules/search/search.routes.js';
@@ -12,6 +15,10 @@ const publicDir = fileURLToPath(new URL('../public', import.meta.url));
 
 export function createApp() {
   const app = express();
+
+  // Webhook Stripe : corps BRUT requis pour vérifier la signature.
+  // Monté AVANT express.json() qui parserait (et casserait) la vérification.
+  app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyncHandler(paymentController.webhook));
 
   app.use(express.json());
 
@@ -41,6 +48,7 @@ export function createApp() {
         suppliers: '/api/suppliers',
         search: '/api/search',
         orders: '/api/orders',
+        payments: '/api/payments',
       },
     }),
   );
@@ -52,6 +60,7 @@ export function createApp() {
   app.use('/api/orders', orderRouter); // pilier 3
   app.use('/api/suppliers', supplierRouter); // pilier 4
   app.use('/api/search', searchRouter); // pilier 4
+  app.use('/api/payments', paymentRouter); // paiement (Stripe)
 
   app.use(notFound);
   app.use(errorHandler);

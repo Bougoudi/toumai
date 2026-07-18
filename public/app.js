@@ -376,9 +376,20 @@ async function showOrder(id) {
       <h4>Articles</h4><div class="table-wrap">${items}</div>
       <h4>Achats fournisseurs (expédition)</h4><div class="table-wrap">${pos}</div>
       <div class="form-actions">
+        ${o.status === 'PENDING' && paymentsEnabled ? `<button class="btn btn-primary" id="m-pay">💳 Payer par carte</button>` : ''}
         ${o.status === 'PAID' || o.status === 'FULFILLING' ? `<button class="btn btn-primary" id="m-fulfill">Relancer l'expédition</button>` : ''}
         ${canCancel ? `<button class="btn btn-ghost" id="m-cancel">Annuler</button>` : ''}
       </div>`);
+    $('#m-pay')?.addEventListener('click', async (ev) => {
+      busy(ev.currentTarget, true, 'Redirection...');
+      try {
+        const { url } = await api(`/api/payments/checkout/${id}`, { method: 'POST' });
+        window.location.href = url; // page de paiement sécurisée Stripe
+      } catch (e) {
+        toast(e.message);
+        busy(ev.currentTarget, false);
+      }
+    });
     $('#m-fulfill')?.addEventListener('click', async (ev) => {
       busy(ev.currentTarget, true, '...');
       try {
@@ -559,6 +570,22 @@ $('#install-btn').addEventListener('click', async () => {
   deferredPrompt = null;
   $('#install-btn').hidden = true;
 });
+
+// ── Paiement (Stripe) : disponible ? ───────────────────────
+let paymentsEnabled = false;
+api('/api/payments/status')
+  .then((s) => (paymentsEnabled = !!s.enabled))
+  .catch(() => {});
+
+// Retour de paiement (redirection Stripe)
+const params = new URLSearchParams(location.search);
+if (params.get('paid')) {
+  toast(`Paiement réussi — commande ${params.get('paid')}`);
+  history.replaceState({}, '', '/');
+} else if (params.get('canceled')) {
+  toast('Paiement annulé');
+  history.replaceState({}, '', '/');
+}
 
 // ── Service worker ─────────────────────────────────────────
 if ('serviceWorker' in navigator) {
