@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { env, isProd } from './config/env.js';
 import { runFullCycle } from './automation/autopilot.js';
 import { startScheduler } from './automation/scheduler.js';
+import { ensureFirstAdmin } from './bootstrap/firstAdmin.js';
 import { prisma } from './db/prisma.js';
 import { loadSettings } from './modules/settings/settings.service.js';
 import { logger } from './utils/logger.js';
@@ -24,6 +25,7 @@ function assertSecureConfig() {
 
 async function main() {
   assertSecureConfig();
+  await ensureFirstAdmin();
   await loadSettings();
   const app = createApp();
 

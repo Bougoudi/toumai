@@ -1,0 +1,49 @@
+# Blueprint Render — déploiement en un clic de Toumai (serveur + PostgreSQL).
+# Sur https://dashboard.render.com : « New » → « Blueprint » → connecte ce dépôt.
+# Render lit ce fichier, crée la base et le service, et te demande les valeurs
+# marquées « sync: false » (URL publique, e-mail admin, clés Stripe...).
+
+databases:
+  - name: toumai-db
+    databaseName: toumai
+    user: toumai
+    plan: basic-256mb # « free » pour tester (expire après 30 j) ; « basic » pour la prod
+
+services:
+  - type: web
+    name: toumai
+    runtime: docker
+    plan: starter # ~7 $/mois, toujours actif (nécessaire pour le pilote automatique)
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: toumai-db
+          property: connectionString
+      - key: NODE_ENV
+        value: production
+      # Secrets générés automatiquement par Render (longs et aléatoires).
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      # À renseigner dans le tableau de bord Render :
+      - key: PUBLIC_URL # ex. https://toumai.onrender.com (puis ton domaine)
+        sync: false
+      - key: ADMIN_EMAIL # ton e-mail (crée le compte admin au 1er démarrage)
+        sync: false
+      - key: ADMIN_PASSWORD # ton mot de passe admin (≥ 10 caractères)
+        sync: false
+      # Paiements & retraits (facultatif au début) :
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # Connexions marketplaces (facultatif) :
+      - key: ETSY_API_KEY
+        sync: false
+      - key: EBAY_CLIENT_ID
+        sync: false
+      - key: EBAY_CLIENT_SECRET
+        sync: false

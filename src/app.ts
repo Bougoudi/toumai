@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { apiLimiter, securityHeaders } from './middleware/security.js';
@@ -23,7 +24,19 @@ import { productRouter } from './modules/products/product.routes.js';
 import { searchRouter } from './modules/search/search.routes.js';
 import { supplierRouter } from './modules/suppliers/supplier.routes.js';
 
-const publicDir = fileURLToPath(new URL('../public', import.meta.url));
+/**
+ * Dossier des fichiers statiques (PWA). En développement (tsx) le module est
+ * dans `src/`, une fois compilé il est dans `dist/src/` : on cherche donc
+ * `../public` puis `../../public` et on retient le premier qui existe.
+ */
+function resolvePublicDir(): string {
+  const candidates = [
+    fileURLToPath(new URL('../public', import.meta.url)),
+    fileURLToPath(new URL('../../public', import.meta.url)),
+  ];
+  return candidates.find((p) => existsSync(p)) ?? candidates[0];
+}
+const publicDir = resolvePublicDir();
 
 export function createApp() {
   const app = express();
