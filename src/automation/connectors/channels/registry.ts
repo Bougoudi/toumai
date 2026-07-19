@@ -20,5 +20,6 @@ export function listChannelTypes() {
     type: c.type,
     label: c.label,
     configFields: c.configFields,
+    oauth: !!c.oauth,
   }));
 }

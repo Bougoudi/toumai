@@ -234,6 +234,16 @@ Réponse : fournisseurs classés par `score` (0–100) avec `breakdown` par crit
 | POST    | `/api/channels/:id/test`                | Re-tester la connexion                   |
 | POST    | `/api/channels/:id/sync`                | Importer les commandes du canal          |
 | POST    | `/api/channels/:id/publish/:productId`  | Publier un produit en annonce            |
+| POST    | `/api/channels/:id/oauth/start`         | Démarre l'autorisation OAuth → `{ url }` |
+| GET     | `/api/oauth/callback`                   | Retour d'autorisation (public) → jetons + statut CONNECTED |
+
+**Flux OAuth « pour de vrai »** : l'utilisateur crée une app développeur chez la
+plateforme, saisit son *client id/secret* et enregistre l'URL de redirection
+`{PUBLIC_URL}/api/oauth/callback`. Le bouton « Autoriser » redirige vers la
+plateforme ; au retour, Toumai stocke les jetons (chiffrés) et les **rafraîchit
+automatiquement** avant chaque appel. Etsy utilise **PKCE** ; eBay/Amazon un
+*client secret*. Endpoints de jetons surchargeables pour les bacs à sable via
+`OAUTH_TOKEN_URL_ETSY` / `_EBAY` / `_AMAZON`.
 
 Les commandes importées (statut `PAID`) déclenchent l'achat & expédition
 automatiques. Un job `syncChannels` importe les commandes de tous les canaux

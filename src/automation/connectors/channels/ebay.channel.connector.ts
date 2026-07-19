@@ -20,12 +20,15 @@ export class EbayChannelConnector implements SalesChannelConnector {
   readonly type = 'ebay';
   readonly label = 'eBay';
   readonly configFields = [
-    { key: 'accessToken', label: 'Jeton OAuth2 utilisateur', secret: true, help: 'eBay Developers — scopes sell.inventory, sell.fulfillment' },
+    { key: 'clientId', label: 'Client ID (App ID)', secret: true, help: 'eBay Developers' },
+    { key: 'clientSecret', label: 'Client Secret (Cert ID)', secret: true },
+    { key: 'ruName', label: 'RuName (redirect)', help: 'Nom de redirection OAuth eBay' },
     { key: 'merchantLocationKey', label: 'Merchant location key', help: 'Requis pour publier des annonces' },
     { key: 'fulfillmentPolicyId', label: 'Fulfillment policy ID', help: 'Politique de livraison' },
     { key: 'paymentPolicyId', label: 'Payment policy ID' },
     { key: 'returnPolicyId', label: 'Return policy ID' },
   ];
+  readonly oauth = true;
 
   private headers(config: Record<string, string>) {
     return {

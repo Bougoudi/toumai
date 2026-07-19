@@ -19,10 +19,10 @@ export class EtsyChannelConnector implements SalesChannelConnector {
   readonly type = 'etsy';
   readonly label = 'Etsy';
   readonly configFields = [
-    { key: 'apiKey', label: 'Keystring (x-api-key)', secret: true, help: 'App Etsy Developers' },
-    { key: 'accessToken', label: 'Jeton OAuth2', secret: true, help: 'Token utilisateur (scopes listings_w, transactions_r)' },
+    { key: 'apiKey', label: 'Keystring (client ID)', secret: true, help: 'App Etsy Developers — sert d’identifiant OAuth' },
     { key: 'shopId', label: 'Shop ID', help: 'Identifiant numérique de votre boutique' },
   ];
+  readonly oauth = true;
 
   private headers(config: Record<string, string>) {
     return {

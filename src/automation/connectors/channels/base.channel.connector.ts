@@ -47,6 +47,8 @@ export interface SalesChannelConnector {
   readonly label: string;
   /** Champs de configuration attendus (pour l'UI de connexion). */
   readonly configFields: Array<{ key: string; label: string; secret?: boolean; help?: string }>;
+  /** Le canal utilise un flux d'autorisation OAuth (bouton « Autoriser »). */
+  readonly oauth?: boolean;
 
   /** Vérifie que les identifiants fonctionnent. */
   testConnection(config: Record<string, string>): Promise<ConnectionInfo>;

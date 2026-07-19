@@ -9,6 +9,7 @@ import { HttpError } from '../../middleware/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 import { computeSalePrice } from '../../utils/pricing.js';
 import { decryptJson, encryptJson } from '../../utils/crypto.js';
+import { oauthService } from './oauth.service.js';
 
 function connectorFor(type: string) {
   const c = getChannelConnector(type);
@@ -107,7 +108,7 @@ export const channelService = {
     const ch = await this.getRaw(id);
     const connector = connectorFor(ch.type);
     try {
-      const info = await connector.testConnection(decryptJson(ch.config));
+      const info = await connector.testConnection(await oauthService.ensureToken(ch.id, decryptJson(ch.config)));
       await prisma.salesChannel.update({
         where: { id },
         data: { status: info.ok ? 'CONNECTED' : 'ERROR', error: info.ok ? null : info.detail },
@@ -139,7 +140,7 @@ export const channelService = {
     });
 
     try {
-      const res = await connector.publishListing(decryptJson(ch.config), {
+      const res = await connector.publishListing(await oauthService.ensureToken(ch.id, decryptJson(ch.config)), {
         sku: product.sku,
         name: product.name,
         description: product.description,
@@ -164,7 +165,7 @@ export const channelService = {
   async syncOrders(channelId: string) {
     const ch = await this.getRaw(channelId);
     const connector = connectorFor(ch.type);
-    const orders = await connector.fetchOrders(decryptJson(ch.config), ch.lastSyncAt ?? undefined);
+    const orders = await connector.fetchOrders(await oauthService.ensureToken(ch.id, decryptJson(ch.config)), ch.lastSyncAt ?? undefined);
     let imported = 0;
     for (const o of orders) {
       const created = await this.importOrder(ch.type, o);

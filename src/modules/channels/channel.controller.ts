@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { parseBody } from '../../middleware/validate.js';
 import { connectChannelSchema, updateChannelSchema } from './channel.schema.js';
 import { channelService } from './channel.service.js';
+import { oauthService } from './oauth.service.js';
 
 export const channelController = {
   /** GET /api/channels/types — canaux disponibles + champs de config. */
@@ -45,5 +46,16 @@ export const channelController = {
   /** POST /api/channels/:id/sync — importe les commandes du canal. */
   async sync(req: Request, res: Response) {
     res.json(await channelService.syncOrders(req.params.id));
+  },
+
+  /** POST /api/channels/:id/oauth/start — URL d'autorisation OAuth. */
+  async oauthStart(req: Request, res: Response) {
+    res.json({ ...(await oauthService.start(req.params.id)), redirectUri: oauthService.redirectUri() });
+  },
+
+  /** GET /api/oauth/callback — retour d'autorisation de la marketplace (public). */
+  async oauthCallback(req: Request, res: Response) {
+    const target = await oauthService.callback(req.query as Record<string, string>);
+    res.redirect(target);
   },
 };

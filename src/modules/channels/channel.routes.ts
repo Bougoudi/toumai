@@ -13,3 +13,4 @@ channelRouter.delete('/:id', asyncHandler(channelController.remove));
 channelRouter.post('/:id/test', asyncHandler(channelController.test));
 channelRouter.post('/:id/sync', asyncHandler(channelController.sync));
 channelRouter.post('/:id/publish/:productId', asyncHandler(channelController.publish));
+channelRouter.post('/:id/oauth/start', asyncHandler(channelController.oauthStart));

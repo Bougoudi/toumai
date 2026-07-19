@@ -504,7 +504,9 @@ async function loadChannels() {
   try {
     const list = await api('/api/channels');
     const rows = list.map((c) => {
-      const actions =
+      const authorize = c.status !== 'CONNECTED'
+        ? `<button class="btn btn-primary btn-xs" data-auth="${c.id}">Autoriser</button> ` : '';
+      const actions = authorize +
         `<button class="btn btn-ghost btn-xs" data-sync="${c.id}">Synchroniser</button> ` +
         `<button class="btn btn-ghost btn-xs" data-del="${c.id}">Déconnecter</button>`;
       return [
@@ -516,12 +518,24 @@ async function loadChannels() {
       ];
     });
     $('#channels-table').innerHTML = tableHtml(['Canal', 'Nom', 'Statut', 'Détail', 'Actions'], rows);
+    document.querySelectorAll('#channels-table [data-auth]').forEach((b) =>
+      b.addEventListener('click', () => authorizeChannel(b.dataset.auth)),
+    );
     document.querySelectorAll('#channels-table [data-sync]').forEach((b) =>
       b.addEventListener('click', () => syncChannel(b.dataset.sync)),
     );
     document.querySelectorAll('#channels-table [data-del]').forEach((b) =>
       b.addEventListener('click', () => deleteChannel(b.dataset.del)),
     );
+  } catch (e) {
+    toast(e.message);
+  }
+}
+async function authorizeChannel(id) {
+  try {
+    const r = await api(`/api/channels/${id}/oauth/start`, { method: 'POST' });
+    // Redirige le navigateur vers la page d'autorisation de la marketplace.
+    window.location.href = r.url;
   } catch (e) {
     toast(e.message);
   }
@@ -575,10 +589,11 @@ $('#connect-channel').addEventListener('click', async () => {
     '<h2>Connecter un canal de vente</h2>' +
       '<div class="field" style="margin-top:12px"><label>Plateforme</label><select class="input" id="ch-type">' + typeOpts + '</select></div>' +
       '<div class="field"><label>Nom (pour vous repérer)</label><input class="input" id="ch-name" placeholder="Ma boutique Etsy"/></div>' +
-      '<h4>Identifiants</h4><div id="ch-fields"></div>' +
-      '<p class="muted" id="ch-help" style="margin-top:10px"></p>' +
+      '<h4>Identifiants de votre app développeur</h4><div id="ch-fields"></div>' +
+      `<p class="muted" style="margin-top:10px">Dans votre app développeur, enregistrez l’URL de redirection : <code>${location.origin}/api/oauth/callback</code></p>` +
+      '<p class="muted" id="ch-help"></p>' +
       '<div class="form-actions"><button class="btn btn-ghost" data-close>Annuler</button>' +
-      '<button class="btn btn-primary" id="ch-save">Connecter</button></div>',
+      '<button class="btn btn-primary" id="ch-save">Enregistrer, puis autoriser</button></div>',
   );
   $('#modal-content [data-close]').addEventListener('click', closeModal);
   const renderFields = () => {
@@ -603,9 +618,10 @@ $('#connect-channel').addEventListener('click', async () => {
     busy(ev.currentTarget, true, 'Connexion...');
     try {
       const c = await api('/api/channels', { method: 'POST', body: { type, name, config } });
-      toast(c.status === 'CONNECTED' ? 'Canal connecté ✓' : 'Enregistré — ' + (c.error || 'à compléter'));
       closeModal();
-      loadChannels();
+      // Enchaîne sur l'autorisation OAuth (redirection vers la marketplace).
+      toast('Identifiants enregistrés — redirection vers l’autorisation…');
+      await authorizeChannel(c.id);
     } catch (e) {
       toast(e.message);
       busy(ev.currentTarget, false);
@@ -1317,6 +1333,9 @@ if (params.get('paid')) {
   history.replaceState({}, '', '/');
 } else if (params.get('canceled')) {
   toast('Paiement annulé');
+  history.replaceState({}, '', '/');
+} else if (params.get('connected')) {
+  toast(`Canal ${params.get('channel') || ''} autorisé ✓`);
   history.replaceState({}, '', '/');
 }
 

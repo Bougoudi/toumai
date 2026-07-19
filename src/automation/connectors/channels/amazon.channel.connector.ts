@@ -29,13 +29,14 @@ export class AmazonChannelConnector implements SalesChannelConnector {
   readonly type = 'amazon';
   readonly label = 'Amazon';
   readonly configFields = [
-    { key: 'lwaClientId', label: 'LWA Client ID', secret: true, help: 'App SP-API (Login With Amazon)' },
+    { key: 'appId', label: 'Application ID (SP-API)', help: 'App enregistrée dans Seller Central' },
+    { key: 'lwaClientId', label: 'LWA Client ID', secret: true, help: 'Login With Amazon' },
     { key: 'lwaClientSecret', label: 'LWA Client Secret', secret: true },
-    { key: 'refreshToken', label: 'Refresh token', secret: true, help: 'Autorisation du vendeur' },
     { key: 'region', label: 'Région (eu / na / fe)', help: 'eu pour l’Europe' },
     { key: 'marketplaceId', label: 'Marketplace ID', help: 'ex: A13V1IB3VIYZZH (Amazon.fr)' },
     { key: 'sellerId', label: 'Seller ID' },
   ];
+  readonly oauth = true;
 
   private host(config: Record<string, string>) {
     return REGION_HOST[(config.region || 'eu').toLowerCase()] ?? REGION_HOST.eu;
