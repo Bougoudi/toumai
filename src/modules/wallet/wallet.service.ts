@@ -2,6 +2,7 @@ import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { getSettings } from '../settings/settings.service.js';
 import { reportService } from '../reports/report.service.js';
+import { payoutService } from './payout.service.js';
 
 /** Statuts qui « réservent » de l'argent (non encore rejetés). */
 const RESERVING = ['PENDING', 'APPROVED', 'PAID'];
@@ -50,6 +51,16 @@ export const walletService = {
     };
   },
 
+  /** État de la connexion Stripe Payouts (virements automatiques). */
+  payoutStatus() {
+    return payoutService.status();
+  },
+
+  /** Démarre l'onboarding Stripe Payouts et renvoie le lien hébergé. */
+  connectStripe() {
+    return payoutService.onboardingLink();
+  },
+
   list() {
     return prisma.withdrawal.findMany({ orderBy: { createdAt: 'desc' }, take: 50 });
   },
@@ -58,19 +69,43 @@ export const walletService = {
    * Crée une demande de retrait. Vérifie le montant contre le solde disponible.
    * (La route exige une ré-authentification « step-up ».)
    */
-  async request(input: { amount: number; method: 'bank' | 'paypal' | 'card'; destination: string }) {
+  async request(input: { amount: number; method: 'bank' | 'paypal' | 'card' | 'stripe'; destination?: string }) {
     if (input.amount <= 0) throw new HttpError(400, 'Montant invalide.');
     const { available, currency } = await this.balance();
     if (input.amount > available) {
       throw new HttpError(400, `Montant supérieur au solde disponible (${available} ${currency}).`);
     }
+    const amount = Number(input.amount.toFixed(2));
+
+    // Virement automatique Stripe Payouts : transfert réel vers le compte connecté.
+    if (input.method === 'stripe') {
+      const res = await payoutService.payout(amount, currency);
+      return prisma.withdrawal.create({
+        data: {
+          amount,
+          currency,
+          method: 'stripe',
+          destination: res.destination,
+          status: res.status,
+          provider: 'stripe',
+          externalId: res.externalId,
+          processedAt: new Date(),
+        },
+      });
+    }
+
+    // Modes manuels (banque / PayPal / carte) : demande enregistrée en attente.
+    if (!input.destination || input.destination.trim().length < 3) {
+      throw new HttpError(400, 'Destination requise (IBAN, email PayPal ou numéro de carte).');
+    }
     return prisma.withdrawal.create({
       data: {
-        amount: Number(input.amount.toFixed(2)),
+        amount,
         currency,
         method: input.method,
         destination: maskDestination(input.method, input.destination),
         status: 'PENDING',
+        provider: 'manual',
       },
     });
   },

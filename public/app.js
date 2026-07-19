@@ -801,11 +801,11 @@ async function loadWallet() {
       kpiCard('green', 'Solde disponible', money(w.available, w.currency), 'retirable maintenant') +
       kpiCard('', 'Bénéfices totaux', money(w.profit, w.currency), '') +
       kpiCard('', 'En cours de retrait', money(w.reserved, w.currency), 'demandes en attente');
-    const labels = { PENDING: 'En attente', APPROVED: 'Approuvé', PAID: 'Payé', REJECTED: 'Rejeté/Annulé' };
+    renderPayoutStatus(w.payouts);
     const rows = w.withdrawals.map((x) => [
       new Date(x.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }),
       `<span class="num">${money(x.amount, x.currency)}</span>`,
-      { paypal: 'PayPal', card: 'Carte', bank: 'Virement' }[x.method] || x.method,
+      { paypal: 'PayPal', card: 'Carte', bank: 'Virement', stripe: 'Stripe Payouts' }[x.method] || x.method,
       esc(x.destination),
       badge(x.status),
       x.status === 'PENDING' ? `<button class="btn btn-ghost btn-xs" data-wcancel="${x.id}">Annuler</button>` : '',
@@ -816,39 +816,74 @@ async function loadWallet() {
     );
   } catch (e) { toast(e.message); }
 }
+
+/** Bandeau d'état Stripe Payouts (virements automatiques vers le compte bancaire). */
+function renderPayoutStatus(p) {
+  const el = $('#payout-status');
+  if (!el) return;
+  if (!p || !p.configured) {
+    el.innerHTML = '<div class="banner muted">Stripe Payouts non configuré (ajoutez <code>STRIPE_SECRET_KEY</code>). Les retraits sont enregistrés en mode manuel.</div>';
+    return;
+  }
+  if (p.payoutsEnabled) {
+    el.innerHTML = '<div class="banner ok">✅ Stripe Payouts connecté — virements automatiques activés.</div>';
+    return;
+  }
+  const label = p.connected ? 'Terminer la configuration Stripe' : 'Connecter Stripe Payouts';
+  el.innerHTML = `<div class="banner">💳 Recevez vos retraits automatiquement sur votre compte bancaire. <button class="btn btn-primary btn-xs" id="stripe-connect-btn">${label}</button></div>`;
+  $('#stripe-connect-btn')?.addEventListener('click', async (ev) => {
+    busy(ev.currentTarget, true, '...');
+    try {
+      const su = await promptStepUp();
+      if (!su) { busy(ev.currentTarget, false); return; }
+      const r = await api('/api/wallet/connect', { method: 'POST', stepUp: su });
+      if (r.url) window.location.href = r.url; // page d'onboarding hébergée par Stripe
+    } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+  });
+}
 $('#withdraw-btn').addEventListener('click', async () => {
   const w = await api('/api/wallet').catch(() => null);
   if (!w) return;
+  const stripeReady = !!(w.payouts && w.payouts.payoutsEnabled);
+  const stripeOpt = stripeReady
+    ? '<option value="stripe">Stripe Payouts (virement automatique)</option>'
+    : '';
   openModal(
     '<h2>Demander un retrait</h2>' +
     `<p class="muted">Solde disponible : <b>${money(w.available, w.currency)}</b></p>` +
     '<div class="form-grid">' +
     '<div class="field"><label>Montant</label><input class="input" id="wd-amount" type="number" min="1" step="0.01"/></div>' +
-    '<div class="field"><label>Méthode</label><select class="input" id="wd-method"><option value="card">Carte (Visa / Mastercard)</option><option value="bank">Virement bancaire (IBAN)</option><option value="paypal">PayPal</option></select></div>' +
-    '<div class="field full"><label id="wd-dest-label">Numéro de carte</label><input class="input" id="wd-dest" placeholder="4242 4242 4242 4242"/></div>' +
+    `<div class="field"><label>Méthode</label><select class="input" id="wd-method">${stripeOpt}<option value="card">Carte (Visa / Mastercard)</option><option value="bank">Virement bancaire (IBAN)</option><option value="paypal">PayPal</option></select></div>` +
+    '<div class="field full" id="wd-dest-field"><label id="wd-dest-label">Numéro de carte</label><input class="input" id="wd-dest" placeholder="4242 4242 4242 4242"/></div>' +
     '</div>' +
     '<div class="form-actions"><button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="wd-submit">Confirmer le retrait</button></div>');
   $('#modal-content [data-close]').addEventListener('click', closeModal);
   const DEST = { card: ['Numéro de carte', '4242 4242 4242 4242'], bank: ['IBAN', 'FR76…'], paypal: ['Email PayPal', 'email@exemple.com'] };
-  $('#wd-method').addEventListener('change', () => {
-    const [l, ph] = DEST[$('#wd-method').value];
+  const syncDest = () => {
+    const m = $('#wd-method').value;
+    if (m === 'stripe') { $('#wd-dest-field').style.display = 'none'; return; }
+    $('#wd-dest-field').style.display = '';
+    const [l, ph] = DEST[m];
     $('#wd-dest-label').textContent = l;
     $('#wd-dest').placeholder = ph;
     $('#wd-dest').value = '';
-  });
+  };
+  $('#wd-method').addEventListener('change', syncDest);
+  syncDest();
   $('#wd-submit').addEventListener('click', async (ev) => {
     const amount = Number($('#wd-amount').value);
     const method = $('#wd-method').value;
     const destination = $('#wd-dest').value.trim();
     if (!amount || amount <= 0) return toast('Montant invalide');
-    if (!destination) return toast('Indiquez une destination');
+    if (method !== 'stripe' && !destination) return toast('Indiquez une destination');
     busy(ev.currentTarget, true, '...');
     try {
       // Action sensible → ré-authentification (step-up) avant le retrait.
       const su = await promptStepUp();
       if (!su) { busy(ev.currentTarget, false); return; }
-      await api('/api/wallet/withdraw', { method: 'POST', body: { amount, method, destination }, stepUp: su });
-      toast('Demande de retrait enregistrée');
+      const body = method === 'stripe' ? { amount, method } : { amount, method, destination };
+      await api('/api/wallet/withdraw', { method: 'POST', body, stepUp: su });
+      toast(method === 'stripe' ? 'Virement Stripe envoyé' : 'Demande de retrait enregistrée');
       closeModal();
       loadWallet();
     } catch (e) { toast(e.message); busy(ev.currentTarget, false); }

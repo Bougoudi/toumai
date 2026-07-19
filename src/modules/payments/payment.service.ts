@@ -1,16 +1,15 @@
-import Stripe from 'stripe';
+import type Stripe from 'stripe';
 import { env } from '../../config/env.js';
+import { stripeClient } from '../../config/stripe.js';
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { logger } from '../../utils/logger.js';
 
-let client: Stripe | null = null;
 function stripe(): Stripe {
   if (!env.stripe.enabled) {
     throw new HttpError(501, 'Paiement non configuré : définissez STRIPE_SECRET_KEY.');
   }
-  if (!client) client = new Stripe(env.stripe.secretKey);
-  return client;
+  return stripeClient();
 }
 
 export const paymentService = {

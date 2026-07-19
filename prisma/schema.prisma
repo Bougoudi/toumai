@@ -106,13 +106,18 @@ model Withdrawal {
   id          String    @id @default(cuid())
   amount      Float
   currency    String    @default("EUR")
-  /// bank | paypal
+  /// bank | paypal | card | stripe
   method      String
-  /// Destination masquée (IBAN partiel / email PayPal).
+  /// Destination masquée (IBAN partiel / email PayPal / carte / compte Stripe).
   destination String
   /// PENDING | APPROVED | PAID | REJECTED
   status      String    @default("PENDING")
   note        String?
+
+  /// manual (traité à la main) | stripe (virement automatique Stripe Payouts).
+  provider    String    @default("manual")
+  /// Identifiant du transfert/versement chez le prestataire (ex. Stripe tr_...).
+  externalId  String?
 
   createdAt   DateTime  @default(now())
   processedAt DateTime?
