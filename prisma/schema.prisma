@@ -152,8 +152,34 @@ model User {
   passwordHash String
   /// admin | user
   role         String   @default("user")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+
+  /// Double authentification (TOTP — application d'authentification).
+  totpSecret   String? // chiffré ; secret partagé de l'application d'authentification
+  totpEnabled  Boolean @default(false)
+  /// Codes de récupération (JSON de hachages, chiffré). Usage unique.
+  recoveryCodes String?
+
+  credentials WebAuthnCredential[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Clé de sécurité / passkey (WebAuthn) d'un utilisateur.
+model WebAuthnCredential {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Identifiant de la clé (base64url), unique.
+  credentialId String   @unique
+  publicKey    String // clé publique (base64url)
+  counter      Int      @default(0)
+  transports   String   @default("")
+  name         String   @default("Clé de sécurité")
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -793,6 +793,7 @@ async function loadSettingsTab() {
     ).join('') +
       `<div class="field"><label>Demande simulée (démo)</label><select class="input set-f" data-key="simulateDemand"><option value="true" ${s.simulateDemand ? 'selected' : ''}>Activée</option><option value="false" ${!s.simulateDemand ? 'selected' : ''}>Désactivée</option></select></div>`;
   } catch (e) { toast(e.message); }
+  loadSecurityPanel();
 }
 $('#settings-save').addEventListener('click', async (ev) => {
   const patch = {};
@@ -810,6 +811,123 @@ $('#settings-reset').addEventListener('click', async () => {
   try { await api('/api/settings/reset', { method: 'POST' }); toast('Réglages réinitialisés'); loadSettingsTab(); }
   catch (e) { toast(e.message); }
 });
+
+// ── WebAuthn : client natif (sans dépendance, compatible CSP) ──
+function b64urlToBuf(s) {
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = s.length % 4 ? '='.repeat(4 - (s.length % 4)) : '';
+  const bin = atob(s + pad);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
+function bufToB64url(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function serializeCred(cred, kind) {
+  const r = cred.response;
+  const out = { id: cred.id, rawId: bufToB64url(cred.rawId), type: cred.type,
+    clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {}, response: {} };
+  out.response.clientDataJSON = bufToB64url(r.clientDataJSON);
+  if (kind === 'attestation') {
+    out.response.attestationObject = bufToB64url(r.attestationObject);
+    if (r.getTransports) out.response.transports = r.getTransports();
+  } else {
+    out.response.authenticatorData = bufToB64url(r.authenticatorData);
+    out.response.signature = bufToB64url(r.signature);
+    if (r.userHandle) out.response.userHandle = bufToB64url(r.userHandle);
+  }
+  return out;
+}
+async function webauthnCreate(options) {
+  const publicKey = { ...options, challenge: b64urlToBuf(options.challenge),
+    user: { ...options.user, id: b64urlToBuf(options.user.id) },
+    excludeCredentials: (options.excludeCredentials || []).map((c) => ({ ...c, id: b64urlToBuf(c.id) })) };
+  const cred = await navigator.credentials.create({ publicKey });
+  return serializeCred(cred, 'attestation');
+}
+async function webauthnGet(options) {
+  const publicKey = { ...options, challenge: b64urlToBuf(options.challenge),
+    allowCredentials: (options.allowCredentials || []).map((c) => ({ ...c, id: b64urlToBuf(c.id) })) };
+  const cred = await navigator.credentials.get({ publicKey });
+  return serializeCred(cred, 'assertion');
+}
+
+// ── Panneau Sécurité (2FA) ─────────────────────────────────
+async function loadSecurityPanel() {
+  const el = $('#security-panel');
+  if (!el) return;
+  try {
+    const s = await api('/api/auth/mfa/status');
+    let h = '';
+    h += secRow('Application d’authentification (TOTP)', s.totpEnabled ? 'Activée ✓' : 'Désactivée',
+      s.totpEnabled ? '<button class="btn btn-ghost btn-xs" id="totp-disable">Désactiver</button>'
+                    : '<button class="btn btn-primary btn-xs" id="totp-setup">Activer</button>');
+    h += secRow('Codes de récupération', s.recoveryCodesRemaining + ' restant(s)',
+      s.totpEnabled ? '<button class="btn btn-ghost btn-xs" id="recov-regen">Régénérer</button>' : '');
+    h += secRow('Clés de sécurité (WebAuthn)', s.securityKeys.length + ' enregistrée(s)',
+      '<button class="btn btn-primary btn-xs" id="key-add">＋ Ajouter</button>');
+    h += s.securityKeys.map((k) => secRow('🔑 ' + esc(k.name), '', `<button class="btn btn-ghost btn-xs" data-keydel="${k.id}">✕</button>`, true)).join('');
+    el.innerHTML = h;
+    $('#totp-setup')?.addEventListener('click', totpSetupFlow);
+    $('#totp-disable')?.addEventListener('click', async () => { if (confirm('Désactiver la double authentification ?')) { await api('/api/auth/mfa/totp/disable', { method: 'POST' }); toast('TOTP désactivé'); loadSecurityPanel(); } });
+    $('#recov-regen')?.addEventListener('click', async () => { const r = await api('/api/auth/mfa/recovery/regenerate', { method: 'POST' }); showRecoveryCodes(r.recoveryCodes); loadSecurityPanel(); });
+    $('#key-add')?.addEventListener('click', addSecurityKey);
+    document.querySelectorAll('#security-panel [data-keydel]').forEach((b) => b.addEventListener('click', async () => { await api('/api/auth/mfa/webauthn/' + b.dataset.keydel, { method: 'DELETE' }); toast('Clé retirée'); loadSecurityPanel(); }));
+  } catch (e) {
+    el.innerHTML = '<div class="muted">' + esc(e.message) + '</div>';
+  }
+}
+const secRow = (title, sub, action, indent) =>
+  `<div class="sec-row"${indent ? ' style="padding-left:14px"' : ''}><div><b>${title}</b>${sub ? `<div class="muted">${sub}</div>` : ''}</div><div>${action}</div></div>`;
+
+async function totpSetupFlow() {
+  try {
+    const s = await api('/api/auth/mfa/totp/setup', { method: 'POST' });
+    openModal(
+      '<h2>Activer l’application d’authentification</h2>' +
+      '<p class="muted">Scannez ce QR code avec Google Authenticator, Authy, 1Password…</p>' +
+      `<div style="text-align:center"><img src="${s.qrDataUrl}" alt="QR" width="200" height="200" style="border-radius:10px"/></div>` +
+      `<p class="muted">Ou saisissez la clé : <code>${esc(s.secret)}</code></p>` +
+      '<div class="field"><label>Entrez le code affiché dans l’app</label><input class="input" id="totp-code" inputmode="numeric" placeholder="123456"/></div>' +
+      '<div class="form-actions"><button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="totp-confirm">Activer</button></div>');
+    $('#modal-content [data-close]').addEventListener('click', closeModal);
+    $('#totp-confirm').addEventListener('click', async (ev) => {
+      busy(ev.currentTarget, true, '...');
+      try {
+        const r = await api('/api/auth/mfa/totp/enable', { method: 'POST', body: { code: $('#totp-code').value.trim() } });
+        closeModal();
+        showRecoveryCodes(r.recoveryCodes);
+        loadSecurityPanel();
+      } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+    });
+  } catch (e) { toast(e.message); }
+}
+function showRecoveryCodes(codes) {
+  openModal(
+    '<h2>Vos codes de récupération</h2>' +
+    '<p class="muted">Conservez-les en lieu sûr. Chaque code ne fonctionne qu’une fois et sert si vous perdez votre téléphone. Ils ne seront plus jamais affichés.</p>' +
+    '<div class="table-wrap">' + codes.map((c) => `<div class="line-copy num">${esc(c)}</div>`).join('') + '</div>' +
+    '<div class="form-actions"><button class="btn btn-primary" data-close>J’ai noté mes codes</button></div>');
+  $('#modal-content [data-close]').addEventListener('click', closeModal);
+}
+async function addSecurityKey() {
+  if (!window.PublicKeyCredential) return toast('Votre navigateur ne supporte pas les clés de sécurité.');
+  const name = prompt('Nom de la clé (ex: YubiKey, Téléphone) :', 'Clé de sécurité');
+  if (name === null) return;
+  try {
+    const options = await api('/api/auth/mfa/webauthn/register/options', { method: 'POST' });
+    const attestation = await webauthnCreate(options);
+    await api('/api/auth/mfa/webauthn/register/verify', { method: 'POST', body: { response: attestation, name } });
+    toast('Clé de sécurité ajoutée ✓');
+    loadSecurityPanel();
+  } catch (e) {
+    toast(e.message || 'Enregistrement de la clé annulé');
+  }
+}
 
 const loaders = {
   dashboard: loadDashboard,
@@ -920,13 +1038,88 @@ $('#auth-form').addEventListener('submit', async (ev) => {
     const path = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
     const body = authMode === 'register' ? { name, email, password } : { email, password };
     const res = await api(path, { method: 'POST', body });
-    setToken(res.token);
-    onAuthed(res.user);
+    if (res.mfaRequired) {
+      enterMfaStep(res.mfaToken, res.methods);
+    } else {
+      setToken(res.token);
+      onAuthed(res.user);
+    }
   } catch (err) {
     errBox.textContent = err.message;
     errBox.hidden = false;
   } finally {
     busy(btn, false);
+  }
+});
+
+// ── Connexion : étape 2 (second facteur) ───────────────────
+let mfaToken = null;
+let mfaRecoveryMode = false;
+function enterMfaStep(token, methods) {
+  mfaToken = token;
+  mfaRecoveryMode = false;
+  $('#auth-form').hidden = true;
+  $('#auth-hint').hidden = true;
+  $('#mfa-step').hidden = false;
+  $('#mfa-error').hidden = true;
+  $('#mfa-code').value = '';
+  $('#mfa-webauthn').hidden = !methods.includes('webauthn');
+  $('#mfa-recovery-toggle').style.display = methods.includes('recovery') ? '' : 'none';
+  setTimeout(() => $('#mfa-code').focus(), 50);
+}
+function exitMfaStep() {
+  mfaToken = null;
+  $('#mfa-step').hidden = true;
+  $('#auth-form').hidden = false;
+  $('#auth-hint').hidden = false;
+}
+async function mfaVerifyCode() {
+  const code = $('#mfa-code').value.trim();
+  const err = $('#mfa-error');
+  err.hidden = true;
+  const btn = $('#mfa-verify');
+  busy(btn, true, '...');
+  try {
+    const res = await api('/api/auth/mfa/verify', {
+      method: 'POST',
+      body: { mfaToken, method: mfaRecoveryMode ? 'recovery' : 'totp', code },
+    });
+    setToken(res.token);
+    onAuthed(res.user);
+    exitMfaStep();
+  } catch (e) {
+    err.textContent = e.message;
+    err.hidden = false;
+  } finally {
+    busy(btn, false);
+  }
+}
+$('#mfa-verify').addEventListener('click', mfaVerifyCode);
+$('#mfa-code').addEventListener('keydown', (e) => e.key === 'Enter' && mfaVerifyCode());
+$('#mfa-recovery-toggle').addEventListener('click', (e) => {
+  e.preventDefault();
+  mfaRecoveryMode = !mfaRecoveryMode;
+  $('#mfa-prompt').textContent = mfaRecoveryMode
+    ? 'Entrez un de vos codes de récupération.'
+    : 'Entrez le code de votre application d’authentification.';
+  $('#mfa-code').placeholder = mfaRecoveryMode ? 'xxxxxx-xxxxxx' : 'Code à 6 chiffres';
+  $('#mfa-recovery-toggle').textContent = mfaRecoveryMode ? 'Utiliser l’application d’authentification' : 'Utiliser un code de récupération';
+});
+$('#mfa-cancel').addEventListener('click', (e) => { e.preventDefault(); exitMfaStep(); });
+$('#mfa-webauthn').addEventListener('click', async (ev) => {
+  busy(ev.currentTarget, true, '...');
+  try {
+    const options = await api('/api/auth/mfa/webauthn/auth/options', { method: 'POST', body: { mfaToken } });
+    const assertion = await webauthnGet(options);
+    const res = await api('/api/auth/mfa/webauthn/auth/verify', { method: 'POST', body: { mfaToken, response: assertion } });
+    setToken(res.token);
+    onAuthed(res.user);
+    exitMfaStep();
+  } catch (e) {
+    $('#mfa-error').textContent = e.message || 'Échec de la clé';
+    $('#mfa-error').hidden = false;
+  } finally {
+    busy(ev.currentTarget, false);
   }
 });
 $('#logout-btn').addEventListener('click', () => {

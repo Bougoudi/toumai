@@ -40,6 +40,20 @@
           <div id="auth-error" class="auth-error" hidden></div>
           <button class="btn btn-primary auth-submit" id="a-submit" type="submit">Se connecter</button>
         </form>
+
+        <!-- Étape 2 : second facteur -->
+        <div id="mfa-step" hidden>
+          <h4 style="margin-top:0">Vérification en deux étapes</h4>
+          <p class="muted" id="mfa-prompt">Entrez le code de votre application d'authentification.</p>
+          <div class="field">
+            <input class="input" id="mfa-code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code à 6 chiffres" />
+          </div>
+          <div id="mfa-error" class="auth-error" hidden></div>
+          <button class="btn btn-primary auth-submit" id="mfa-verify" type="button">Valider</button>
+          <button class="btn btn-ghost auth-submit" id="mfa-webauthn" type="button" hidden style="margin-top:8px">🔑 Utiliser une clé de sécurité</button>
+          <p class="auth-hint"><a href="#" id="mfa-recovery-toggle">Utiliser un code de récupération</a> · <a href="#" id="mfa-cancel">Annuler</a></p>
+        </div>
+
         <p class="auth-hint" id="auth-hint">Première utilisation ? Le premier compte créé devient administrateur.</p>
       </div>
     </div>
@@ -256,6 +270,10 @@
 
       <!-- PARAMÈTRES -->
       <section class="panel" id="tab-settings">
+        <div class="card">
+          <h3>Sécurité du compte (double authentification)</h3>
+          <div id="security-panel"></div>
+        </div>
         <div class="card">
           <h3>Réglages de l'application</h3>
           <div class="form-grid" id="settings-form"></div>

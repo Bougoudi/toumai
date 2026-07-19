@@ -1,6 +1,6 @@
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
-import { hashPassword, signToken, verifyPassword } from '../../utils/auth.js';
+import { hashPassword, signMfaChallenge, signToken, verifyPassword } from '../../utils/auth.js';
 import type { LoginInput, RegisterInput } from './auth.schema.js';
 
 function publicUser(u: { id: string; name: string; email: string; role: string }) {
@@ -26,14 +26,35 @@ export const authService = {
     return { token: signToken(user), user: publicUser(user) };
   },
 
-  /** Authentifie un utilisateur et renvoie un jeton. */
+  /**
+   * Étape 1 : mot de passe. Si un second facteur est activé, renvoie un défi MFA
+   * (aucun accès tant que le 2e facteur n'est pas validé) ; sinon, un jeton complet.
+   */
   async login(input: LoginInput) {
     const email = input.email.toLowerCase();
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { _count: { select: { credentials: true } } },
+    });
     // Message générique pour ne pas révéler l'existence d'un compte.
     if (!user || !(await verifyPassword(input.password, user.passwordHash))) {
       throw new HttpError(401, 'Email ou mot de passe incorrect');
     }
+    const methods: string[] = [];
+    if (user.totpEnabled) methods.push('totp');
+    if (user._count.credentials > 0) methods.push('webauthn');
+    if (user.recoveryCodes) methods.push('recovery');
+
+    if (methods.length > 0) {
+      return { mfaRequired: true, mfaToken: signMfaChallenge(user.id), methods };
+    }
+    return { token: signToken(user), user: publicUser(user) };
+  },
+
+  /** Étape 2 : émet le jeton complet après validation du second facteur. */
+  async issueSession(userId: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new HttpError(404, 'Utilisateur introuvable');
     return { token: signToken(user), user: publicUser(user) };
   },
 

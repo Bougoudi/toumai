@@ -58,6 +58,36 @@ export function signToken(user: { id: string; email: string; role: string }): st
   return `${header}.${payload}.${sig}`;
 }
 
+/**
+ * Jeton de défi MFA (court, 5 min) : émis après le mot de passe, échangé contre
+ * un vrai jeton une fois le second facteur validé. Ne donne aucun accès à l'API.
+ */
+export function signMfaChallenge(userId: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = b64url(JSON.stringify({ sub: userId, purpose: 'mfa', iat: now, exp: now + 300 }));
+  const sig = sign(`${header}.${payload}`);
+  return `${header}.${payload}.${sig}`;
+}
+
+/** Vérifie un jeton de défi MFA et renvoie l'id utilisateur, ou null. */
+export function verifyMfaChallenge(token: string): string | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [header, payload, sig] = parts;
+  const expected = sign(`${header}.${payload}`);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    if (data.purpose !== 'mfa' || (data.exp && data.exp < Math.floor(Date.now() / 1000))) return null;
+    return data.sub as string;
+  } catch {
+    return null;
+  }
+}
+
 /** Vérifie un JWT et renvoie sa charge utile, ou null si invalide/expiré. */
 export function verifyToken(token: string): TokenPayload | null {
   const parts = token.split('.');

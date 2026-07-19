@@ -9,6 +9,7 @@ maximum la surface d'attaque.
 | Domaine | Mesure |
 | ------- | ------ |
 | **Authentification** | Comptes protégés par JWT (HS256) signé ; mots de passe hachés en **scrypt** (jamais stockés en clair). Toutes les routes `/api/*` exigent un jeton valide, sauf `/api/auth/*`, `/health` et le webhook Stripe. |
+| **Double authentification (2FA)** | **TOTP** (application d'authentification : Google Authenticator, Authy, 1Password…), **clés de sécurité / passkeys** (WebAuthn), et **codes de récupération** à usage unique. Connexion en deux étapes (mot de passe → second facteur). **Aucun code par SMS** (risque de détournement de carte SIM). Le secret TOTP et les codes de récupération sont chiffrés en base. |
 | **Force brute** | Limitation de débit stricte sur `/api/auth` (10 tentatives / 15 min / IP) et globale sur l'API (300 req/min/IP). |
 | **En-têtes HTTP** | Helmet : CSP restrictive, `X-Content-Type-Options`, `X-Frame-Options`/`frame-ancestors 'none'` (anti-clickjacking), HSTS (sur HTTPS), `Referrer-Policy: no-referrer`, masquage de `X-Powered-By`. |
 | **Secrets sensibles** | Identifiants des canaux (clés API / jetons OAuth) **chiffrés en base** (AES-256-GCM). Jamais renvoyés en clair par l'API (valeurs masquées). |
@@ -35,7 +36,6 @@ maximum la surface d'attaque.
 
 ## Améliorations possibles (non incluses)
 
-- Double authentification (2FA / TOTP) pour les comptes admin.
 - Révocation de jetons (liste noire ou jetons courts + refresh).
 - Journal d'audit des actions sensibles.
 - WAF / protection anti-DDoS au niveau infrastructure.

@@ -74,6 +74,9 @@ body {
 .btn-ghost { background: transparent; }
 .btn-xs { padding: 5px 10px; font-size: 12px; }
 .line-copy { background: var(--card-2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; margin-bottom: 8px; font-size: 13.5px; }
+.sec-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.sec-row:last-child { border-bottom: none; }
+.sec-row code { background: var(--card-2); padding: 2px 6px; border-radius: 5px; font-size: 12px; }
 .btn:disabled { opacity: 0.55; cursor: default; }
 
 /* Tabs */

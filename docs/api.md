@@ -28,6 +28,29 @@ Toutes les routes `/api/*` exigent l'en-tête `Authorization: Bearer <jeton>`,
 Le jeton est un **JWT** (HS256) signé avec `JWT_SECRET` ; les mots de passe sont
 hachés en **scrypt**. Une requête protégée sans jeton valide renvoie `401`.
 
+### Double authentification (2FA) — `/api/auth/mfa`
+
+Si un second facteur est activé, `login` renvoie `{ mfaRequired: true, mfaToken, methods }`
+(aucun accès tant que le 2e facteur n'est pas validé).
+
+| Méthode | Route                                      | Description                                    |
+| ------- | ------------------------------------------ | ---------------------------------------------- |
+| GET     | `/api/auth/mfa/status`                     | Facteurs activés (TOTP, codes, clés)           |
+| POST    | `/api/auth/mfa/totp/setup`                 | Démarre le TOTP → `qrDataUrl` + `secret`       |
+| POST    | `/api/auth/mfa/totp/enable`                | Active après vérif `{ code }` → codes de récupération |
+| POST    | `/api/auth/mfa/totp/disable`               | Désactive le TOTP                              |
+| POST    | `/api/auth/mfa/recovery/regenerate`        | Régénère les codes de récupération             |
+| POST    | `/api/auth/mfa/webauthn/register/options`  | Options d'enregistrement d'une clé (WebAuthn)  |
+| POST    | `/api/auth/mfa/webauthn/register/verify`   | Enregistre la clé `{ response, name }`         |
+| DELETE  | `/api/auth/mfa/webauthn/:id`               | Retire une clé de sécurité                     |
+| POST    | `/api/auth/mfa/verify`                     | Étape 2 : `{ mfaToken, method: totp\|recovery, code }` → jeton |
+| POST    | `/api/auth/mfa/webauthn/auth/options`      | Étape 2 : options d'authentification par clé   |
+| POST    | `/api/auth/mfa/webauthn/auth/verify`       | Étape 2 : `{ mfaToken, response }` → jeton     |
+
+Facteurs : **TOTP** (app d'authentification), **clés de sécurité / passkeys**
+(WebAuthn), **codes de récupération** à usage unique. **Aucun SMS** (anti SIM-swap).
+Le secret TOTP et les codes de récupération sont **chiffrés** en base.
+
 ## Pilote automatique & tableau de bord
 
 | Méthode | Route                  | Description                                        |
