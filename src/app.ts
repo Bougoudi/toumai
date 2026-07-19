@@ -12,6 +12,7 @@ import { autopilotRouter, dashboardRouter } from './modules/dashboard/dashboard.
 import { discoveryRouter, favoriteRouter } from './modules/discovery/discovery.routes.js';
 import { reportRouter } from './modules/reports/report.routes.js';
 import { toolsRouter } from './modules/tools/tools.routes.js';
+import { walletRouter } from './modules/wallet/wallet.routes.js';
 import { marketRouter } from './modules/market/market.routes.js';
 import { paymentController } from './modules/payments/payment.controller.js';
 import { paymentRouter } from './modules/payments/payment.routes.js';
@@ -105,6 +106,7 @@ export function createApp() {
   app.use('/api/ads', adRouter); // publicités
   app.use('/api/tools', toolsRouter); // titres optimisés
   app.use('/api/reports', reportRouter); // tableur P&L
+  app.use('/api/wallet', walletRouter); // portefeuille / retraits
 
   app.use(notFound);
   app.use(errorHandler);

@@ -101,6 +101,25 @@ model Ad {
   @@index([productId])
 }
 
+/// Demande de retrait des bénéfices (payout).
+model Withdrawal {
+  id          String    @id @default(cuid())
+  amount      Float
+  currency    String    @default("EUR")
+  /// bank | paypal
+  method      String
+  /// Destination masquée (IBAN partiel / email PayPal).
+  destination String
+  /// PENDING | APPROVED | PAID | REJECTED
+  status      String    @default("PENDING")
+  note        String?
+
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([status])
+}
+
 /// Canal de vente connecté (Etsy, eBay, Amazon...).
 model SalesChannel {
   id         String   @id @default(cuid())

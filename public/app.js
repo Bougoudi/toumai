@@ -777,6 +777,61 @@ $('#export-csv').addEventListener('click', async () => {
   } catch (e) { toast(e.message); }
 });
 
+// ── Portefeuille / Retrait ─────────────────────────────────
+async function loadWallet() {
+  try {
+    const w = await api('/api/wallet');
+    $('#wallet-kpis').innerHTML =
+      kpiCard('green', 'Solde disponible', money(w.available, w.currency), 'retirable maintenant') +
+      kpiCard('', 'Bénéfices totaux', money(w.profit, w.currency), '') +
+      kpiCard('', 'En cours de retrait', money(w.reserved, w.currency), 'demandes en attente');
+    const labels = { PENDING: 'En attente', APPROVED: 'Approuvé', PAID: 'Payé', REJECTED: 'Rejeté/Annulé' };
+    const rows = w.withdrawals.map((x) => [
+      new Date(x.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }),
+      `<span class="num">${money(x.amount, x.currency)}</span>`,
+      x.method === 'paypal' ? 'PayPal' : 'Virement',
+      esc(x.destination),
+      badge(x.status),
+      x.status === 'PENDING' ? `<button class="btn btn-ghost btn-xs" data-wcancel="${x.id}">Annuler</button>` : '',
+    ]);
+    $('#withdrawals-table').innerHTML = tableHtml(['Date', 'Montant', 'Méthode', 'Destination', 'Statut', ''], rows);
+    document.querySelectorAll('#withdrawals-table [data-wcancel]').forEach((b) =>
+      b.addEventListener('click', async () => { await api('/api/wallet/' + b.dataset.wcancel + '/cancel', { method: 'POST' }); toast('Demande annulée'); loadWallet(); }),
+    );
+  } catch (e) { toast(e.message); }
+}
+$('#withdraw-btn').addEventListener('click', async () => {
+  const w = await api('/api/wallet').catch(() => null);
+  if (!w) return;
+  openModal(
+    '<h2>Demander un retrait</h2>' +
+    `<p class="muted">Solde disponible : <b>${money(w.available, w.currency)}</b></p>` +
+    '<div class="form-grid">' +
+    '<div class="field"><label>Montant</label><input class="input" id="wd-amount" type="number" min="1" step="0.01"/></div>' +
+    '<div class="field"><label>Méthode</label><select class="input" id="wd-method"><option value="bank">Virement bancaire (IBAN)</option><option value="paypal">PayPal</option></select></div>' +
+    '<div class="field full"><label>Destination (IBAN ou email PayPal)</label><input class="input" id="wd-dest" placeholder="FR76…  ou  email@exemple.com"/></div>' +
+    '</div>' +
+    '<div class="form-actions"><button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="wd-submit">Confirmer le retrait</button></div>');
+  $('#modal-content [data-close]').addEventListener('click', closeModal);
+  $('#wd-submit').addEventListener('click', async (ev) => {
+    const amount = Number($('#wd-amount').value);
+    const method = $('#wd-method').value;
+    const destination = $('#wd-dest').value.trim();
+    if (!amount || amount <= 0) return toast('Montant invalide');
+    if (!destination) return toast('Indiquez une destination');
+    busy(ev.currentTarget, true, '...');
+    try {
+      // Action sensible → ré-authentification (step-up) avant le retrait.
+      const su = await promptStepUp();
+      if (!su) { busy(ev.currentTarget, false); return; }
+      await api('/api/wallet/withdraw', { method: 'POST', body: { amount, method, destination }, stepUp: su });
+      toast('Demande de retrait enregistrée');
+      closeModal();
+      loadWallet();
+    } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+  });
+});
+
 // ── Paramètres ─────────────────────────────────────────────
 const SETTING_FIELDS = [
   { key: 'defaultMarkup', label: 'Marge (multiplicateur prix de vente)', type: 'number', step: '0.1' },
@@ -1008,6 +1063,7 @@ const loaders = {
   competitors: loadCompetitors,
   ads: loadAds,
   reports: loadReports,
+  wallet: loadWallet,
   settings: loadSettingsTab,
 };
 

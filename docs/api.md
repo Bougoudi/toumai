@@ -245,6 +245,20 @@ en clair par l'API (valeurs secrètes masquées).
 - **eBay** : `accessToken` (OAuth2) + IDs de politiques (fulfillment/payment/return) + `merchantLocationKey`.
 - **Amazon** : `lwaClientId`, `lwaClientSecret`, `refreshToken`, `region`, `marketplaceId`, `sellerId` (compte vendeur Pro + SP-API validée).
 
+## Portefeuille / Retrait — `/api/wallet`
+
+| Méthode | Route                     | Description                                     |
+| ------- | ------------------------- | ----------------------------------------------- |
+| GET     | `/api/wallet`             | Solde (disponible, bénéfices, en cours) + historique |
+| POST    | `/api/wallet/withdraw`    | Demander un retrait (**step-up requis** via `x-step-up`) |
+| POST    | `/api/wallet/:id/cancel`  | Annuler une demande en attente                  |
+
+Le solde disponible = bénéfices − retraits engagés. Le montant est contrôlé
+côté serveur (≤ solde). Le retrait est une **action sensible** : ré-authentification
+obligatoire. La destination (IBAN / email PayPal) est **masquée** en base et à
+l'affichage. Le versement réel se branche via un prestataire (Stripe Payouts /
+virement).
+
 ## Paiement — `/api/payments` (Stripe)
 
 | Méthode | Route                            | Description                                   |
