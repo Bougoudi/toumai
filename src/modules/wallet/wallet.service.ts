@@ -6,13 +6,25 @@ import { reportService } from '../reports/report.service.js';
 /** Statuts qui « réservent » de l'argent (non encore rejetés). */
 const RESERVING = ['PENDING', 'APPROVED', 'PAID'];
 
-/** Masque une destination (IBAN / email) pour l'affichage et le stockage. */
+/** Détecte le réseau de carte à partir du numéro (Visa / Mastercard / ...). */
+function cardBrand(num: string): string {
+  if (/^4/.test(num)) return 'Visa';
+  if (/^(5[1-5]|2[2-7])/.test(num)) return 'Mastercard';
+  if (/^3[47]/.test(num)) return 'Amex';
+  return 'Carte';
+}
+
+/** Masque une destination (IBAN / email / carte) pour l'affichage et le stockage. */
 function maskDestination(method: string, dest: string): string {
   const d = dest.trim();
   if (method === 'paypal') {
     const [user, domain] = d.split('@');
     if (!domain) return '•••';
     return `${user.slice(0, 2)}•••@${domain}`;
+  }
+  if (method === 'card') {
+    const num = d.replace(/\D+/g, '');
+    return `${cardBrand(num)} •••• ${num.slice(-4)}`;
   }
   // IBAN : garde les 4 derniers.
   const clean = d.replace(/\s+/g, '');
@@ -46,7 +58,7 @@ export const walletService = {
    * Crée une demande de retrait. Vérifie le montant contre le solde disponible.
    * (La route exige une ré-authentification « step-up ».)
    */
-  async request(input: { amount: number; method: 'bank' | 'paypal'; destination: string }) {
+  async request(input: { amount: number; method: 'bank' | 'paypal' | 'card'; destination: string }) {
     if (input.amount <= 0) throw new HttpError(400, 'Montant invalide.');
     const { available, currency } = await this.balance();
     if (input.amount > available) {

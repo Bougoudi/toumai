@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Toumai">
+  <defs>
+    <linearGradient id="tmg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2dd4ee"/>
+      <stop offset="1" stop-color="#0891a6"/>
+    </linearGradient>
+  </defs>
+  <rect x="3" y="3" width="58" height="58" rx="16" fill="url(#tmg)"/>
+  <!-- sac de shopping -->
+  <path d="M22 27 h20 l-1.6 19.6 a4 4 0 0 1-4 3.7 H27.6 a4 4 0 0 1-4-3.7 Z" fill="#ffffff"/>
+  <path d="M26.6 27 v-3.4 a5.4 5.4 0 0 1 10.8 0 V27" fill="none" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+  <!-- éclair : automatisation -->
+  <path d="M34 30.5 l-6.2 9.4 h4.4 l-1.9 7.1 7.2 -10.2 h-4.6 z" fill="#0e7490"/>
+</svg>

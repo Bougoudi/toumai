@@ -805,7 +805,7 @@ async function loadWallet() {
     const rows = w.withdrawals.map((x) => [
       new Date(x.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }),
       `<span class="num">${money(x.amount, x.currency)}</span>`,
-      x.method === 'paypal' ? 'PayPal' : 'Virement',
+      { paypal: 'PayPal', card: 'Carte', bank: 'Virement' }[x.method] || x.method,
       esc(x.destination),
       badge(x.status),
       x.status === 'PENDING' ? `<button class="btn btn-ghost btn-xs" data-wcancel="${x.id}">Annuler</button>` : '',
@@ -824,11 +824,18 @@ $('#withdraw-btn').addEventListener('click', async () => {
     `<p class="muted">Solde disponible : <b>${money(w.available, w.currency)}</b></p>` +
     '<div class="form-grid">' +
     '<div class="field"><label>Montant</label><input class="input" id="wd-amount" type="number" min="1" step="0.01"/></div>' +
-    '<div class="field"><label>Méthode</label><select class="input" id="wd-method"><option value="bank">Virement bancaire (IBAN)</option><option value="paypal">PayPal</option></select></div>' +
-    '<div class="field full"><label>Destination (IBAN ou email PayPal)</label><input class="input" id="wd-dest" placeholder="FR76…  ou  email@exemple.com"/></div>' +
+    '<div class="field"><label>Méthode</label><select class="input" id="wd-method"><option value="card">Carte (Visa / Mastercard)</option><option value="bank">Virement bancaire (IBAN)</option><option value="paypal">PayPal</option></select></div>' +
+    '<div class="field full"><label id="wd-dest-label">Numéro de carte</label><input class="input" id="wd-dest" placeholder="4242 4242 4242 4242"/></div>' +
     '</div>' +
     '<div class="form-actions"><button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="wd-submit">Confirmer le retrait</button></div>');
   $('#modal-content [data-close]').addEventListener('click', closeModal);
+  const DEST = { card: ['Numéro de carte', '4242 4242 4242 4242'], bank: ['IBAN', 'FR76…'], paypal: ['Email PayPal', 'email@exemple.com'] };
+  $('#wd-method').addEventListener('change', () => {
+    const [l, ph] = DEST[$('#wd-method').value];
+    $('#wd-dest-label').textContent = l;
+    $('#wd-dest').placeholder = ph;
+    $('#wd-dest').value = '';
+  });
   $('#wd-submit').addEventListener('click', async (ev) => {
     const amount = Number($('#wd-amount').value);
     const method = $('#wd-method').value;

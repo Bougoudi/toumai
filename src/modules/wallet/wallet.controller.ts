@@ -5,8 +5,8 @@ import { walletService } from './wallet.service.js';
 
 const withdrawSchema = z.object({
   amount: z.number().positive(),
-  method: z.enum(['bank', 'paypal']),
-  destination: z.string().min(3, 'Destination requise (IBAN ou email PayPal)'),
+  method: z.enum(['bank', 'paypal', 'card']),
+  destination: z.string().min(3, 'Destination requise (IBAN, email PayPal ou numéro de carte)'),
 });
 
 export const walletController = {
