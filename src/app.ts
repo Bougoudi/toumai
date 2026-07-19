@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import { apiLimiter, authLimiter, securityHeaders } from './middleware/security.js';
+import { apiLimiter, securityHeaders } from './middleware/security.js';
 import { requireAuth } from './middleware/requireAuth.js';
 import { asyncHandler } from './middleware/validate.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
@@ -82,8 +82,9 @@ export function createApp() {
     }),
   );
 
-  // Authentification : routes publiques (inscription / connexion), débit strict (anti-force brute).
-  app.use('/api/auth', authLimiter, authRouter);
+  // Authentification (la limite stricte anti-force brute est appliquée aux seules
+  // routes de vérification d'identifiants — voir auth.routes.ts).
+  app.use('/api/auth', authRouter);
 
   // À partir d'ici, toutes les routes /api exigent un jeton valide.
   app.use('/api', requireAuth);

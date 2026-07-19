@@ -51,6 +51,20 @@ Facteurs : **TOTP** (app d'authentification), **clés de sécurité / passkeys**
 (WebAuthn), **codes de récupération** à usage unique. **Aucun SMS** (anti SIM-swap).
 Le secret TOTP et les codes de récupération sont **chiffrés** en base.
 
+### Sécurité du compte — `/api/auth/security`
+
+| Méthode | Route                              | Description                                       |
+| ------- | ---------------------------------- | ------------------------------------------------- |
+| GET     | `/api/auth/security/policy`        | Politique 2FA (`enabled`, `enforced`, `recommended`) |
+| GET     | `/api/auth/security/history`       | Journal de connexions (date, méthode, appareil, nouvel appareil) |
+| POST    | `/api/auth/security/step-up`       | Ré-authentification `{ method: password\|totp, value }` → jeton step-up (2 min) |
+| POST    | `/api/auth/security/logout-all`    | Révoque toutes les sessions → nouveau jeton pour l'appareil courant |
+| POST    | `/api/auth/security/delete-account`| Supprime le compte (**step-up requis**)           |
+
+Les actions sensibles (`/mfa/totp/disable`, `/mfa/recovery/regenerate`,
+`DELETE /mfa/webauthn/:id`, `delete-account`) exigent l'en-tête **`x-step-up`**
+(jeton obtenu via `step-up`). Sinon → `403`. La 2FA est **imposée aux admins**.
+
 ## Pilote automatique & tableau de bord
 
 | Méthode | Route                  | Description                                        |

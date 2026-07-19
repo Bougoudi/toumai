@@ -37,12 +37,13 @@ export interface TokenPayload {
   sub: string; // user id
   email: string;
   role: string;
+  tv: number; // version de session (révocation)
   iat: number;
   exp: number;
 }
 
 /** Génère un JWT signé pour un utilisateur. */
-export function signToken(user: { id: string; email: string; role: string }): string {
+export function signToken(user: { id: string; email: string; role: string; tokenVersion?: number }): string {
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
   const payload = b64url(
@@ -50,12 +51,39 @@ export function signToken(user: { id: string; email: string; role: string }): st
       sub: user.id,
       email: user.email,
       role: user.role,
+      tv: user.tokenVersion ?? 0,
       iat: now,
       exp: now + env.auth.jwtTtlSeconds,
     }),
   );
   const sig = sign(`${header}.${payload}`);
   return `${header}.${payload}.${sig}`;
+}
+
+/** Jeton « step-up » (2 min) : preuve d'une ré-authentification récente pour une action sensible. */
+export function signStepUp(userId: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = b64url(JSON.stringify({ sub: userId, purpose: 'stepup', iat: now, exp: now + 120 }));
+  return `${header}.${payload}.${sign(`${header}.${payload}`)}`;
+}
+
+/** Vérifie un jeton step-up ; renvoie l'id utilisateur ou null. */
+export function verifyStepUp(token: string): string | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  const [header, payload, sig] = parts;
+  const expected = sign(`${header}.${payload}`);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    if (data.purpose !== 'stepup' || (data.exp && data.exp < Math.floor(Date.now() / 1000))) return null;
+    return data.sub as string;
+  } catch {
+    return null;
+  }
 }
 
 /**

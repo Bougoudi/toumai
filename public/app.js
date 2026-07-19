@@ -15,11 +15,12 @@ const TOKEN_KEY = 'toumai_token';
 const getToken = () => localStorage.getItem(TOKEN_KEY);
 const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
 
-async function api(path, { method = 'GET', body } = {}) {
+async function api(path, { method = 'GET', body, stepUp } = {}) {
   const headers = {};
   if (body) headers['Content-Type'] = 'application/json';
   const token = getToken();
   if (token) headers['Authorization'] = 'Bearer ' + token;
+  if (stepUp) headers['x-step-up'] = stepUp;
   const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && !path.startsWith('/api/auth')) {
@@ -871,15 +872,82 @@ async function loadSecurityPanel() {
     h += secRow('Clés de sécurité (WebAuthn)', s.securityKeys.length + ' enregistrée(s)',
       '<button class="btn btn-primary btn-xs" id="key-add">＋ Ajouter</button>');
     h += s.securityKeys.map((k) => secRow('🔑 ' + esc(k.name), '', `<button class="btn btn-ghost btn-xs" data-keydel="${k.id}">✕</button>`, true)).join('');
+    h += secRow('Sessions', 'Déconnecter tous les appareils', '<button class="btn btn-ghost btn-xs" id="logout-all">Se déconnecter de partout</button>');
+    h += secRow('Supprimer le compte', 'Action irréversible', '<button class="btn btn-ghost btn-xs" id="del-account" style="color:var(--red)">Supprimer</button>');
+    h += '<h4 style="margin-top:18px">Journal de connexions</h4><div id="login-history" class="table-wrap"></div>';
     el.innerHTML = h;
     $('#totp-setup')?.addEventListener('click', totpSetupFlow);
-    $('#totp-disable')?.addEventListener('click', async () => { if (confirm('Désactiver la double authentification ?')) { await api('/api/auth/mfa/totp/disable', { method: 'POST' }); toast('TOTP désactivé'); loadSecurityPanel(); } });
-    $('#recov-regen')?.addEventListener('click', async () => { const r = await api('/api/auth/mfa/recovery/regenerate', { method: 'POST' }); showRecoveryCodes(r.recoveryCodes); loadSecurityPanel(); });
+    $('#totp-disable')?.addEventListener('click', () => sensitiveAction('Désactiver la double authentification ?', (su) => api('/api/auth/mfa/totp/disable', { method: 'POST', stepUp: su }), 'TOTP désactivé'));
+    $('#recov-regen')?.addEventListener('click', () => sensitiveAction('Régénérer les codes ? Les anciens seront invalidés.', async (su) => { const r = await api('/api/auth/mfa/recovery/regenerate', { method: 'POST', stepUp: su }); showRecoveryCodes(r.recoveryCodes); }, ''));
     $('#key-add')?.addEventListener('click', addSecurityKey);
-    document.querySelectorAll('#security-panel [data-keydel]').forEach((b) => b.addEventListener('click', async () => { await api('/api/auth/mfa/webauthn/' + b.dataset.keydel, { method: 'DELETE' }); toast('Clé retirée'); loadSecurityPanel(); }));
+    document.querySelectorAll('#security-panel [data-keydel]').forEach((b) => b.addEventListener('click', () => sensitiveAction('Retirer cette clé de sécurité ?', (su) => api('/api/auth/mfa/webauthn/' + b.dataset.keydel, { method: 'DELETE', stepUp: su }), 'Clé retirée')));
+    $('#logout-all')?.addEventListener('click', async () => {
+      if (!confirm('Déconnecter tous les appareils (y compris ceux des autres navigateurs) ?')) return;
+      const r = await api('/api/auth/security/logout-all', { method: 'POST' });
+      setToken(r.token); // conserve l'appareil courant
+      toast('Déconnecté de tous les autres appareils');
+      loadSecurityPanel();
+    });
+    $('#del-account')?.addEventListener('click', () => sensitiveAction('Supprimer définitivement votre compte ? Cette action est irréversible.', (su) => api('/api/auth/security/delete-account', { method: 'POST', stepUp: su }), '', () => { setToken(null); location.reload(); }));
+    loadLoginHistory();
   } catch (e) {
     el.innerHTML = '<div class="muted">' + esc(e.message) + '</div>';
   }
+}
+
+// Journal de connexions
+async function loadLoginHistory() {
+  try {
+    const events = await api('/api/auth/security/history');
+    const rows = events.map((e) => [
+      new Date(e.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }),
+      { password: 'Mot de passe', totp: 'App (TOTP)', recovery: 'Code de récup.', webauthn: 'Clé de sécurité' }[e.method] || e.method,
+      esc((e.userAgent || '').split(')')[0].split('(')[1] || e.userAgent || '—').slice(0, 40),
+      e.newDevice ? '<span class="badge wait">Nouvel appareil</span>' : '<span class="badge ok">Connu</span>',
+    ]);
+    $('#login-history').innerHTML = tableHtml(['Date', 'Méthode', 'Appareil', ''], rows);
+  } catch (e) { /* ignore */ }
+}
+
+/**
+ * Exécute une action sensible : demande une ré-authentification (step-up),
+ * puis appelle l'action avec le jeton step-up. onDone optionnel après succès.
+ */
+async function sensitiveAction(confirmMsg, action, successMsg, onDone) {
+  if (!confirm(confirmMsg)) return;
+  try {
+    const su = await promptStepUp();
+    if (!su) return;
+    await action(su);
+    if (successMsg) toast(successMsg);
+    if (onDone) onDone(); else loadSecurityPanel();
+  } catch (e) { toast(e.message); }
+}
+
+// Demande une ré-authentification et renvoie un jeton step-up (ou null si annulé).
+function promptStepUp() {
+  return new Promise(async (resolve) => {
+    let hasTotp = false;
+    try { hasTotp = (await api('/api/auth/mfa/status')).totpEnabled; } catch {}
+    openModal(
+      '<h2>Confirmer votre identité</h2>' +
+      `<p class="muted">Pour cette action sensible, ${hasTotp ? 'entrez un code de votre application d’authentification' : 'entrez votre mot de passe'}.</p>` +
+      `<div class="field"><input class="input" id="su-value" type="${hasTotp ? 'text' : 'password'}" placeholder="${hasTotp ? 'Code à 6 chiffres' : 'Mot de passe'}"/></div>` +
+      '<div id="su-error" class="auth-error" hidden></div>' +
+      '<div class="form-actions"><button class="btn btn-ghost" id="su-cancel">Annuler</button><button class="btn btn-primary" id="su-ok">Confirmer</button></div>');
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; closeModal(); resolve(v); } };
+    $('#su-cancel').addEventListener('click', () => done(null));
+    $('#su-ok').addEventListener('click', async (ev) => {
+      busy(ev.currentTarget, true, '...');
+      try {
+        const r = await api('/api/auth/security/step-up', { method: 'POST', body: { method: hasTotp ? 'totp' : 'password', value: $('#su-value').value.trim() } });
+        done(r.stepUpToken);
+      } catch (e) {
+        $('#su-error').textContent = e.message; $('#su-error').hidden = false; busy(ev.currentTarget, false);
+      }
+    });
+  });
 }
 const secRow = (title, sub, action, indent) =>
   `<div class="sec-row"${indent ? ' style="padding-left:14px"' : ''}><div><b>${title}</b>${sub ? `<div class="muted">${sub}</div>` : ''}</div><div>${action}</div></div>`;
@@ -1135,10 +1203,34 @@ function onAuthed(user) {
   startApp();
 }
 
+/** Politique 2FA : obligatoire pour les admins, recommandée aux autres. */
+async function enforceMfaPolicy() {
+  let me;
+  try { me = await api('/api/auth/me'); } catch { return; }
+  if (!me.mfa || me.mfa.enabled) return;
+  if (me.mfa.enforced) {
+    // Admin sans 2FA : modale bloquante.
+    openModal(
+      '<h2>Sécurisez votre compte administrateur</h2>' +
+      '<p class="muted">En tant qu’administrateur, la double authentification est <b>obligatoire</b>. Activez-la maintenant pour continuer.</p>' +
+      '<div class="form-actions"><button class="btn btn-primary" id="enforce-go">Activer maintenant</button></div>');
+    // Pas de fermeture possible (on retire le backdrop-close).
+    $('#modal .modal-backdrop')?.removeAttribute('data-close');
+    $('#modal .modal-close')?.setAttribute('hidden', 'true');
+    $('#enforce-go').addEventListener('click', () => {
+      document.querySelector('[data-tab=settings]').click();
+      setTimeout(() => { closeModal(); totpSetupFlow(); }, 200);
+    });
+  } else if (me.mfa.recommended) {
+    toast('🔒 Conseil : activez la double authentification (Paramètres → Sécurité).');
+  }
+}
+
 let appStarted = false;
 function startApp() {
   if (appStarted) return;
   appStarted = true;
+  enforceMfaPolicy();
   api('/api/payments/status').then((s) => (paymentsEnabled = !!s.enabled)).catch(() => {});
   loadDashboard();
   refreshAutopilot();

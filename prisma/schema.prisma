@@ -159,10 +159,32 @@ model User {
   /// Codes de récupération (JSON de hachages, chiffré). Usage unique.
   recoveryCodes String?
 
+  /// Version des jetons : incrémentée pour révoquer toutes les sessions.
+  tokenVersion Int @default(0)
+
   credentials WebAuthnCredential[]
+  loginEvents LoginEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Événement de connexion (journal de sécurité).
+model LoginEvent {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// password | totp | recovery | webauthn
+  method    String
+  success   Boolean @default(true)
+  ip        String?
+  userAgent String?
+  /// Première connexion depuis cet appareil (empreinte IP+navigateur).
+  newDevice Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 /// Clé de sécurité / passkey (WebAuthn) d'un utilisateur.

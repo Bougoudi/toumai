@@ -6,6 +6,8 @@ import { parseBody } from '../../middleware/validate.js';
 import { verifyMfaChallenge } from '../../utils/auth.js';
 import { authService } from './auth.service.js';
 import { mfaService } from './mfa.service.js';
+import { reqMeta } from './security.controller.js';
+import { securityService } from './security.service.js';
 
 /** Résout l'id utilisateur depuis un jeton de défi MFA (étape 2 de connexion). */
 function requireMfaToken(req: Request): string {
@@ -60,6 +62,7 @@ export const mfaController = {
       ok = await mfaService.consumeRecoveryCode(userId, code);
     }
     if (!ok) throw new HttpError(401, 'Code incorrect.');
+    await securityService.recordLogin({ userId, method, ...reqMeta(req) });
     res.json(await authService.issueSession(userId));
   },
   async webauthnAuthOptions(req: Request, res: Response) {
@@ -71,6 +74,7 @@ export const mfaController = {
     const { response } = parseBody(z.object({ mfaToken: z.string(), response: z.any() }), req);
     const ok = await mfaService.webauthnAuthVerify(userId, response);
     if (!ok) throw new HttpError(401, 'Vérification de la clé échouée.');
+    await securityService.recordLogin({ userId, method: 'webauthn', ...reqMeta(req) });
     res.json(await authService.issueSession(userId));
   },
 };
