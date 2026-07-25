@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Toumai — Automatisation e-commerce</title>
+    <meta name="description" content="Analyse marché, génération de produits, sourcing, achat & expédition automatiques." />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/logo.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!-- ÉCRAN DE CONNEXION -->
+    <div id="auth-screen" class="auth-screen" hidden>
+      <div class="auth-card">
+        <div class="auth-brand">
+          <img src="/logo.svg" alt="Toumai" width="46" height="46" />
+          <h1>Toumai</h1>
+          <p>Automatisation e-commerce</p>
+        </div>
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-auth="login">Connexion</button>
+          <button class="auth-tab" data-auth="register">Créer un compte</button>
+        </div>
+        <form id="auth-form">
+          <div class="field" id="field-name" hidden>
+            <label>Nom</label>
+            <input class="input" id="a-name" autocomplete="name" placeholder="Votre nom" />
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input class="input" id="a-email" type="email" autocomplete="email" placeholder="email@exemple.com" />
+          </div>
+          <div class="field">
+            <label>Mot de passe</label>
+            <input class="input" id="a-password" type="password" autocomplete="current-password" placeholder="••••••••" />
+          </div>
+          <div id="auth-error" class="auth-error" hidden></div>
+          <button class="btn btn-primary auth-submit" id="a-submit" type="submit">Se connecter</button>
+        </form>
+
+        <!-- Étape 2 : second facteur -->
+        <div id="mfa-step" hidden>
+          <h4 style="margin-top:0">Vérification en deux étapes</h4>
+          <p class="muted" id="mfa-prompt">Entrez le code de votre application d'authentification.</p>
+          <div class="field">
+            <input class="input" id="mfa-code" inputmode="numeric" autocomplete="one-time-code" placeholder="Code à 6 chiffres" />
+          </div>
+          <div id="mfa-error" class="auth-error" hidden></div>
+          <button class="btn btn-primary auth-submit" id="mfa-verify" type="button">Valider</button>
+          <button class="btn btn-ghost auth-submit" id="mfa-webauthn" type="button" hidden style="margin-top:8px">🔑 Utiliser une clé de sécurité</button>
+          <p class="auth-hint"><a href="#" id="mfa-recovery-toggle">Utiliser un code de récupération</a> · <a href="#" id="mfa-cancel">Annuler</a></p>
+        </div>
+
+        <p class="auth-hint" id="auth-hint">Première utilisation ? Le premier compte créé devient administrateur.</p>
+      </div>
+    </div>
+
+    <header class="topbar">
+      <div class="brand">
+        <img src="/logo.svg" alt="Toumai" width="34" height="34" />
+        <div>
+          <h1>Toumai</h1>
+          <p>Automatisation e-commerce</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span id="autopilot-pill" class="pill pill-off">○ Pilote arrêté</span>
+        <button id="autopilot-toggle" class="btn btn-primary">Démarrer le pilote</button>
+        <button id="install-btn" class="btn btn-ghost" hidden>⤓ Installer</button>
+        <span id="user-chip" class="pill pill-off" hidden></span>
+        <button id="logout-btn" class="btn btn-ghost" hidden>Déconnexion</button>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="dashboard">Tableau de bord</button>
+      <button class="tab" data-tab="market">Marché</button>
+      <button class="tab" data-tab="products">Produits</button>
+      <button class="tab" data-tab="suppliers">Fournisseurs</button>
+      <button class="tab" data-tab="orders">Commandes</button>
+      <button class="tab" data-tab="channels">Canaux de vente</button>
+      <button class="tab" data-tab="discovery">Recherche</button>
+      <button class="tab" data-tab="competitors">Compétiteurs</button>
+      <button class="tab" data-tab="ads">Publicités</button>
+      <button class="tab" data-tab="reports">Tableur</button>
+      <button class="tab" data-tab="wallet">Portefeuille</button>
+      <button class="tab" data-tab="settings">Paramètres</button>
+    </nav>
+
+    <main>
+      <!-- TABLEAU DE BORD -->
+      <section class="panel active" id="tab-dashboard">
+        <div class="toolbar">
+          <button id="run-cycle" class="btn btn-primary">⚙️ Lancer un cycle complet</button>
+          <span id="cycle-status" class="muted"></span>
+        </div>
+        <div class="kpi-grid" id="kpis"></div>
+        <div class="card">
+          <h3>Finances</h3>
+          <div class="finance" id="finance"></div>
+        </div>
+        <div class="card">
+          <h3>Dernières commandes</h3>
+          <div id="recent-orders" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- MARCHÉ -->
+      <section class="panel" id="tab-market">
+        <div class="toolbar">
+          <input id="market-region" class="input" placeholder="Région (EU / Asia / Africa) — vide = toutes" />
+          <button id="scan-market" class="btn btn-primary">🔎 Analyser le marché</button>
+        </div>
+        <div class="card"><div id="market-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- PRODUITS -->
+      <section class="panel" id="tab-products">
+        <div class="toolbar">
+          <input id="p-search" class="input" placeholder="Rechercher un produit (nom, mots-clés)…" />
+          <input id="p-category" class="input input-sm" placeholder="Catégorie" />
+          <select id="p-status" class="input input-sm">
+            <option value="">Tous statuts</option>
+            <option value="ACTIVE">Actifs</option>
+            <option value="DRAFT">Brouillons</option>
+            <option value="ARCHIVED">Archivés</option>
+          </select>
+          <button id="p-filter" class="btn btn-ghost">Filtrer</button>
+        </div>
+        <div class="toolbar">
+          <input id="gen-count" class="input input-sm" type="number" min="1" value="20" />
+          <button id="generate" class="btn btn-primary">🏭 Générer des produits</button>
+          <span id="gen-status" class="muted"></span>
+        </div>
+        <div class="card"><div id="products-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- FOURNISSEURS -->
+      <section class="panel" id="tab-suppliers">
+        <div class="card">
+          <h3>Rechercher par produit (classement)</h3>
+          <div class="toolbar">
+            <input id="s-query" class="input" placeholder="Produit / mots-clés (ex: sesame)" />
+            <input id="s-category" class="input input-sm" placeholder="Catégorie" />
+            <input id="s-region" class="input input-sm" placeholder="Région" />
+            <button id="search-suppliers" class="btn btn-primary">🤝 Rechercher</button>
+          </div>
+          <div id="suppliers-table" class="table-wrap"></div>
+        </div>
+        <div class="card">
+          <h3>Annuaire des fournisseurs</h3>
+          <div class="toolbar">
+            <input id="d-region" class="input input-sm" placeholder="Région" />
+            <select id="d-rating" class="input input-sm">
+              <option value="">Toute note</option>
+              <option value="4">≥ 4 ★</option>
+              <option value="4.5">≥ 4,5 ★</option>
+            </select>
+            <label class="check"><input type="checkbox" id="d-verified" /> Vérifiés</label>
+            <button id="d-list" class="btn btn-ghost">Lister</button>
+          </div>
+          <div id="directory-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- COMMANDES -->
+      <section class="panel" id="tab-orders">
+        <div class="toolbar">
+          <button id="new-order" class="btn btn-primary">＋ Nouvelle commande</button>
+          <select id="o-status" class="input input-sm">
+            <option value="">Tous statuts</option>
+            <option value="PENDING">En attente</option>
+            <option value="PAID">Payées</option>
+            <option value="FULFILLING">En traitement</option>
+            <option value="SHIPPED">Expédiées</option>
+            <option value="DELIVERED">Livrées</option>
+            <option value="CANCELLED">Annulées</option>
+          </select>
+          <button id="refresh-orders" class="btn btn-ghost">↻ Actualiser</button>
+        </div>
+        <div class="card"><div id="orders-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- CANAUX DE VENTE -->
+      <section class="panel" id="tab-channels">
+        <div class="toolbar">
+          <button id="connect-channel" class="btn btn-primary">＋ Connecter un canal</button>
+          <button id="sync-all-channels" class="btn btn-ghost">↻ Synchroniser les commandes</button>
+        </div>
+        <div class="card"><div id="channels-table" class="table-wrap"></div></div>
+        <div class="card">
+          <h3>Comment ça marche</h3>
+          <p class="muted">Connectez vos boutiques <b>Etsy</b>, <b>eBay</b> et <b>Amazon</b> : Toumai importe
+          automatiquement les commandes clients, puis achète chez le fournisseur et expédie. Chaque canal
+          nécessite vos identifiants développeur de la plateforme (clé API / jeton OAuth). Amazon requiert
+          un compte vendeur Professionnel et une inscription SP-API validée.</p>
+        </div>
+      </section>
+
+      <!-- RECHERCHE (texte / photo / code-barres) + FAVORIS -->
+      <section class="panel" id="tab-discovery">
+        <div class="card">
+          <h3>Trouver des produits</h3>
+          <div class="toolbar">
+            <select id="d-mode" class="input input-sm">
+              <option value="text">Par écriture</option>
+              <option value="photo">Par photo (indice)</option>
+              <option value="barcode">Par code-barres</option>
+            </select>
+            <input id="d-input" class="input" placeholder="Mot-clé, indice photo, ou code-barres…" />
+            <button id="d-go" class="btn btn-primary">🔎 Rechercher</button>
+          </div>
+          <div id="discovery-results" class="table-wrap"></div>
+        </div>
+        <div class="card">
+          <h3>Générateur de titres optimisés</h3>
+          <div class="toolbar">
+            <input id="t-name" class="input" placeholder="Nom du produit (ex: gourde isotherme)" />
+            <input id="t-kw" class="input input-sm" placeholder="mots-clés" />
+            <button id="t-go" class="btn btn-ghost">Générer</button>
+          </div>
+          <div id="titles-out"></div>
+        </div>
+        <div class="card">
+          <h3>Mes favoris</h3>
+          <div id="favorites-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- COMPÉTITEURS -->
+      <section class="panel" id="tab-competitors">
+        <div class="toolbar">
+          <button id="add-competitor" class="btn btn-primary">＋ Ajouter une boutique</button>
+        </div>
+        <div class="card">
+          <h3>Boutiques suivies</h3>
+          <div id="competitors-table" class="table-wrap"></div>
+        </div>
+        <div class="card">
+          <h3>Produits gagnants détectés</h3>
+          <div id="winning-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- PUBLICITÉS -->
+      <section class="panel" id="tab-ads">
+        <div class="toolbar">
+          <select id="ad-product" class="input"></select>
+          <select id="ad-platform" class="input input-sm">
+            <option value="meta">Meta</option>
+            <option value="google">Google</option>
+            <option value="tiktok">TikTok</option>
+            <option value="ebay">eBay</option>
+          </select>
+          <button id="ad-generate" class="btn btn-primary">✨ Générer une pub</button>
+        </div>
+        <div class="card"><div id="ads-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- TABLEUR (P&L) -->
+      <section class="panel" id="tab-reports">
+        <div class="toolbar">
+          <button id="export-csv" class="btn btn-ghost">⤓ Exporter en CSV</button>
+        </div>
+        <div class="kpi-grid" id="pnl-kpis"></div>
+        <div class="card"><h3>Revenus / Coûts / Bénéfices par jour</h3><div id="pnl-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- PORTEFEUILLE / RETRAIT -->
+      <section class="panel" id="tab-wallet">
+        <div class="toolbar">
+          <button id="withdraw-btn" class="btn btn-primary">💸 Demander un retrait</button>
+        </div>
+        <div class="kpi-grid" id="wallet-kpis"></div>
+        <div id="payout-status"></div>
+        <div class="card"><h3>Historique des retraits</h3><div id="withdrawals-table" class="table-wrap"></div></div>
+        <div class="card">
+          <p class="muted">Le solde disponible correspond à vos bénéfices non encore retirés. Chaque demande de
+          retrait exige une <b>confirmation d'identité</b> (mot de passe ou code d'authentification). En production,
+          le versement réel s'effectue via un prestataire (Stripe Payouts / virement) — la mécanique est prête,
+          il suffit de brancher tes identifiants.</p>
+        </div>
+      </section>
+
+      <!-- PARAMÈTRES -->
+      <section class="panel" id="tab-settings">
+        <div class="card">
+          <h3>Sécurité du compte (double authentification)</h3>
+          <div id="security-panel"></div>
+        </div>
+        <div class="card">
+          <h3>Réglages de l'application</h3>
+          <div class="form-grid" id="settings-form"></div>
+          <div class="form-actions">
+            <button id="settings-reset" class="btn btn-ghost">Réinitialiser</button>
+            <button id="settings-save" class="btn btn-primary">Enregistrer</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Modale générique -->
+    <div id="modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-box" role="dialog" aria-modal="true">
+        <button class="modal-close" data-close aria-label="Fermer">×</button>
+        <div id="modal-content"></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

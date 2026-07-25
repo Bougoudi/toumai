@@ -1,0 +1,96 @@
+### Exemples de requêtes — Toumai (compatible REST Client / IntelliJ HTTP)
+@base = http://localhost:3000
+
+### Santé & index
+GET {{base}}/health
+###
+GET {{base}}/api
+
+# ─────────────────────────────────────────────────────────────
+# PILOTE AUTOMATIQUE & TABLEAU DE BORD
+# ─────────────────────────────────────────────────────────────
+
+### Vue d'ensemble (opportunités, produits, commandes, CA, profit)
+GET {{base}}/api/dashboard
+
+### Déclencher un cycle complet des 4 piliers à la demande
+POST {{base}}/api/autopilot/run
+
+# ─────────────────────────────────────────────────────────────
+# PILIER 1 — ANALYSE MARCHÉ
+# ─────────────────────────────────────────────────────────────
+
+### Lancer une analyse de marché
+POST {{base}}/api/market/scan
+Content-Type: application/json
+
+{ "region": "EU" }
+
+### Top opportunités
+GET {{base}}/api/market/opportunities?minScore=70&take=10
+
+### Marquer une opportunité à traiter
+PATCH {{base}}/api/market/opportunities/REMPLACER_PAR_ID
+Content-Type: application/json
+
+{ "status": "EVALUATED" }
+
+# ─────────────────────────────────────────────────────────────
+# PILIER 2 — GÉNÉRATION DE PRODUITS
+# ─────────────────────────────────────────────────────────────
+
+### Générer des produits en masse depuis les opportunités
+POST {{base}}/api/products/generate
+Content-Type: application/json
+
+{ "limit": 100, "minScore": 60, "autoPublish": true }
+
+### Historique des lots de génération
+GET {{base}}/api/products/generation-runs
+
+### Lister les produits actifs
+GET {{base}}/api/products?status=ACTIVE
+
+# ─────────────────────────────────────────────────────────────
+# PILIER 4 — SOURCING FOURNISSEURS
+# ─────────────────────────────────────────────────────────────
+
+### Fournisseurs vérifiés bien notés
+GET {{base}}/api/suppliers?verified=true&minRating=4
+
+### Recherche de fournisseurs (synchrone)
+POST {{base}}/api/search
+Content-Type: application/json
+
+{
+  "query": "sesame",
+  "category": "agroalimentaire",
+  "region": "Africa",
+  "targetUnitPrice": 1.3,
+  "targetQuantity": 2000,
+  "requiredCertifications": "ISO9001"
+}
+
+# ─────────────────────────────────────────────────────────────
+# PILIER 3 — ACHAT & EXPÉDITION
+# ─────────────────────────────────────────────────────────────
+
+### Créer une commande (client à la volée) — honorée automatiquement
+POST {{base}}/api/orders
+Content-Type: application/json
+
+{
+  "customer": { "name": "Aïcha", "email": "aicha@example.com",
+                "city": "Lyon", "country": "France", "zip": "69001" },
+  "items": [ { "productId": "REMPLACER_PAR_ID", "quantity": 3 } ],
+  "markPaid": true
+}
+
+### Forcer l'exécution (achat + expédition) d'une commande
+POST {{base}}/api/orders/REMPLACER_PAR_ID/fulfill
+
+### Détail d'une commande (bons d'achat + suivi)
+GET {{base}}/api/orders/REMPLACER_PAR_ID
+
+### Commandes expédiées
+GET {{base}}/api/orders?status=SHIPPED

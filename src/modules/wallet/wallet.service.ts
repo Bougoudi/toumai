@@ -1,0 +1,123 @@
+import { prisma } from '../../db/prisma.js';
+import { HttpError } from '../../middleware/errorHandler.js';
+import { getSettings } from '../settings/settings.service.js';
+import { reportService } from '../reports/report.service.js';
+import { payoutService } from './payout.service.js';
+
+/** Statuts qui « réservent » de l'argent (non encore rejetés). */
+const RESERVING = ['PENDING', 'APPROVED', 'PAID'];
+
+/** Détecte le réseau de carte à partir du numéro (Visa / Mastercard / ...). */
+function cardBrand(num: string): string {
+  if (/^4/.test(num)) return 'Visa';
+  if (/^(5[1-5]|2[2-7])/.test(num)) return 'Mastercard';
+  if (/^3[47]/.test(num)) return 'Amex';
+  return 'Carte';
+}
+
+/** Masque une destination (IBAN / email / carte) pour l'affichage et le stockage. */
+function maskDestination(method: string, dest: string): string {
+  const d = dest.trim();
+  if (method === 'paypal') {
+    const [user, domain] = d.split('@');
+    if (!domain) return '•••';
+    return `${user.slice(0, 2)}•••@${domain}`;
+  }
+  if (method === 'card') {
+    const num = d.replace(/\D+/g, '');
+    return `${cardBrand(num)} •••• ${num.slice(-4)}`;
+  }
+  // IBAN : garde les 4 derniers.
+  const clean = d.replace(/\s+/g, '');
+  return clean.length > 4 ? `•••• ${clean.slice(-4)}` : '••••';
+}
+
+export const walletService = {
+  /** Solde disponible = bénéfices − retraits déjà engagés. */
+  async balance() {
+    const { totals } = await reportService.pnl();
+    const agg = await prisma.withdrawal.aggregate({
+      _sum: { amount: true },
+      where: { status: { in: RESERVING } },
+    });
+    const reserved = agg._sum.amount ?? 0;
+    const available = Number((totals.profit - reserved).toFixed(2));
+    return {
+      currency: getSettings().currency,
+      profit: totals.profit,
+      revenue: totals.revenue,
+      reserved: Number(reserved.toFixed(2)),
+      available: Math.max(0, available),
+    };
+  },
+
+  /** État de la connexion Stripe Payouts (virements automatiques). */
+  payoutStatus() {
+    return payoutService.status();
+  },
+
+  /** Démarre l'onboarding Stripe Payouts et renvoie le lien hébergé. */
+  connectStripe() {
+    return payoutService.onboardingLink();
+  },
+
+  list() {
+    return prisma.withdrawal.findMany({ orderBy: { createdAt: 'desc' }, take: 50 });
+  },
+
+  /**
+   * Crée une demande de retrait. Vérifie le montant contre le solde disponible.
+   * (La route exige une ré-authentification « step-up ».)
+   */
+  async request(input: { amount: number; method: 'bank' | 'paypal' | 'card' | 'stripe'; destination?: string }) {
+    if (input.amount <= 0) throw new HttpError(400, 'Montant invalide.');
+    const { available, currency } = await this.balance();
+    if (input.amount > available) {
+      throw new HttpError(400, `Montant supérieur au solde disponible (${available} ${currency}).`);
+    }
+    const amount = Number(input.amount.toFixed(2));
+
+    // Virement automatique Stripe Payouts : transfert réel vers le compte connecté.
+    if (input.method === 'stripe') {
+      const res = await payoutService.payout(amount, currency);
+      return prisma.withdrawal.create({
+        data: {
+          amount,
+          currency,
+          method: 'stripe',
+          destination: res.destination,
+          status: res.status,
+          provider: 'stripe',
+          externalId: res.externalId,
+          processedAt: new Date(),
+        },
+      });
+    }
+
+    // Modes manuels (banque / PayPal / carte) : demande enregistrée en attente.
+    if (!input.destination || input.destination.trim().length < 3) {
+      throw new HttpError(400, 'Destination requise (IBAN, email PayPal ou numéro de carte).');
+    }
+    return prisma.withdrawal.create({
+      data: {
+        amount,
+        currency,
+        method: input.method,
+        destination: maskDestination(input.method, input.destination),
+        status: 'PENDING',
+        provider: 'manual',
+      },
+    });
+  },
+
+  /** Annule une demande encore en attente (libère les fonds réservés). */
+  async cancel(id: string) {
+    const w = await prisma.withdrawal.findUnique({ where: { id } });
+    if (!w) throw new HttpError(404, 'Retrait introuvable');
+    if (w.status !== 'PENDING') throw new HttpError(409, 'Seules les demandes en attente peuvent être annulées.');
+    return prisma.withdrawal.update({
+      where: { id },
+      data: { status: 'REJECTED', note: 'Annulé par l’utilisateur', processedAt: new Date() },
+    });
+  },
+};

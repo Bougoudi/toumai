@@ -1,0 +1,526 @@
+// Schéma de base de données — Toumai
+// Plateforme d'automatisation e-commerce / dropshipping.
+// Base : SQLite (par défaut). Migrable vers PostgreSQL en changeant `provider`.
+//
+// Les 4 piliers du logiciel :
+//   1. Analyse marché  -> MarketOpportunity
+//   2. Génération      -> Product / GenerationRun
+//   3. Achat & envoi   -> Customer / Order / OrderItem / PurchaseOrder
+//   4. Sourcing        -> Supplier / Offer / SearchRequest / SupplierMatch
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Réglage de l'application (clé/valeur).
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+/// Boutique concurrente suivie (veille marché).
+model Competitor {
+  id         String    @id @default(cuid())
+  /// ebay | etsy | amazon
+  platform   String    @default("ebay")
+  shopName   String
+  shopUrl    String?
+  /// Suivie automatiquement pour les nouveaux produits.
+  followed   Boolean   @default(false)
+  status     String    @default("ACTIVE")
+  lastScanAt DateTime?
+
+  products CompetitorProduct[]
+
+  createdAt DateTime @default(now())
+
+  @@index([platform])
+}
+
+/// Produit gagnant détecté chez un concurrent.
+model CompetitorProduct {
+  id           String     @id @default(cuid())
+  competitorId String
+  competitor   Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  externalId   String?
+  title        String
+  category     String     @default("divers")
+  price        Float?
+  currency     String     @default("EUR")
+  soldCount    Int        @default(0)
+  imageUrl     String?
+  url          String?
+  favorited    Boolean    @default(false)
+
+  foundAt DateTime @default(now())
+
+  @@unique([competitorId, externalId])
+  @@index([competitorId])
+  @@index([soldCount])
+}
+
+/// Produit mis en favori (issu d'une recherche ou d'un concurrent) à sourcer/publier.
+model Favorite {
+  id        String   @id @default(cuid())
+  /// competitor | search-text | search-photo | search-barcode | manual
+  source    String   @default("manual")
+  title     String
+  category  String   @default("divers")
+  keywords  String   @default("")
+  price     Float?
+  currency  String   @default("EUR")
+  imageUrl  String?
+  url       String?
+  /// Renseigné une fois le favori transformé en produit du catalogue.
+  productId String?
+
+  createdAt DateTime @default(now())
+}
+
+/// Publicité générée pour un produit.
+model Ad {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// meta | google | ebay | tiktok
+  platform  String  @default("meta")
+  headline  String
+  body      String
+  budget    Float   @default(0)
+  /// DRAFT | ACTIVE | PAUSED
+  status    String  @default("DRAFT")
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+}
+
+/// Demande de retrait des bénéfices (payout).
+model Withdrawal {
+  id          String    @id @default(cuid())
+  amount      Float
+  currency    String    @default("EUR")
+  /// bank | paypal | card | stripe
+  method      String
+  /// Destination masquée (IBAN partiel / email PayPal / carte / compte Stripe).
+  destination String
+  /// PENDING | APPROVED | PAID | REJECTED
+  status      String    @default("PENDING")
+  note        String?
+
+  /// manual (traité à la main) | stripe (virement automatique Stripe Payouts).
+  provider    String    @default("manual")
+  /// Identifiant du transfert/versement chez le prestataire (ex. Stripe tr_...).
+  externalId  String?
+
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([status])
+}
+
+/// Canal de vente connecté (Etsy, eBay, Amazon...).
+model SalesChannel {
+  id         String   @id @default(cuid())
+  /// etsy | ebay | amazon
+  type       String
+  name       String
+  /// CONNECTED | DISCONNECTED | ERROR
+  status     String   @default("DISCONNECTED")
+  /// Identifiants / jetons OAuth (JSON sérialisé). Jamais renvoyé tel quel par l'API.
+  config     String   @default("{}")
+  error      String?
+  lastSyncAt DateTime?
+
+  listings ChannelListing[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([status])
+}
+
+/// Annonce d'un produit publiée sur un canal de vente.
+model ChannelListing {
+  id         String       @id @default(cuid())
+  channelId  String
+  channel    SalesChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// Identifiant de l'annonce côté marketplace.
+  externalId String?
+  /// PUBLISHED | DRAFT | ERROR | UNPUBLISHED
+  status     String       @default("DRAFT")
+  url        String?
+  error      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([channelId, productId])
+  @@index([channelId])
+}
+
+/// Utilisateur de l'application (authentification).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  /// admin | user
+  role         String   @default("user")
+
+  /// Double authentification (TOTP — application d'authentification).
+  totpSecret   String? // chiffré ; secret partagé de l'application d'authentification
+  totpEnabled  Boolean @default(false)
+  /// Codes de récupération (JSON de hachages, chiffré). Usage unique.
+  recoveryCodes String?
+
+  /// Version des jetons : incrémentée pour révoquer toutes les sessions.
+  tokenVersion Int @default(0)
+
+  credentials WebAuthnCredential[]
+  loginEvents LoginEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Événement de connexion (journal de sécurité).
+model LoginEvent {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// password | totp | recovery | webauthn
+  method    String
+  success   Boolean @default(true)
+  ip        String?
+  userAgent String?
+  /// Première connexion depuis cet appareil (empreinte IP+navigateur).
+  newDevice Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Clé de sécurité / passkey (WebAuthn) d'un utilisateur.
+model WebAuthnCredential {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Identifiant de la clé (base64url), unique.
+  credentialId String   @unique
+  publicKey    String // clé publique (base64url)
+  counter      Int      @default(0)
+  transports   String   @default("")
+  name         String   @default("Clé de sécurité")
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. ANALYSE MARCHÉ
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Opportunité produit détectée par l'analyse de marché (produit gagnant potentiel).
+model MarketOpportunity {
+  id                 String  @id @default(cuid())
+  source             String // connecteur d'origine (trends, marketplace...)
+  externalId         String // identifiant stable côté source (déduplication)
+  title              String
+  category           String
+  keywords           String  @default("")
+  niche              String?
+  region             String?
+  currency           String  @default("EUR")
+
+  /// Scores 0..100 issus de l'analyse.
+  demandScore        Float   @default(0)
+  competitionScore   Float   @default(0)
+  trendScore         Float   @default(0)
+  /// Score global de recommandation (0..100).
+  opportunityScore   Float   @default(0)
+
+  estimatedCostPrice Float?
+  estimatedSalePrice Float?
+  estimatedMargin    Float?
+
+  /// NEW | EVALUATED | IMPORTED | REJECTED
+  status             String  @default("NEW")
+  /// Métriques brutes de la source (JSON sérialisé).
+  rawMetrics         String  @default("{}")
+
+  products Product[]
+
+  discoveredAt DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([source, externalId])
+  @@index([status])
+  @@index([opportunityScore])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. CATALOGUE / GÉNÉRATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Produit du catalogue (créé manuellement ou généré en masse depuis une opportunité).
+model Product {
+  id                     String             @id @default(cuid())
+  sku                    String?            @unique
+  name                   String
+  description            String?
+  category               String
+  keywords               String             @default("")
+  currency               String             @default("EUR")
+
+  /// Économie du produit (dropshipping).
+  costPrice              Float? // prix d'achat fournisseur
+  salePrice              Float? // prix de vente client
+  margin                 Float? // marge = salePrice - costPrice
+
+  /// DRAFT | ACTIVE | ARCHIVED
+  status                 String             @default("DRAFT")
+  /// Origine : manual | generated | import
+  source                 String             @default("manual")
+  images                 String             @default("") // URLs séparées par des virgules
+
+  // Critères de sourcing (pilier 4)
+  targetUnitPrice        Float?
+  targetQuantity         Int?
+  region                 String?
+  requiredCertifications String             @default("")
+
+  opportunityId String?
+  opportunity   MarketOpportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  searchRequests SearchRequest[]
+  orderItems     OrderItem[]
+  listings       ChannelListing[]
+  ads            Ad[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  generatedAt DateTime?
+
+  @@index([category])
+  @@index([status])
+}
+
+/// Lot de génération de produits (traçabilité de la fonctionnalité "centaines/jour").
+model GenerationRun {
+  id        String   @id @default(cuid())
+  source    String   @default("opportunities")
+  requested Int      @default(0)
+  generated Int      @default(0)
+  skipped   Int      @default(0)
+  failed    Int      @default(0)
+  /// RUNNING | COMPLETED | FAILED
+  status    String   @default("RUNNING")
+  params    String   @default("{}")
+  error     String?
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. COMMANDES / ACHAT & EXPÉDITION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Client final.
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  address   String?
+  city      String?
+  country   String?
+  zip       String?
+
+  orders Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}
+
+/// Commande client.
+model Order {
+  id          String  @id @default(cuid())
+  orderNumber String  @unique
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  /// PENDING | PAID | FULFILLING | SHIPPED | DELIVERED | CANCELLED
+  status   String  @default("PENDING")
+  currency String  @default("EUR")
+  total    Float   @default(0)
+
+  /// Origine de la commande : manual | etsy | ebay | amazon
+  channel    String  @default("manual")
+  /// Identifiant de la commande côté marketplace (déduplication à l'import).
+  externalId String?
+
+  items          OrderItem[]
+  purchaseOrders PurchaseOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([channel, externalId])
+  @@index([status])
+}
+
+/// Ligne de commande.
+model OrderItem {
+  id            String @id @default(cuid())
+  orderId       String
+  order         Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product @relation(fields: [productId], references: [id])
+  quantity      Int     @default(1)
+  unitSalePrice Float
+  unitCostPrice Float?
+
+  @@index([orderId])
+}
+
+/// Bon d'achat passé automatiquement chez un fournisseur pour honorer une commande.
+model PurchaseOrder {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  supplierId String
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  offerId    String?
+  offer      Offer?   @relation(fields: [offerId], references: [id], onDelete: SetNull)
+
+  /// CREATED | PLACED | SHIPPED | DELIVERED | FAILED
+  status         String  @default("CREATED")
+  cost           Float   @default(0)
+  currency       String  @default("EUR")
+  trackingNumber String?
+  carrier        String?
+  error          String?
+
+  createdAt DateTime  @default(now())
+  placedAt  DateTime?
+  shippedAt DateTime?
+
+  @@index([orderId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. SOURCING / FOURNISSEURS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Fournisseur référencé dans la base.
+model Supplier {
+  id             String  @id @default(cuid())
+  name           String
+  country        String?
+  region         String?
+  website        String?
+  email          String?
+  phone          String?
+  rating         Float   @default(0)
+  verified       Boolean @default(false)
+  certifications String  @default("")
+  leadTimeDays   Int?
+  minOrderValue  Float?
+  currency       String  @default("EUR")
+  source         String  @default("manual")
+
+  offers         Offer[]
+  matches        SupplierMatch[]
+  purchaseOrders PurchaseOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([region])
+  @@index([rating])
+}
+
+/// Offre (produit proposé) d'un fournisseur. Alimentée par les connecteurs.
+model Offer {
+  id           String   @id @default(cuid())
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  title        String
+  category     String
+  keywords     String   @default("")
+  unitPrice    Float?
+  currency     String   @default("EUR")
+  moq          Int?
+  leadTimeDays Int?
+  inStock      Boolean  @default(true)
+
+  matches        SupplierMatch[]
+  purchaseOrders PurchaseOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([supplierId])
+  @@index([category])
+}
+
+/// Demande de recherche de fournisseurs (synchrone ou asynchrone).
+model SearchRequest {
+  id                     String   @id @default(cuid())
+  productId              String?
+  product                Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  query                  String   @default("")
+  category               String?
+  keywords               String   @default("")
+  targetUnitPrice        Float?
+  targetQuantity         Int?
+  region                 String?
+  requiredCertifications String   @default("")
+  /// PENDING | RUNNING | COMPLETED | FAILED
+  status                 String   @default("PENDING")
+  error                  String?
+
+  matches SupplierMatch[]
+
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([status])
+}
+
+/// Résultat de matching : un fournisseur candidat classé pour une recherche.
+model SupplierMatch {
+  id              String        @id @default(cuid())
+  searchRequestId String
+  searchRequest   SearchRequest @relation(fields: [searchRequestId], references: [id], onDelete: Cascade)
+  supplierId      String
+  supplier        Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  offerId         String?
+  offer           Offer?        @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  score           Float
+  rank            Int
+  breakdown       String        @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([searchRequestId])
+  @@index([score])
+}
