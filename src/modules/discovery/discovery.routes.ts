@@ -5,7 +5,7 @@ import { discoveryController } from './discovery.controller.js';
 // Recherche de produits (texte / photo / code-barres)
 export const discoveryRouter = Router();
 discoveryRouter.get('/search/text', discoveryController.searchText);
-discoveryRouter.post('/search/photo', discoveryController.searchPhoto);
+discoveryRouter.post('/search/photo', asyncHandler(discoveryController.searchPhoto));
 discoveryRouter.get('/search/barcode/:code', discoveryController.searchBarcode);
 
 // Favoris

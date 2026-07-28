@@ -802,15 +802,17 @@ async function openCamera() {
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
     canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
     const thumb = $('#cam-thumb'); thumb.src = dataUrl; thumb.hidden = false;
     const hint = $('#cam-hint').value.trim();
-    if (!hint) return toast('Ajoute un mot-clé décrivant le produit.');
     busy(ev.currentTarget, true, '…');
     try {
-      const res = await api('/api/discovery/search/photo', { method: 'POST', body: { hint } });
+      // Envoie la photo (reconnaissance d'image si le service est configuré) + mot-clé optionnel.
+      const res = await api('/api/discovery/search/photo', { method: 'POST', body: { image: dataUrl, hint } });
       stopCamera(); closeModal(); renderDiscoveryResults(res);
-      toast('Recherche par photo effectuée');
+      toast(res.mode === 'ai' && res.detectedLabels?.length
+        ? 'Détecté : ' + res.detectedLabels.slice(0, 3).join(', ')
+        : 'Recherche par photo effectuée');
     } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
   });
 

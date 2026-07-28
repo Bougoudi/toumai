@@ -1,3 +1,4 @@
+import { getVisionConnector } from '../../automation/connectors/registry.js';
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { computeSalePrice } from '../../utils/pricing.js';
@@ -44,13 +45,44 @@ export const discoveryService = {
   },
 
   /**
-   * Recherche par photo. Sans service de vision branché, on s'appuie sur un
-   * indice textuel (`hint`) décrivant l'image. Branchez ici une API de vision
-   * (labels) puis réutilisez `makeIdeas(label)`.
+   * Recherche par photo.
+   *
+   * Si une image est fournie ET qu'un service de vision est configuré, on
+   * reconnaît le contenu de l'image (étiquettes) puis on cherche les produits
+   * correspondants. Sinon on retombe sur le mot-clé (`hint`) — aucune
+   * reconnaissance n'est inventée en l'absence de service de vision.
+   *
+   * Retourne aussi les étiquettes détectées (pour l'affichage) et le mode utilisé.
    */
-  searchPhoto(hint: string): Idea[] {
-    if (!hint) throw new HttpError(400, 'Fournissez un indice décrivant la photo (ex: "gourde", "lampe").');
-    return makeIdeas(hint, 'search-photo');
+  async searchPhoto(input: { hint?: string; image?: string }): Promise<{
+    results: Idea[];
+    detectedLabels: string[];
+    mode: 'ai' | 'keyword';
+  }> {
+    const vision = getVisionConnector();
+    let query = (input.hint ?? '').trim();
+    let detectedLabels: string[] = [];
+    let mode: 'ai' | 'keyword' = 'keyword';
+
+    if (input.image && vision) {
+      const labels = await vision.detectLabels(input.image);
+      detectedLabels = labels.slice(0, 5).map((l) => l.label);
+      if (detectedLabels.length) {
+        // Les 3 meilleures étiquettes forment la requête (complétée par le mot-clé).
+        query = [detectedLabels.slice(0, 3).join(' '), query].filter(Boolean).join(' ').trim();
+        mode = 'ai';
+      }
+    }
+
+    if (!query) {
+      throw new HttpError(
+        400,
+        input.image
+          ? 'Reconnaissance d’image non configurée : ajoutez un mot-clé, ou branchez VISION_API_URL.'
+          : 'Fournissez une photo (vision configurée) ou un indice (ex: "gourde", "lampe").',
+      );
+    }
+    return { results: makeIdeas(query, mode === 'ai' ? 'search-photo-ai' : 'search-photo'), detectedLabels, mode };
   },
 
   /** Recherche par code-barres (EAN/UPC). Mock : renvoie un produit dérivé du code. */

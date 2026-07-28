@@ -47,6 +47,8 @@ export const env = {
     market: { url: process.env.MARKET_API_URL ?? '', key: process.env.MARKET_API_KEY ?? '' },
     supplier: { url: process.env.SUPPLIER_API_URL ?? '', key: process.env.SUPPLIER_API_KEY ?? '' },
     fulfillment: { url: process.env.FULFILLMENT_API_URL ?? '', key: process.env.FULFILLMENT_API_KEY ?? '' },
+    /** Reconnaissance d'image (recherche produit par photo). */
+    vision: { url: process.env.VISION_API_URL ?? '', key: process.env.VISION_API_KEY ?? '' },
   },
 
   /** Authentification (JWT). */

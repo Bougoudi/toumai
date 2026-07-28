@@ -9,6 +9,8 @@ import type { MarketConnector } from './market/base.market.connector.js';
 import { HttpMarketConnector } from './market/http.market.connector.js';
 import { MockMarketConnector } from './market/mock.market.connector.js';
 import { MockConnector } from './mock.connector.js';
+import type { VisionConnector } from './vision/base.vision.connector.js';
+import { HttpVisionConnector } from './vision/http.vision.connector.js';
 
 /**
  * Sélectionne les connecteurs à utiliser : source HTTP réelle si `url`+`key`
@@ -41,4 +43,17 @@ export function getFulfillmentConnector(): FulfillmentConnector {
     return new HttpFulfillmentConnector(url, key);
   }
   return new MockFulfillmentConnector();
+}
+
+/**
+ * Connecteur de vision. Renvoie `null` s'il n'est pas configuré : la recherche
+ * par photo retombe alors sur le mot-clé fourni (aucune reconnaissance fabriquée).
+ */
+export function getVisionConnector(): VisionConnector | null {
+  const { url, key } = env.connectors.vision;
+  if (url && key) {
+    logger.info('Connecteur vision : HTTP (reconnaissance d’image réelle)');
+    return new HttpVisionConnector(url, key);
+  }
+  return null;
 }
