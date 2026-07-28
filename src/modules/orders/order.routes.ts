@@ -14,3 +14,7 @@ orderRouter.get('/', asyncHandler(orderController.list));
 orderRouter.get('/:id', asyncHandler(orderController.get));
 orderRouter.post('/:id/cancel', asyncHandler(orderController.cancel));
 orderRouter.post('/:id/fulfill', asyncHandler(orderController.fulfill));
+// Adresse de livraison : modifiable tant que la commande n'est pas expédiée.
+orderRouter.patch('/:id/shipping', asyncHandler(orderController.updateShipping));
+orderRouter.post('/:id/hold', asyncHandler(orderController.hold));
+orderRouter.post('/:id/confirm', asyncHandler(orderController.confirm));

@@ -80,6 +80,7 @@ function openModal(html) {
   $('#modal').hidden = false;
 }
 function closeModal() {
+  if (typeof stopCamera === 'function') stopCamera(); // coupe le flux caméra si ouvert
   $('#modal').hidden = true;
   $('#modal-content').innerHTML = '';
 }
@@ -330,7 +331,7 @@ async function loadOrders() {
         const row = [
           esc(o.orderNumber),
           esc(o.customer?.name || '—'),
-          badge(o.status),
+          badge(o.status) + (o.onHold ? ' <span class="badge wait">À vérifier</span>' : ''),
           `<span class="num">${money(o.total)}</span>`,
           dt(o.createdAt),
         ];
@@ -375,21 +376,43 @@ async function showOrder(id) {
       ]),
     );
     const canCancel = !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(o.status);
+    const shipped = o.purchaseOrders.some((p) => ['SHIPPED', 'DELIVERED'].includes(p.status));
+    const canEditAddress = canCancel && !shipped;
+    const c = o.customer || {};
+    const addrLines = [c.address, [c.zip, c.city].filter(Boolean).join(' '), c.country].filter(Boolean);
+    const addrHtml = addrLines.length ? addrLines.map(esc).join('<br>') : '<span class="muted">Aucune adresse renseignée</span>';
     openModal(`
       <h2>Commande ${esc(o.orderNumber)}</h2>
-      <div class="muted">${esc(o.customer?.name || '')} · ${esc(o.customer?.city || '')} ${esc(o.customer?.country || '')}</div>
+      <div class="muted">${esc(o.channel !== 'manual' ? o.channel.toUpperCase() + ' · ' : '')}${esc(c.name || '')}</div>
+      ${o.onHold ? '<div class="banner">📦 <b>À vérifier avant envoi.</b> Vérifie l’adresse de livraison, puis confirme pour envoyer la commande au fournisseur.</div>' : ''}
       <div class="kv">
-        <div class="k">Statut</div><div>${badge(o.status)}</div>
+        <div class="k">Statut</div><div>${badge(o.status)}${o.onHold ? ' <span class="badge wait">À vérifier</span>' : ''}</div>
         <div class="k">Total</div><div class="num">${money(o.total, o.currency)}</div>
         <div class="k">Créée le</div><div>${dt(o.createdAt)}</div>
+      </div>
+      <h4>Adresse de livraison ${canEditAddress ? `<button class="btn btn-ghost btn-xs" id="m-editaddr">✏️ Modifier</button>` : ''}</h4>
+      <div class="addr-box">
+        <div><b>${esc(c.name || '—')}</b>${c.phone ? ' · ' + esc(c.phone) : ''}</div>
+        <div>${addrHtml}</div>
       </div>
       <h4>Articles</h4><div class="table-wrap">${items}</div>
       <h4>Achats fournisseurs (expédition)</h4><div class="table-wrap">${pos}</div>
       <div class="form-actions">
+        ${o.onHold ? `<button class="btn btn-primary" id="m-confirm">✅ Confirmer &amp; envoyer</button>` : ''}
         ${o.status === 'PENDING' && paymentsEnabled ? `<button class="btn btn-primary" id="m-pay">💳 Payer par carte</button>` : ''}
-        ${o.status === 'PAID' || o.status === 'FULFILLING' ? `<button class="btn btn-primary" id="m-fulfill">Relancer l'expédition</button>` : ''}
+        ${!o.onHold && (o.status === 'PAID' || o.status === 'FULFILLING') ? `<button class="btn btn-primary" id="m-fulfill">Relancer l'expédition</button>` : ''}
         ${canCancel ? `<button class="btn btn-ghost" id="m-cancel">Annuler</button>` : ''}
       </div>`);
+    $('#m-editaddr')?.addEventListener('click', () => editShipping(id, c));
+    $('#m-confirm')?.addEventListener('click', async (ev) => {
+      busy(ev.currentTarget, true, 'Envoi…');
+      try {
+        await api(`/api/orders/${id}/confirm`, { method: 'POST' });
+        toast('Commande confirmée et envoyée au fournisseur');
+        showOrder(id);
+        loadOrders();
+      } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+    });
     $('#m-pay')?.addEventListener('click', async (ev) => {
       busy(ev.currentTarget, true, 'Redirection...');
       try {
@@ -425,6 +448,41 @@ async function showOrder(id) {
   } catch (e) {
     toast(e.message);
   }
+}
+
+/** Modale d'édition de l'adresse de livraison (avant envoi au fournisseur). */
+function editShipping(id, c) {
+  c = c || {};
+  const f = (k, label, full = false) =>
+    `<div class="field${full ? ' full' : ''}"><label>${label}</label><input class="input" id="sa-${k}" value="${esc(c[k] || '')}"/></div>`;
+  openModal(`
+    <h2>Modifier l'adresse de livraison</h2>
+    <p class="muted">Ces informations seront envoyées au fournisseur lors de l'expédition.</p>
+    <div class="form-grid">
+      ${f('name', 'Nom complet')}
+      ${f('phone', 'Téléphone')}
+      ${f('address', 'Adresse (rue, n°)', true)}
+      ${f('zip', 'Code postal')}
+      ${f('city', 'Ville')}
+      ${f('country', 'Pays')}
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost" data-close>Annuler</button>
+      <button class="btn btn-primary" id="sa-save">Enregistrer</button>
+    </div>`);
+  $('#modal-content [data-close]').addEventListener('click', () => showOrder(id));
+  $('#sa-save').addEventListener('click', async (ev) => {
+    const body = {};
+    for (const k of ['name', 'phone', 'address', 'zip', 'city', 'country']) body[k] = $('#sa-' + k).value.trim();
+    if (!body.name) return toast('Le nom est requis');
+    busy(ev.currentTarget, true, '…');
+    try {
+      await api(`/api/orders/${id}/shipping`, { method: 'PATCH', body });
+      toast('Adresse mise à jour');
+      showOrder(id);
+      loadOrders();
+    } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+  });
 }
 
 // ── Nouvelle commande (modale) ─────────────────────────────
@@ -630,6 +688,22 @@ $('#connect-channel').addEventListener('click', async () => {
 });
 
 // ── Recherche + favoris + titres ───────────────────────────
+/** Affiche une liste de résultats de recherche (partagée par la saisie et la caméra). */
+function renderDiscoveryResults(res) {
+  const rows = res.results.map((r, i) => [
+    esc(r.title), esc(r.category), `<span class="num">${money(r.estimatedPrice)}</span>`,
+    `<button class="btn btn-ghost btn-xs" data-fav="${i}">☆ Favori</button>`,
+  ]);
+  $('#discovery-results').innerHTML = tableHtml(['Produit', 'Catégorie', 'Prix estimé', ''], rows);
+  document.querySelectorAll('#discovery-results [data-fav]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const r = res.results[Number(b.dataset.fav)];
+      await api('/api/favorites', { method: 'POST', body: { source: r.source, title: r.title, category: r.category, keywords: r.keywords, price: r.estimatedPrice, imageUrl: r.imageUrl } });
+      toast('Ajouté aux favoris');
+      loadFavorites();
+    }),
+  );
+}
 async function doSearch() {
   const mode = $('#d-mode').value;
   const val = $('#d-input').value.trim();
@@ -638,26 +712,110 @@ async function doSearch() {
     if (mode === 'text') res = await api('/api/discovery/search/text?q=' + encodeURIComponent(val));
     else if (mode === 'photo') res = await api('/api/discovery/search/photo', { method: 'POST', body: { hint: val } });
     else res = await api('/api/discovery/search/barcode/' + encodeURIComponent(val));
-    const rows = res.results.map((r, i) => {
-      const row = [esc(r.title), esc(r.category), `<span class="num">${money(r.estimatedPrice)}</span>`,
-        `<button class="btn btn-ghost btn-xs" data-fav="${i}">☆ Favori</button>`];
-      return row;
-    });
-    $('#discovery-results').innerHTML = tableHtml(['Produit', 'Catégorie', 'Prix estimé', ''], rows);
-    document.querySelectorAll('#discovery-results [data-fav]').forEach((b) =>
-      b.addEventListener('click', async () => {
-        const r = res.results[Number(b.dataset.fav)];
-        await api('/api/favorites', { method: 'POST', body: { source: r.source, title: r.title, category: r.category, keywords: r.keywords, price: r.estimatedPrice, imageUrl: r.imageUrl } });
-        toast('Ajouté aux favoris');
-        loadFavorites();
-      }),
-    );
+    renderDiscoveryResults(res);
   } catch (e) {
     toast(e.message);
   }
 }
 $('#d-go').addEventListener('click', doSearch);
 $('#d-input').addEventListener('keydown', (e) => e.key === 'Enter' && doSearch());
+$('#d-cam').addEventListener('click', openCamera);
+
+// ── Caméra : scanner code-barres + photo produit ───────────
+let camStream = null;
+let camScanTimer = null;
+function stopCamera() {
+  if (camScanTimer) { clearInterval(camScanTimer); camScanTimer = null; }
+  if (camStream) { camStream.getTracks().forEach((t) => t.stop()); camStream = null; }
+}
+async function openCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return toast('Caméra non disponible sur cet appareil/navigateur.');
+  }
+  const scanSupported = 'BarcodeDetector' in window;
+  openModal(`
+    <h2>📷 Caméra</h2>
+    <div class="cam-modes">
+      <button class="btn btn-sm ${scanSupported ? 'btn-primary' : ''}" id="cam-mode-scan" ${scanSupported ? '' : 'disabled'}>Scanner code-barres</button>
+      <button class="btn btn-sm ${scanSupported ? '' : 'btn-primary'}" id="cam-mode-photo">Prendre une photo</button>
+    </div>
+    <div class="cam-wrap"><video id="cam-video" playsinline muted></video><div class="cam-frame"></div></div>
+    <canvas id="cam-canvas" hidden></canvas>
+    <div id="cam-photo-panel" hidden>
+      <div class="field"><label>Mot-clé du produit (aide la recherche)</label>
+        <input class="input" id="cam-hint" placeholder="ex: gourde, lampe, brosse…"/></div>
+      <img id="cam-thumb" alt="" class="cam-thumb" hidden/>
+    </div>
+    <p class="muted" id="cam-status">${scanSupported ? 'Vise un code-barres — détection automatique.' : 'Le scanner de code-barres n’est pas supporté ici : prends une photo.'}</p>
+    <div class="form-actions">
+      <button class="btn btn-ghost" data-close>Fermer</button>
+      <button class="btn btn-primary" id="cam-capture" hidden>📸 Capturer &amp; rechercher</button>
+    </div>`);
+  $('#modal-content [data-close]').addEventListener('click', () => { stopCamera(); closeModal(); });
+
+  const video = $('#cam-video');
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    video.srcObject = camStream;
+    await video.play();
+  } catch (e) {
+    $('#cam-status').textContent = 'Accès caméra refusé. Autorise la caméra dans le navigateur.';
+    return;
+  }
+
+  let mode = scanSupported ? 'scan' : 'photo';
+  const detector = scanSupported ? new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'qr_code'] }) : null;
+
+  const setMode = (m) => {
+    mode = m;
+    $('#cam-mode-scan')?.classList.toggle('btn-primary', m === 'scan');
+    $('#cam-mode-photo').classList.toggle('btn-primary', m === 'photo');
+    $('#cam-photo-panel').hidden = m !== 'photo';
+    $('#cam-capture').hidden = m !== 'photo';
+    if (camScanTimer) { clearInterval(camScanTimer); camScanTimer = null; }
+    if (m === 'scan' && detector) startScanLoop();
+    $('#cam-status').textContent = m === 'scan' ? 'Vise un code-barres — détection automatique.' : 'Cadre le produit puis capture.';
+  };
+  $('#cam-mode-scan')?.addEventListener('click', () => setMode('scan'));
+  $('#cam-mode-photo').addEventListener('click', () => setMode('photo'));
+
+  function startScanLoop() {
+    camScanTimer = setInterval(async () => {
+      if (!camStream || !detector) return;
+      try {
+        const codes = await detector.detect(video);
+        if (codes && codes.length) {
+          const code = (codes[0].rawValue || '').replace(/\D/g, '');
+          if (code.length >= 6) {
+            stopCamera();
+            $('#cam-status').textContent = 'Code détecté : ' + code + ' — recherche…';
+            const res = await api('/api/discovery/search/barcode/' + encodeURIComponent(code)).catch((e) => { toast(e.message); return null; });
+            if (res) { closeModal(); renderDiscoveryResults(res); toast('Code-barres ' + code + ' trouvé'); }
+          }
+        }
+      } catch { /* image pas prête : on réessaie */ }
+    }, 600);
+  }
+
+  $('#cam-capture').addEventListener('click', async (ev) => {
+    const canvas = $('#cam-canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    const thumb = $('#cam-thumb'); thumb.src = dataUrl; thumb.hidden = false;
+    const hint = $('#cam-hint').value.trim();
+    if (!hint) return toast('Ajoute un mot-clé décrivant le produit.');
+    busy(ev.currentTarget, true, '…');
+    try {
+      const res = await api('/api/discovery/search/photo', { method: 'POST', body: { hint } });
+      stopCamera(); closeModal(); renderDiscoveryResults(res);
+      toast('Recherche par photo effectuée');
+    } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+  });
+
+  if (mode === 'scan') startScanLoop(); else setMode('photo');
+}
 $('#t-go').addEventListener('click', async () => {
   const name = $('#t-name').value.trim();
   if (!name) return toast('Entrez un nom de produit');

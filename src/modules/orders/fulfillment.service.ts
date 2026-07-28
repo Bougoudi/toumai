@@ -121,7 +121,9 @@ export const fulfillmentService = {
   /** Traite un lot de commandes payées en attente d'exécution. */
   async fulfillPaidOrders(batchSize = 20) {
     const orders = await prisma.order.findMany({
-      where: { status: 'PAID' },
+      // Les commandes « en attente » (onHold) sont ignorées : elles attendent
+      // que l'utilisateur confirme l'adresse de livraison.
+      where: { status: 'PAID', onHold: false },
       orderBy: { createdAt: 'asc' },
       take: batchSize,
     });

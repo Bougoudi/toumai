@@ -376,6 +376,11 @@ model Order {
   /// Identifiant de la commande côté marketplace (déduplication à l'import).
   externalId String?
 
+  /// En attente de vérification manuelle (ex. adresse à confirmer avant l'envoi
+  /// au fournisseur). Les commandes « en attente » sont ignorées par le pilote
+  /// automatique tant qu'elles ne sont pas confirmées.
+  onHold     Boolean @default(false)
+
   items          OrderItem[]
   purchaseOrders PurchaseOrder[]
 

@@ -99,4 +99,36 @@ export const orderService = {
     }
     return prisma.order.update({ where: { id }, data: { status: 'CANCELLED' } });
   },
+
+  /** Vraie si un article a déjà été expédié chez le fournisseur (adresse figée). */
+  hasShippedPurchase(order: { purchaseOrders?: { status: string }[] }): boolean {
+    return (order.purchaseOrders ?? []).some((p) => ['SHIPPED', 'DELIVERED'].includes(p.status));
+  },
+
+  /**
+   * Met à jour l'adresse de livraison d'une commande AVANT son envoi au
+   * fournisseur. Refusé si la commande est déjà expédiée/livrée/annulée ou si un
+   * bon d'achat est déjà parti.
+   */
+  async updateShipping(
+    id: string,
+    addr: { name?: string; phone?: string; address?: string; city?: string; country?: string; zip?: string },
+  ) {
+    const order = await this.getById(id);
+    if (['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(order.status) || this.hasShippedPurchase(order)) {
+      throw new HttpError(409, 'Commande déjà expédiée : l’adresse ne peut plus être modifiée.');
+    }
+    await prisma.customer.update({ where: { id: order.customerId }, data: addr });
+    return this.getById(id);
+  },
+
+  /** Met (ou retire) une commande « en attente de vérification ». */
+  async setHold(id: string, onHold: boolean) {
+    const order = await this.getById(id);
+    if (['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(order.status) || this.hasShippedPurchase(order)) {
+      throw new HttpError(409, 'Commande déjà traitée : mise en attente impossible.');
+    }
+    await prisma.order.update({ where: { id }, data: { onHold } });
+    return this.getById(id);
+  },
 };

@@ -28,6 +28,20 @@ export const createOrderSchema = z
     message: 'Fournir customerId ou les informations client.',
   });
 
+/** Mise à jour de l'adresse de livraison (au moins un champ). */
+export const updateShippingSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    phone: z.string().optional(),
+    address: z.string().optional(),
+    city: z.string().optional(),
+    country: z.string().optional(),
+    zip: z.string().optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: 'Aucun champ à mettre à jour.',
+  });
+
 export const listOrdersQuerySchema = z.object({
   status: z
     .enum(['PENDING', 'PAID', 'FULFILLING', 'SHIPPED', 'DELIVERED', 'CANCELLED'])

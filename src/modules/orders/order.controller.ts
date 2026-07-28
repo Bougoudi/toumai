@@ -2,7 +2,12 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody, parseQuery } from '../../middleware/validate.js';
 import { fulfillmentService } from './fulfillment.service.js';
-import { createCustomerSchema, createOrderSchema, listOrdersQuerySchema } from './order.schema.js';
+import {
+  createCustomerSchema,
+  createOrderSchema,
+  listOrdersQuerySchema,
+  updateShippingSchema,
+} from './order.schema.js';
 import { orderService } from './order.service.js';
 
 const paginationSchema = z.object({
@@ -41,6 +46,28 @@ export const orderController = {
 
   /** POST /api/orders/:id/fulfill — force l'exécution immédiate (pilier 3). */
   async fulfill(req: Request, res: Response) {
+    const order = await orderService.getById(req.params.id);
+    const status = await fulfillmentService.fulfillOrder(order);
+    res.json({ orderId: order.id, status });
+  },
+
+  /** PATCH /api/orders/:id/shipping — modifie l'adresse avant l'envoi. */
+  async updateShipping(req: Request, res: Response) {
+    const input = parseBody(updateShippingSchema, req);
+    res.json(await orderService.updateShipping(req.params.id, input));
+  },
+
+  /** POST /api/orders/:id/hold — remet la commande en attente de vérification. */
+  async hold(req: Request, res: Response) {
+    res.json(await orderService.setHold(req.params.id, true));
+  },
+
+  /**
+   * POST /api/orders/:id/confirm — confirme l'adresse : lève l'attente et
+   * envoie immédiatement la commande au fournisseur.
+   */
+  async confirm(req: Request, res: Response) {
+    await orderService.setHold(req.params.id, false);
     const order = await orderService.getById(req.params.id);
     const status = await fulfillmentService.fulfillOrder(order);
     res.json({ orderId: order.id, status });
