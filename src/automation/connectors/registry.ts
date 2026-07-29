@@ -52,10 +52,11 @@ export function getFulfillmentConnector(): FulfillmentConnector {
  * par photo retombe alors sur le mot-clé fourni (aucune reconnaissance fabriquée).
  */
 export function getVisionConnector(): VisionConnector | null {
-  const { url, key } = env.connectors.vision;
-  if (url && key) {
-    logger.info('Connecteur vision : HTTP (reconnaissance d’image réelle)');
-    return new HttpVisionConnector(url, key);
+  const { url, key, provider } = env.connectors.vision;
+  // Google : la clé suffit (l'URL a une valeur par défaut). Générique : url + clé.
+  if ((provider === 'google' && key) || (url && key)) {
+    logger.info('Connecteur vision : HTTP (reconnaissance d’image réelle)', { provider: provider || 'générique' });
+    return new HttpVisionConnector(url, key, provider);
   }
   return null;
 }
@@ -63,10 +64,11 @@ export function getVisionConnector(): VisionConnector | null {
 /**
  * Connecteur code-barres. Renvoie `null` s'il n'est pas configuré : la recherche
  * par scan retombe alors sur un produit dérivé du code (démonstration).
+ * La clé est optionnelle (certaines bases, comme Open Food Facts, sont libres).
  */
 export function getBarcodeConnector(): BarcodeConnector | null {
   const { url, key } = env.connectors.barcode;
-  if (url && key) {
+  if (url) {
     logger.info('Connecteur code-barres : HTTP (base de données réelle)');
     return new HttpBarcodeConnector(url, key);
   }

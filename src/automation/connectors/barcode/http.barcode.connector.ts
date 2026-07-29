@@ -17,16 +17,17 @@ export class HttpBarcodeConnector implements BarcodeConnector {
 
   constructor(
     private readonly url: string,
-    private readonly key: string,
+    /** Optionnelle : certaines bases (Open Food Facts) n'exigent pas de clé. */
+    private readonly key = '',
   ) {}
 
   async lookup(code: string): Promise<BarcodeProduct | null> {
     const target = this.url.includes('{code}')
       ? this.url.replace('{code}', encodeURIComponent(code))
       : `${this.url}${this.url.includes('?') ? '&' : '?'}code=${encodeURIComponent(code)}`;
-    const res = await fetch(target, {
-      headers: { Authorization: `Bearer ${this.key}`, Accept: 'application/json' },
-    });
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (this.key) headers.Authorization = `Bearer ${this.key}`;
+    const res = await fetch(target, { headers });
     if (res.status === 404) return null;
     if (!res.ok) {
       logger.error('HttpBarcodeConnector: réponse non OK', { status: res.status });

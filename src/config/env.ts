@@ -47,9 +47,13 @@ export const env = {
     market: { url: process.env.MARKET_API_URL ?? '', key: process.env.MARKET_API_KEY ?? '' },
     supplier: { url: process.env.SUPPLIER_API_URL ?? '', key: process.env.SUPPLIER_API_KEY ?? '' },
     fulfillment: { url: process.env.FULFILLMENT_API_URL ?? '', key: process.env.FULFILLMENT_API_KEY ?? '' },
-    /** Reconnaissance d'image (recherche produit par photo). */
-    vision: { url: process.env.VISION_API_URL ?? '', key: process.env.VISION_API_KEY ?? '' },
-    /** Base de données de codes-barres (recherche produit par scan EAN/UPC). */
+    /** Reconnaissance d'image (recherche produit par photo). `provider` : 'google' ou générique. */
+    vision: {
+      url: process.env.VISION_API_URL ?? '',
+      key: process.env.VISION_API_KEY ?? '',
+      provider: (process.env.VISION_PROVIDER ?? '').toLowerCase(),
+    },
+    /** Base de données de codes-barres (scan EAN/UPC). La clé est optionnelle (ex. Open Food Facts). */
     barcode: { url: process.env.BARCODE_API_URL ?? '', key: process.env.BARCODE_API_KEY ?? '' },
   },
 
