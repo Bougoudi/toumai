@@ -9,6 +9,8 @@ import type { MarketConnector } from './market/base.market.connector.js';
 import { HttpMarketConnector } from './market/http.market.connector.js';
 import { MockMarketConnector } from './market/mock.market.connector.js';
 import { MockConnector } from './mock.connector.js';
+import type { BarcodeConnector } from './barcode/base.barcode.connector.js';
+import { HttpBarcodeConnector } from './barcode/http.barcode.connector.js';
 import type { VisionConnector } from './vision/base.vision.connector.js';
 import { HttpVisionConnector } from './vision/http.vision.connector.js';
 
@@ -54,6 +56,19 @@ export function getVisionConnector(): VisionConnector | null {
   if (url && key) {
     logger.info('Connecteur vision : HTTP (reconnaissance d’image réelle)');
     return new HttpVisionConnector(url, key);
+  }
+  return null;
+}
+
+/**
+ * Connecteur code-barres. Renvoie `null` s'il n'est pas configuré : la recherche
+ * par scan retombe alors sur un produit dérivé du code (démonstration).
+ */
+export function getBarcodeConnector(): BarcodeConnector | null {
+  const { url, key } = env.connectors.barcode;
+  if (url && key) {
+    logger.info('Connecteur code-barres : HTTP (base de données réelle)');
+    return new HttpBarcodeConnector(url, key);
   }
   return null;
 }

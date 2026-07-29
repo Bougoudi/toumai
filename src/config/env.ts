@@ -49,6 +49,8 @@ export const env = {
     fulfillment: { url: process.env.FULFILLMENT_API_URL ?? '', key: process.env.FULFILLMENT_API_KEY ?? '' },
     /** Reconnaissance d'image (recherche produit par photo). */
     vision: { url: process.env.VISION_API_URL ?? '', key: process.env.VISION_API_KEY ?? '' },
+    /** Base de données de codes-barres (recherche produit par scan EAN/UPC). */
+    barcode: { url: process.env.BARCODE_API_URL ?? '', key: process.env.BARCODE_API_KEY ?? '' },
   },
 
   /** Authentification (JWT). */

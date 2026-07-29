@@ -27,8 +27,8 @@ export const discoveryController = {
     const input = parseBody(photoSchema, req);
     res.json(await discoveryService.searchPhoto(input));
   },
-  searchBarcode(req: Request, res: Response) {
-    res.json({ results: discoveryService.searchBarcode(String(req.params.code)) });
+  async searchBarcode(req: Request, res: Response) {
+    res.json(await discoveryService.searchBarcode(String(req.params.code)));
   },
 
   listFavorites(_req: Request, res: Response) {

@@ -6,7 +6,7 @@ import { discoveryController } from './discovery.controller.js';
 export const discoveryRouter = Router();
 discoveryRouter.get('/search/text', discoveryController.searchText);
 discoveryRouter.post('/search/photo', asyncHandler(discoveryController.searchPhoto));
-discoveryRouter.get('/search/barcode/:code', discoveryController.searchBarcode);
+discoveryRouter.get('/search/barcode/:code', asyncHandler(discoveryController.searchBarcode));
 
 // Favoris
 export const favoriteRouter = Router();
