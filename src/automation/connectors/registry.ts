@@ -1,7 +1,7 @@
 import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import type { SupplierConnector } from './base.connector.js';
-import type { FulfillmentConnector } from './fulfillment/base.fulfillment.connector.js';
+import type { FulfillmentConnector, PlaceOrderResult } from './fulfillment/base.fulfillment.connector.js';
 import { HttpFulfillmentConnector } from './fulfillment/http.fulfillment.connector.js';
 import { MockFulfillmentConnector } from './fulfillment/mock.fulfillment.connector.js';
 import { HttpSupplierConnector } from './http.supplier.connector.js';
@@ -15,9 +15,12 @@ import type { VisionConnector } from './vision/base.vision.connector.js';
 import { HttpVisionConnector } from './vision/http.vision.connector.js';
 
 /**
- * Sélectionne les connecteurs à utiliser : source HTTP réelle si `url`+`key`
- * sont configurés, sinon le connecteur de démonstration (mock). Cela permet de
- * passer en production en ajoutant simplement les variables d'environnement.
+ * Sélectionne les connecteurs à utiliser :
+ *   1. source HTTP réelle si `url`+`key` sont configurés ;
+ *   2. sinon, en mode démo (`DEMO_MODE=true`), le connecteur de démonstration ;
+ *   3. sinon (production réelle sans source configurée), aucun connecteur —
+ *      l'appli ne fabrique alors aucune donnée factice.
+ * Passer en production = ajouter les variables d'environnement et DEMO_MODE=false.
  */
 
 export function getMarketConnectors(): MarketConnector[] {
@@ -26,7 +29,9 @@ export function getMarketConnectors(): MarketConnector[] {
     logger.info('Connecteur marché : HTTP (source réelle)');
     return [new HttpMarketConnector(url, key)];
   }
-  return [new MockMarketConnector()];
+  if (env.demoMode) return [new MockMarketConnector()];
+  logger.info('Connecteur marché : aucun (production sans source configurée)');
+  return [];
 }
 
 export function getSupplierConnectors(): SupplierConnector[] {
@@ -35,7 +40,21 @@ export function getSupplierConnectors(): SupplierConnector[] {
     logger.info('Connecteur fournisseurs : HTTP (source réelle)');
     return [new HttpSupplierConnector(url, key)];
   }
-  return [new MockConnector()];
+  if (env.demoMode) return [new MockConnector()];
+  logger.info('Connecteur fournisseurs : aucun (production sans source configurée)');
+  return [];
+}
+
+/**
+ * Connecteur d'exécution neutre : utilisé en production tant qu'aucun vrai
+ * service d'expédition n'est branché. Il refuse proprement (sans « faux envoi »),
+ * laissant la commande en attente d'un traitement réel.
+ */
+class DisabledFulfillmentConnector implements FulfillmentConnector {
+  readonly name = 'disabled';
+  async placeOrder(): Promise<PlaceOrderResult> {
+    return { accepted: false, error: 'Aucun connecteur d’exécution réel configuré (mode production).' };
+  }
 }
 
 export function getFulfillmentConnector(): FulfillmentConnector {
@@ -44,7 +63,9 @@ export function getFulfillmentConnector(): FulfillmentConnector {
     logger.info('Connecteur exécution : HTTP (source réelle)');
     return new HttpFulfillmentConnector(url, key);
   }
-  return new MockFulfillmentConnector();
+  if (env.demoMode) return new MockFulfillmentConnector();
+  logger.info('Connecteur exécution : neutre (production sans service configuré)');
+  return new DisabledFulfillmentConnector();
 }
 
 /**

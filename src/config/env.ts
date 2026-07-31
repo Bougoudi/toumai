@@ -2,10 +2,21 @@ import 'dotenv/config';
 
 const port = Number(process.env.PORT ?? 3000);
 
+/**
+ * Mode démonstration. `true` (défaut) : l'appli génère des données factices
+ * (fausses commandes, faux fournisseurs, fausses opportunités) pour la prise en
+ * main. `false` (production réelle) : aucune donnée simulée n'est créée ; seules
+ * les vraies sources connectées (API fournisseurs, canaux de vente, paiements)
+ * alimentent l'application.
+ */
+const demoMode = (process.env.DEMO_MODE ?? 'true') === 'true';
+
 /** Configuration centralisée, lue depuis les variables d'environnement. */
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port,
+  /** Mode démonstration (données factices) vs production réelle. */
+  demoMode,
   databaseUrl: process.env.DATABASE_URL ?? 'file:./dev.db',
   /** URL publique (pour les redirections de paiement). */
   publicUrl: process.env.PUBLIC_URL ?? `http://localhost:${port}`,
@@ -35,7 +46,9 @@ export const env = {
   autopilot: {
     runOnStart: (process.env.AUTOPILOT_RUN_ON_START ?? 'true') === 'true',
     intervalSeconds: Number(process.env.AUTOPILOT_INTERVAL_SECONDS ?? 60),
-    simulateDemand: (process.env.SIMULATE_DEMAND ?? 'true') === 'true',
+    // La simulation de demande n'existe qu'en mode démo : en production réelle,
+    // les commandes proviennent uniquement des vrais canaux de vente.
+    simulateDemand: demoMode && (process.env.SIMULATE_DEMAND ?? 'true') === 'true',
     ordersPerCycle: Number(process.env.SIMULATED_ORDERS_PER_CYCLE ?? 3),
   },
 
