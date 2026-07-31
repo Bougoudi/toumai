@@ -4,6 +4,7 @@ import { stripeClient } from '../../config/stripe.js';
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { logger } from '../../utils/logger.js';
+import { iyzicoService } from './iyzico.service.js';
 
 function stripe(): Stripe {
   if (!env.stripe.enabled) {
@@ -13,14 +14,36 @@ function stripe(): Stripe {
 }
 
 export const paymentService = {
-  enabled: () => env.stripe.enabled,
+  /** Prestataire carte actif : 'iyzico' (Turquie), 'stripe' (Europe) ou 'none'. */
+  provider: () => env.paymentProvider,
+
+  /** Un prestataire de paiement carte est-il configuré ? */
+  enabled: () => env.paymentProvider !== 'none',
+
+  /**
+   * Crée une page de paiement carte pour une commande et renvoie l'URL de
+   * redirection. Aiguille vers le prestataire actif : iyzico (Turquie —
+   * carte → portefeuille → retrait IBAN) ou Stripe Checkout (Europe).
+   */
+  async createCheckout(orderId: string): Promise<{ url: string | null; provider: string }> {
+    const provider = env.paymentProvider;
+    if (provider === 'iyzico') {
+      const res = await iyzicoService.createCheckout(orderId);
+      return { url: res.url, provider };
+    }
+    if (provider === 'stripe') {
+      const res = await this.createStripeCheckout(orderId);
+      return { url: res.url, provider };
+    }
+    throw new HttpError(501, 'Paiement non configuré : ajoutez IYZICO_API_KEY (Turquie) ou STRIPE_SECRET_KEY.');
+  },
 
   /**
    * Crée une session de paiement Stripe Checkout pour une commande.
    * Le client paie par carte (Visa, Mastercard...) sur la page sécurisée Stripe.
    * Retourne l'URL vers laquelle rediriger le client.
    */
-  async createCheckout(orderId: string) {
+  async createStripeCheckout(orderId: string) {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: { items: { include: { product: true } }, customer: true },

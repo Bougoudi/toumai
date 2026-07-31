@@ -86,13 +86,47 @@ export const env = {
     corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   },
 
-  /** Paiement Stripe (cartes Visa / Mastercard, etc.). */
+  /** Paiement Stripe (cartes Visa / Mastercard, etc. — Europe/international). */
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY ?? '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
     get enabled() {
       return !!process.env.STRIPE_SECRET_KEY;
     },
+  },
+
+  /**
+   * Paiement iyzico (cartes — Turquie). Modèle « carte → portefeuille → retrait
+   * IBAN » : le client paie par carte sur la page hébergée iyzico, iyzico détient
+   * l'argent puis le solde apparaît dans le portefeuille de l'appli ; le retrait
+   * vers l'IBAN se fait depuis le portefeuille.
+   *
+   * `uri` par défaut = bac à sable (sandbox), gratuit et sans document. En
+   * production réelle, mettre `https://api.iyzipay.com` + les vraies clés.
+   */
+  iyzico: {
+    apiKey: process.env.IYZICO_API_KEY ?? '',
+    secretKey: process.env.IYZICO_SECRET_KEY ?? '',
+    uri: process.env.IYZICO_URI ?? 'https://sandbox-api.iyzipay.com',
+    get enabled() {
+      return !!process.env.IYZICO_API_KEY && !!process.env.IYZICO_SECRET_KEY;
+    },
+    get sandbox() {
+      return (process.env.IYZICO_URI ?? 'https://sandbox-api.iyzipay.com').includes('sandbox');
+    },
+  },
+
+  /**
+   * Prestataire de paiement carte actif. `auto` (défaut) : iyzico s'il est
+   * configuré, sinon Stripe. On peut forcer via `PAYMENT_PROVIDER=iyzico|stripe`.
+   */
+  get paymentProvider(): 'iyzico' | 'stripe' | 'none' {
+    const forced = (process.env.PAYMENT_PROVIDER ?? '').toLowerCase();
+    if (forced === 'iyzico') return this.iyzico.enabled ? 'iyzico' : 'none';
+    if (forced === 'stripe') return this.stripe.enabled ? 'stripe' : 'none';
+    if (this.iyzico.enabled) return 'iyzico';
+    if (this.stripe.enabled) return 'stripe';
+    return 'none';
   },
 } as const;
 

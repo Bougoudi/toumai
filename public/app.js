@@ -417,7 +417,7 @@ async function showOrder(id) {
       busy(ev.currentTarget, true, 'Redirection...');
       try {
         const { url } = await api(`/api/payments/checkout/${id}`, { method: 'POST' });
-        window.location.href = url; // page de paiement sécurisée Stripe
+        window.location.href = url; // page de paiement carte sécurisée (iyzico / Stripe)
       } catch (e) {
         toast(e.message);
         busy(ev.currentTarget, false);
@@ -977,10 +977,18 @@ async function loadWallet() {
   } catch (e) { toast(e.message); }
 }
 
-/** Bandeau d'état Stripe Payouts (virements automatiques vers le compte bancaire). */
+/** Bandeau d'état des retraits (iyzico → IBAN, ou Stripe Payouts). */
 function renderPayoutStatus(p) {
   const el = $('#payout-status');
   if (!el) return;
+  // Modèle iyzico (Turquie) : le client paie par carte, l'argent arrive dans le
+  // portefeuille de l'appli, puis vous retirez vers votre IBAN.
+  if (paymentProvider === 'iyzico') {
+    el.innerHTML =
+      '<div class="banner ok">💳 Paiement par carte <b>iyzico</b> actif — l’argent des ventes arrive dans votre portefeuille. ' +
+      'Utilisez « Demander un retrait » pour l’envoyer sur votre <b>IBAN</b>.</div>';
+    return;
+  }
   if (!p || !p.configured) {
     el.innerHTML = '<div class="banner muted">Stripe Payouts non configuré (ajoutez <code>STRIPE_SECRET_KEY</code>). Les retraits sont enregistrés en mode manuel.</div>';
     return;
@@ -1008,17 +1016,25 @@ $('#withdraw-btn').addEventListener('click', async () => {
   const stripeOpt = stripeReady
     ? '<option value="stripe">Stripe Payouts (virement automatique)</option>'
     : '';
+  const ibanOpt = '<option value="bank">Virement bancaire (IBAN)</option>';
+  const cardOpt = '<option value="card">Carte (Visa / Mastercard)</option>';
+  const paypalOpt = '<option value="paypal">PayPal</option>';
+  // Avec iyzico (Turquie), le retrait vers l'IBAN est la méthode principale : on la met en premier.
+  const methodOpts = paymentProvider === 'iyzico'
+    ? ibanOpt + cardOpt + paypalOpt
+    : stripeOpt + cardOpt + ibanOpt + paypalOpt;
   openModal(
     '<h2>Demander un retrait</h2>' +
     `<p class="muted">Solde disponible : <b>${money(w.available, w.currency)}</b></p>` +
     '<div class="form-grid">' +
     '<div class="field"><label>Montant</label><input class="input" id="wd-amount" type="number" min="1" step="0.01"/></div>' +
-    `<div class="field"><label>Méthode</label><select class="input" id="wd-method">${stripeOpt}<option value="card">Carte (Visa / Mastercard)</option><option value="bank">Virement bancaire (IBAN)</option><option value="paypal">PayPal</option></select></div>` +
+    `<div class="field"><label>Méthode</label><select class="input" id="wd-method">${methodOpts}</select></div>` +
     '<div class="field full" id="wd-dest-field"><label id="wd-dest-label">Numéro de carte</label><input class="input" id="wd-dest" placeholder="4242 4242 4242 4242"/></div>' +
     '</div>' +
     '<div class="form-actions"><button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="wd-submit">Confirmer le retrait</button></div>');
   $('#modal-content [data-close]').addEventListener('click', closeModal);
-  const DEST = { card: ['Numéro de carte', '4242 4242 4242 4242'], bank: ['IBAN', 'FR76…'], paypal: ['Email PayPal', 'email@exemple.com'] };
+  const ibanPh = paymentProvider === 'iyzico' ? 'TR33 0006 1005 1978 6457 8413 26' : 'FR76…';
+  const DEST = { card: ['Numéro de carte', '4242 4242 4242 4242'], bank: ['IBAN', ibanPh], paypal: ['Email PayPal', 'email@exemple.com'] };
   const syncDest = () => {
     const m = $('#wd-method').value;
     if (m === 'stripe') { $('#wd-dest-field').style.display = 'none'; return; }
@@ -1505,7 +1521,7 @@ function startApp() {
   if (appStarted) return;
   appStarted = true;
   enforceMfaPolicy();
-  api('/api/payments/status').then((s) => (paymentsEnabled = !!s.enabled)).catch(() => {});
+  api('/api/payments/status').then((s) => { paymentsEnabled = !!s.enabled; paymentProvider = s.provider || 'none'; }).catch(() => {});
   loadDashboard();
   refreshAutopilot();
 }
@@ -1525,10 +1541,11 @@ $('#install-btn').addEventListener('click', async () => {
   $('#install-btn').hidden = true;
 });
 
-// ── Paiement (Stripe) ──────────────────────────────────────
+// ── Paiement (iyzico / Stripe) ─────────────────────────────
 let paymentsEnabled = false;
+let paymentProvider = 'none'; // 'iyzico' | 'stripe' | 'none'
 
-// Retour de paiement (redirection Stripe)
+// Retour de paiement (redirection iyzico / Stripe)
 const params = new URLSearchParams(location.search);
 if (params.get('paid')) {
   toast(`Paiement réussi — commande ${params.get('paid')}`);

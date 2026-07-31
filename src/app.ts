@@ -52,6 +52,14 @@ export function createApp() {
   // Monté AVANT express.json() qui parserait (et casserait) la vérification.
   app.post('/api/webhooks/stripe', express.raw({ type: 'application/json' }), asyncHandler(paymentController.webhook));
 
+  // Retour de la page de paiement iyzico : PUBLIC (iyzico redirige le navigateur
+  // du client, qui n'a pas notre jeton) et corps urlencoded (formulaire iyzico).
+  app.post(
+    '/api/payments/iyzico/callback',
+    express.urlencoded({ extended: false }),
+    asyncHandler(paymentController.iyzicoCallback),
+  );
+
   // Corps JSON limité (anti-abus).
   app.use(express.json({ limit: '1mb' }));
 
