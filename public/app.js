@@ -1101,6 +1101,24 @@ $('#settings-reset').addEventListener('click', async () => {
   try { await api('/api/settings/reset', { method: 'POST' }); toast('Réglages réinitialisés'); loadSettingsTab(); }
   catch (e) { toast(e.message); }
 });
+$('#settings-purge').addEventListener('click', () => {
+  openModal(
+    '<h2>Réinitialiser les données ?</h2>' +
+    '<p class="muted">Toutes les données de démonstration (commandes, produits, fournisseurs, ' +
+    'clients, chiffres) seront <b>définitivement supprimées</b>. Ton compte et tes réglages sont conservés.</p>' +
+    '<div class="form-actions"><button class="btn btn-ghost" data-close>Annuler</button>' +
+    '<button class="btn btn-danger" id="purge-confirm">Oui, tout supprimer</button></div>');
+  $('#modal-content [data-close]').addEventListener('click', closeModal);
+  $('#purge-confirm').addEventListener('click', async (ev) => {
+    busy(ev.currentTarget, true, 'Suppression...');
+    try {
+      await api('/api/settings/purge', { method: 'POST' });
+      toast('✅ Données réinitialisées — tu pars sur une base propre !');
+      closeModal();
+      loadDashboard();
+    } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+  });
+});
 
 // ── WebAuthn : client natif (sans dépendance, compatible CSP) ──
 function b64urlToBuf(s) {
