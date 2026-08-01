@@ -1,6 +1,6 @@
 // Schéma de base de données — Toumai
 // Plateforme d'automatisation e-commerce / dropshipping.
-// Base : SQLite (par défaut). Migrable vers PostgreSQL en changeant `provider`.
+// Base : PostgreSQL (production, ex. Render). DATABASE_URL fournit la connexion.
 //
 // Les 4 piliers du logiciel :
 //   1. Analyse marché  -> MarketOpportunity
@@ -13,7 +13,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -375,6 +375,11 @@ model Order {
   channel    String  @default("manual")
   /// Identifiant de la commande côté marketplace (déduplication à l'import).
   externalId String?
+
+  /// En attente de vérification manuelle (ex. adresse à confirmer avant l'envoi
+  /// au fournisseur). Les commandes « en attente » sont ignorées par le pilote
+  /// automatique tant qu'elles ne sont pas confirmées.
+  onHold     Boolean @default(false)
 
   items          OrderItem[]
   purchaseOrders PurchaseOrder[]

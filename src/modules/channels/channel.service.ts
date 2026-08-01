@@ -225,7 +225,10 @@ export const channelService = {
         customerId: customer.id,
         channel: channelType,
         externalId: o.externalId,
-        status: 'PAID', // payée sur le marketplace → déclenche l'expédition auto
+        status: 'PAID', // payée sur le marketplace
+        // Mise en attente : l'utilisateur vérifie/corrige l'adresse de livraison
+        // avant que le bon d'achat ne parte chez le fournisseur.
+        onHold: true,
         total: o.total,
         currency: o.currency,
         items: { create: items },

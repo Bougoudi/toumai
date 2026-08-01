@@ -63,7 +63,7 @@ export const securityService = {
     await prisma.user.delete({ where: { id: userId } });
   },
 
-  /** Politique 2FA : imposée aux administrateurs, recommandée aux autres. */
+  /** Politique 2FA : facultative pour tous — recommandée, jamais imposée. */
   async mfaPolicy(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -71,6 +71,6 @@ export const securityService = {
     });
     if (!user) throw new HttpError(404, 'Utilisateur introuvable');
     const enabled = user.totpEnabled || user._count.credentials > 0;
-    return { enabled, enforced: user.role === 'admin', recommended: true };
+    return { enabled, enforced: false, recommended: true };
   },
 };

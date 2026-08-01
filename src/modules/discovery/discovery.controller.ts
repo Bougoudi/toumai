@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { parseBody } from '../../middleware/validate.js';
 import { discoveryService } from './discovery.service.js';
 
+const photoSchema = z.object({
+  hint: z.string().optional(),
+  /** Image en data URL / base64 (≈ 900 Ko max une fois encodée). */
+  image: z.string().max(900_000).optional(),
+});
+
 const favoriteSchema = z.object({
   source: z.string().optional(),
   title: z.string().min(1),
@@ -17,12 +23,12 @@ export const discoveryController = {
   searchText(req: Request, res: Response) {
     res.json({ results: discoveryService.searchText(String(req.query.q ?? '')) });
   },
-  searchPhoto(req: Request, res: Response) {
-    const hint = String((req.body?.hint ?? req.query.hint) ?? '');
-    res.json({ results: discoveryService.searchPhoto(hint) });
+  async searchPhoto(req: Request, res: Response) {
+    const input = parseBody(photoSchema, req);
+    res.json(await discoveryService.searchPhoto(input));
   },
-  searchBarcode(req: Request, res: Response) {
-    res.json({ results: discoveryService.searchBarcode(String(req.params.code)) });
+  async searchBarcode(req: Request, res: Response) {
+    res.json(await discoveryService.searchBarcode(String(req.params.code)));
   },
 
   listFavorites(_req: Request, res: Response) {

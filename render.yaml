@@ -23,6 +23,13 @@ services:
           property: connectionString
       - key: NODE_ENV
         value: production
+      # Mode RÉEL : aucune donnée simulée. Seules les vraies ventes / paiements /
+      # sources connectées alimentent l'appli. (Mettre "true" pour re-tester en démo.)
+      - key: DEMO_MODE
+        value: "false"
+      # Devise par défaut (Turquie : TRY). Modifiable dans le tableau de bord.
+      - key: DEFAULT_CURRENCY
+        value: TRY
       # Secrets générés automatiquement par Render (longs et aléatoires).
       - key: JWT_SECRET
         generateValue: true
@@ -35,7 +42,15 @@ services:
         sync: false
       - key: ADMIN_PASSWORD # ton mot de passe admin (≥ 10 caractères)
         sync: false
-      # Paiements & retraits (facultatif au début) :
+      # Paiement carte — iyzico (Turquie). Commence en sandbox (gratuit) :
+      #   IYZICO_URI = https://sandbox-api.iyzipay.com  (puis https://api.iyzipay.com en réel)
+      - key: IYZICO_API_KEY
+        sync: false
+      - key: IYZICO_SECRET_KEY
+        sync: false
+      - key: IYZICO_URI
+        sync: false
+      # Paiement carte — Stripe (Europe, facultatif) :
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
