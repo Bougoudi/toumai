@@ -296,3 +296,5 @@ select.input { appearance: none; background-image: none; }
 .auth-submit { width: 100%; padding: 11px; margin-top: 4px; }
 .auth-error { background: rgba(248, 113, 113, 0.14); color: var(--red); padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
 .auth-hint { color: var(--muted); font-size: 12px; text-align: center; margin: 16px 0 0; }
+.auth-hint a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.auth-hint a:hover { text-decoration: underline; }
