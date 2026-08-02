@@ -39,7 +39,24 @@
           </div>
           <div id="auth-error" class="auth-error" hidden></div>
           <button class="btn btn-primary auth-submit" id="a-submit" type="submit">Se connecter</button>
+          <p class="auth-hint" id="forgot-row"><a href="#" id="forgot-link">Mot de passe oublié ?</a></p>
         </form>
+
+        <!-- Réinitialisation via lien e-mail (?reset=...) -->
+        <div id="reset-step" hidden>
+          <h4 style="margin-top:0">Nouveau mot de passe</h4>
+          <p class="muted">Choisissez un nouveau mot de passe (au moins 10 caractères).</p>
+          <div class="field">
+            <label>Nouveau mot de passe</label>
+            <input class="input" id="reset-new" type="password" autocomplete="new-password" placeholder="••••••••" />
+          </div>
+          <div class="field">
+            <label>Confirmer</label>
+            <input class="input" id="reset-new2" type="password" autocomplete="new-password" placeholder="••••••••" />
+          </div>
+          <div id="reset-error" class="auth-error" hidden></div>
+          <button class="btn btn-primary auth-submit" id="reset-submit" type="button">Enregistrer et se connecter</button>
+        </div>
 
         <!-- Étape 2 : second facteur -->
         <div id="mfa-step" hidden>

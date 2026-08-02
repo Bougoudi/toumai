@@ -60,6 +60,36 @@ export function signToken(user: { id: string; email: string; role: string; token
   return `${header}.${payload}.${sig}`;
 }
 
+/**
+ * Jeton de réinitialisation de mot de passe (30 min). Contient `tv` (tokenVersion) :
+ * après une réinitialisation on incrémente tokenVersion, ce qui rend tout lien
+ * précédent invalide (usage unique).
+ */
+export function signPasswordReset(userId: string, tokenVersion: number): string {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = b64url(JSON.stringify({ sub: userId, tv: tokenVersion, purpose: 'reset', iat: now, exp: now + 1800 }));
+  return `${header}.${payload}.${sign(`${header}.${payload}`)}`;
+}
+
+/** Vérifie un jeton de réinitialisation ; renvoie { userId, tv } ou null. */
+export function verifyPasswordReset(token: string): { userId: string; tv: number } | null {
+  const parts = (token || '').split('.');
+  if (parts.length !== 3) return null;
+  const [header, payload, sig] = parts;
+  const expected = sign(`${header}.${payload}`);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    if (data.purpose !== 'reset' || (data.exp && data.exp < Math.floor(Date.now() / 1000))) return null;
+    return { userId: data.sub as string, tv: Number(data.tv) };
+  } catch {
+    return null;
+  }
+}
+
 /** Jeton « step-up » (2 min) : preuve d'une ré-authentification récente pour une action sensible. */
 export function signStepUp(userId: string): string {
   const now = Math.floor(Date.now() / 1000);
