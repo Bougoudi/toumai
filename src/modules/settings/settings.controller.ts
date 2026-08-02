@@ -24,4 +24,8 @@ export const settingsController = {
   async reset(_req: Request, res: Response) {
     res.json(await settingsService.reset());
   },
+  /** POST /api/settings/purge — supprime les données de démonstration (garde le compte). */
+  async purge(_req: Request, res: Response) {
+    res.json(await settingsService.purgeBusinessData());
+  },
 };

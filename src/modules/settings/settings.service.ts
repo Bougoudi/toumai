@@ -75,4 +75,36 @@ export const settingsService = {
     cache = { ...DEFAULTS };
     return { ...cache, defaults: DEFAULTS };
   },
+
+  /**
+   * Supprime toutes les données métier / de démonstration (commandes, produits,
+   * fournisseurs, opportunités, clients, etc.) pour repartir sur une base propre.
+   *
+   * CONSERVE : les comptes utilisateurs (admin), les réglages de l'application et
+   * les connexions de canaux de vente (SalesChannel). L'ordre de suppression
+   * respecte les contraintes de clés étrangères (enfants avant parents).
+   */
+  async purgeBusinessData() {
+    await prisma.$transaction([
+      prisma.supplierMatch.deleteMany(),
+      prisma.searchRequest.deleteMany(),
+      prisma.channelListing.deleteMany(),
+      prisma.favorite.deleteMany(),
+      prisma.competitorProduct.deleteMany(),
+      prisma.competitor.deleteMany(),
+      prisma.ad.deleteMany(),
+      prisma.orderItem.deleteMany(),
+      prisma.purchaseOrder.deleteMany(),
+      prisma.order.deleteMany(),
+      prisma.customer.deleteMany(),
+      prisma.offer.deleteMany(),
+      prisma.product.deleteMany(),
+      prisma.supplier.deleteMany(),
+      prisma.marketOpportunity.deleteMany(),
+      prisma.generationRun.deleteMany(),
+      prisma.withdrawal.deleteMany(),
+    ]);
+    logger.warn('Données métier réinitialisées (purge des données de démonstration)');
+    return { ok: true };
+  },
 };

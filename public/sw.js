@@ -1,7 +1,7 @@
 // Service worker — coquille d'application (app shell) pour l'installabilité PWA
 // et un fonctionnement dégradé hors-ligne. Les appels /api ne sont pas mis en
 // cache (données temps réel) : réseau d'abord, sans repli.
-const CACHE = 'toumai-shell-v1';
+const CACHE = 'toumai-shell-v2';
 const SHELL = [
   '/',
   '/index.html',
@@ -33,16 +33,15 @@ self.addEventListener('fetch', (event) => {
     return; // laisse le navigateur gérer la requête réseau
   }
 
-  // Coquille : cache d'abord, repli réseau (puis mise en cache).
+  // Coquille : RÉSEAU d'abord (toujours la dernière version), repli cache si
+  // hors-ligne. Évite qu'une ancienne version reste figée après un déploiement.
   event.respondWith(
-    caches.match(event.request).then(
-      (cached) =>
-        cached ||
-        fetch(event.request).then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(event.request, copy)).catch(() => {});
-          return res;
-        }),
-    ),
+    fetch(event.request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(event.request, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(event.request)),
   );
 });
