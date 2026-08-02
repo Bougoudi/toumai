@@ -86,6 +86,20 @@ export const env = {
     corsOrigins: (process.env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   },
 
+  /**
+   * Envoi d'e-mails (réinitialisation de mot de passe « mot de passe oublié »).
+   * Via l'API HTTP de Resend (gratuit, simple) : définir RESEND_API_KEY. Sans
+   * clé, l'envoi est désactivé (la réinitialisation par e-mail est indisponible).
+   */
+  email: {
+    resendApiKey: process.env.RESEND_API_KEY ?? '',
+    from: process.env.EMAIL_FROM ?? 'Toumai <onboarding@resend.dev>',
+    apiUrl: process.env.EMAIL_API_URL ?? 'https://api.resend.com/emails',
+    get enabled() {
+      return !!process.env.RESEND_API_KEY;
+    },
+  },
+
   /** Paiement Stripe (cartes Visa / Mastercard, etc. — Europe/international). */
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY ?? '',

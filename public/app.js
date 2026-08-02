@@ -1452,6 +1452,41 @@ $('#auth-form').addEventListener('submit', async (ev) => {
   }
 });
 
+// ── Mot de passe oublié → envoi du lien de réinitialisation ─
+$('#forgot-link')?.addEventListener('click', async (e) => {
+  e.preventDefault();
+  const email = ($('#a-email').value || '').trim() || (prompt('Votre adresse e-mail :') || '').trim();
+  if (!email) return;
+  try {
+    await api('/api/auth/forgot-password', { method: 'POST', body: { email } });
+    toast('Si un compte existe, un e-mail de réinitialisation vous a été envoyé. 📧');
+  } catch (err) { toast(err.message); }
+});
+
+// ── Écran de réinitialisation (ouvert via le lien e-mail ?reset=…) ─
+function showResetScreen(token) {
+  $('#auth-screen').hidden = false;
+  $('#auth-form').hidden = true;
+  $('#auth-hint').hidden = true;
+  $('#forgot-row') && ($('#forgot-row').hidden = true);
+  document.querySelector('.auth-tabs') && (document.querySelector('.auth-tabs').hidden = true);
+  $('#reset-step').hidden = false;
+  $('#reset-submit').addEventListener('click', async (ev) => {
+    const nw = $('#reset-new').value, nw2 = $('#reset-new2').value;
+    const err = $('#reset-error'); err.hidden = true;
+    if (nw.length < 10) { err.textContent = 'Le mot de passe doit faire au moins 10 caractères.'; err.hidden = false; return; }
+    if (nw !== nw2) { err.textContent = 'Les deux mots de passe ne correspondent pas.'; err.hidden = false; return; }
+    busy(ev.currentTarget, true, '...');
+    try {
+      const res = await api('/api/auth/reset-password', { method: 'POST', body: { token, newPassword: nw } });
+      setToken(res.token);
+      history.replaceState({}, '', '/');
+      toast('✅ Mot de passe réinitialisé — vous êtes connecté.');
+      onAuthed(res.user);
+    } catch (e) { err.textContent = e.message; err.hidden = false; busy(ev.currentTarget, false); }
+  });
+}
+
 // ── Connexion : étape 2 (second facteur) ───────────────────
 let mfaToken = null;
 let mfaRecoveryMode = false;
@@ -1607,6 +1642,11 @@ if ('serviceWorker' in navigator) {
 
 // ── Démarrage : vérifie la session, sinon affiche la connexion ─
 (async function init() {
+  // Lien de réinitialisation par e-mail : affiche l'écran « nouveau mot de passe ».
+  const resetToken = params.get('reset');
+  if (resetToken) { showResetScreen(resetToken); return; }
+  // Masque « Mot de passe oublié ? » si l'envoi d'e-mails n'est pas configuré.
+  api('/api/auth/config').then((c) => { if (!c.emailReset) $('#forgot-row') && ($('#forgot-row').hidden = true); }).catch(() => {});
   if (!getToken()) return showAuth();
   try {
     const user = await api('/api/auth/me');

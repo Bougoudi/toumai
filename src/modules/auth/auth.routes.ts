@@ -12,6 +12,11 @@ authRouter.post('/register', authLimiter, asyncHandler(authController.register))
 authRouter.post('/login', authLimiter, asyncHandler(authController.login));
 authRouter.get('/me', requireAuth, asyncHandler(authController.me));
 
+// ── Réinitialisation du mot de passe par e-mail (public, débit strict) ──
+authRouter.get('/config', authController.config);
+authRouter.post('/forgot-password', authLimiter, asyncHandler(authController.forgotPassword));
+authRouter.post('/reset-password', authLimiter, asyncHandler(authController.resetPassword));
+
 // ── MFA : enrôlement (session complète requise) ──────────
 authRouter.get('/mfa/status', requireAuth, asyncHandler(mfaController.status));
 authRouter.post('/mfa/totp/setup', requireAuth, asyncHandler(mfaController.totpSetup));
