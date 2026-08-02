@@ -13,6 +13,11 @@ const stepUpSchema = z.object({
   value: z.string().min(1),
 });
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(10, 'Le nouveau mot de passe doit faire au moins 10 caractères.'),
+});
+
 export const securityController = {
   async history(req: Request, res: Response) {
     res.json(await securityService.history(req.user!.sub));
@@ -30,6 +35,11 @@ export const securityController = {
   async deleteAccount(req: Request, res: Response) {
     await securityService.deleteAccount(req.user!.sub);
     res.status(204).send();
+  },
+
+  async changePassword(req: Request, res: Response) {
+    const { currentPassword, newPassword } = parseBody(changePasswordSchema, req);
+    res.json(await securityService.changePassword(req.user!.sub, currentPassword, newPassword));
   },
 
   async policy(req: Request, res: Response) {

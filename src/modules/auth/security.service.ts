@@ -1,6 +1,7 @@
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
-import { signStepUp, signToken, verifyPassword } from '../../utils/auth.js';
+import { hashPassword, signStepUp, signToken, verifyPassword } from '../../utils/auth.js';
+import { logger } from '../../utils/logger.js';
 import { mfaService } from './mfa.service.js';
 
 export const securityService = {
@@ -61,6 +62,31 @@ export const securityService = {
   /** Supprime définitivement le compte (action sensible, protégée par step-up). */
   async deleteAccount(userId: string) {
     await prisma.user.delete({ where: { id: userId } });
+  },
+
+  /**
+   * Change le mot de passe : vérifie l'actuel, applique le nouveau et révoque
+   * toutes les autres sessions (incrément de tokenVersion). Renvoie un jeton
+   * frais pour que l'appareil courant reste connecté.
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new HttpError(404, 'Utilisateur introuvable');
+    if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+      throw new HttpError(401, 'Mot de passe actuel incorrect.');
+    }
+    if (newPassword.length < 10) {
+      throw new HttpError(400, 'Le nouveau mot de passe doit faire au moins 10 caractères.');
+    }
+    if (await verifyPassword(newPassword, user.passwordHash)) {
+      throw new HttpError(400, 'Le nouveau mot de passe doit être différent de l’actuel.');
+    }
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await hashPassword(newPassword), tokenVersion: { increment: 1 } },
+    });
+    logger.info('Mot de passe changé', { userId });
+    return { token: signToken(updated) };
   },
 
   /** Politique 2FA : facultative pour tous — recommandée, jamais imposée. */
