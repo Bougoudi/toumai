@@ -34,5 +34,7 @@ authRouter.get('/security/policy', requireAuth, asyncHandler(securityController.
 authRouter.get('/security/history', requireAuth, asyncHandler(securityController.history));
 authRouter.post('/security/step-up', requireAuth, authLimiter, asyncHandler(securityController.stepUp));
 authRouter.post('/security/logout-all', requireAuth, asyncHandler(securityController.logoutAll));
+// Changement de mot de passe (vérifie l'actuel ; limite anti-force-brute).
+authRouter.post('/security/change-password', requireAuth, authLimiter, asyncHandler(securityController.changePassword));
 // Suppression du compte = action sensible → step-up.
 authRouter.post('/security/delete-account', requireAuth, requireStepUp, asyncHandler(securityController.deleteAccount));

@@ -1179,6 +1179,7 @@ async function loadSecurityPanel() {
     h += secRow('Clés de sécurité (WebAuthn)', s.securityKeys.length + ' enregistrée(s)',
       '<button class="btn btn-primary btn-xs" id="key-add">＋ Ajouter</button>');
     h += s.securityKeys.map((k) => secRow('🔑 ' + esc(k.name), '', `<button class="btn btn-ghost btn-xs" data-keydel="${k.id}">✕</button>`, true)).join('');
+    h += secRow('Mot de passe', 'Modifier votre mot de passe', '<button class="btn btn-primary btn-xs" id="change-password">Changer</button>');
     h += secRow('Sessions', 'Déconnecter tous les appareils', '<button class="btn btn-ghost btn-xs" id="logout-all">Se déconnecter de partout</button>');
     h += secRow('Supprimer le compte', 'Action irréversible', '<button class="btn btn-ghost btn-xs" id="del-account" style="color:var(--red)">Supprimer</button>');
     h += '<h4 style="margin-top:18px">Journal de connexions</h4><div id="login-history" class="table-wrap"></div>';
@@ -1188,6 +1189,29 @@ async function loadSecurityPanel() {
     $('#recov-regen')?.addEventListener('click', () => sensitiveAction('Régénérer les codes ? Les anciens seront invalidés.', async (su) => { const r = await api('/api/auth/mfa/recovery/regenerate', { method: 'POST', stepUp: su }); showRecoveryCodes(r.recoveryCodes); }, ''));
     $('#key-add')?.addEventListener('click', addSecurityKey);
     document.querySelectorAll('#security-panel [data-keydel]').forEach((b) => b.addEventListener('click', () => sensitiveAction('Retirer cette clé de sécurité ?', (su) => api('/api/auth/mfa/webauthn/' + b.dataset.keydel, { method: 'DELETE', stepUp: su }), 'Clé retirée')));
+    $('#change-password')?.addEventListener('click', () => {
+      openModal(
+        '<h2>Changer de mot de passe</h2>' +
+        '<div class="form-grid">' +
+        '<div class="field full"><label>Mot de passe actuel</label><input class="input" id="cp-cur" type="password" autocomplete="current-password"/></div>' +
+        '<div class="field full"><label>Nouveau mot de passe (≥ 10 caractères)</label><input class="input" id="cp-new" type="password" autocomplete="new-password"/></div>' +
+        '<div class="field full"><label>Confirmer le nouveau mot de passe</label><input class="input" id="cp-new2" type="password" autocomplete="new-password"/></div>' +
+        '</div>' +
+        '<div class="form-actions"><button class="btn btn-ghost" data-close>Annuler</button><button class="btn btn-primary" id="cp-submit">Enregistrer</button></div>');
+      $('#modal-content [data-close]').addEventListener('click', closeModal);
+      $('#cp-submit').addEventListener('click', async (ev) => {
+        const cur = $('#cp-cur').value, nw = $('#cp-new').value, nw2 = $('#cp-new2').value;
+        if (nw.length < 10) return toast('Le nouveau mot de passe doit faire au moins 10 caractères');
+        if (nw !== nw2) return toast('Les deux nouveaux mots de passe ne correspondent pas');
+        busy(ev.currentTarget, true, '...');
+        try {
+          const r = await api('/api/auth/security/change-password', { method: 'POST', body: { currentPassword: cur, newPassword: nw } });
+          setToken(r.token); // garde l'appareil courant connecté (les autres sont déconnectés)
+          toast('✅ Mot de passe changé');
+          closeModal();
+        } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+      });
+    });
     $('#logout-all')?.addEventListener('click', async () => {
       if (!confirm('Déconnecter tous les appareils (y compris ceux des autres navigateurs) ?')) return;
       const r = await api('/api/auth/security/logout-all', { method: 'POST' });
