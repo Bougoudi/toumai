@@ -18,11 +18,21 @@
         <div class="auth-brand">
           <img src="/logo.svg" alt="Toumai" width="46" height="46" />
           <h1>Toumai</h1>
-          <p>Automatisation e-commerce</p>
+          <p data-i18n="subtitle">Automatisation e-commerce</p>
+        </div>
+        <div class="lang-row">
+          <select class="input lang-select" aria-label="Langue / Language">
+            <option value="fr">🇫🇷 Français</option>
+            <option value="en">🇬🇧 English</option>
+            <option value="ar">🇸🇦 العربية</option>
+            <option value="tr">🇹🇷 Türkçe</option>
+            <option value="es">🇪🇸 Español</option>
+            <option value="zh">🇨🇳 中文</option>
+          </select>
         </div>
         <div class="auth-tabs">
-          <button class="auth-tab active" data-auth="login">Connexion</button>
-          <button class="auth-tab" data-auth="register">Créer un compte</button>
+          <button class="auth-tab active" data-auth="login" data-i18n="login_tab">Connexion</button>
+          <button class="auth-tab" data-auth="register" data-i18n="register_tab">Créer un compte</button>
         </div>
         <form id="auth-form">
           <div class="field" id="field-name" hidden>
@@ -30,16 +40,16 @@
             <input class="input" id="a-name" autocomplete="name" placeholder="Votre nom" />
           </div>
           <div class="field">
-            <label>Email</label>
+            <label data-i18n="email_label">Email</label>
             <input class="input" id="a-email" type="email" autocomplete="email" placeholder="email@exemple.com" />
           </div>
           <div class="field">
-            <label>Mot de passe</label>
+            <label data-i18n="password_label">Mot de passe</label>
             <input class="input" id="a-password" type="password" autocomplete="current-password" placeholder="••••••••" />
           </div>
           <div id="auth-error" class="auth-error" hidden></div>
-          <button class="btn btn-primary auth-submit" id="a-submit" type="submit">Se connecter</button>
-          <p class="auth-hint" id="forgot-row"><a href="#" id="forgot-link">Mot de passe oublié ?</a></p>
+          <button class="btn btn-primary auth-submit" id="a-submit" type="submit" data-i18n="signin_btn">Se connecter</button>
+          <p class="auth-hint" id="forgot-row"><a href="#" id="forgot-link" data-i18n="forgot">Mot de passe oublié ?</a></p>
         </form>
 
         <!-- Réinitialisation via lien e-mail (?reset=...) -->
@@ -71,7 +81,7 @@
           <p class="auth-hint"><a href="#" id="mfa-recovery-toggle">Utiliser un code de récupération</a> · <a href="#" id="mfa-cancel">Annuler</a></p>
         </div>
 
-        <p class="auth-hint" id="auth-hint">Première utilisation ? Le premier compte créé devient administrateur.</p>
+        <p class="auth-hint" id="auth-hint" data-i18n="hint">Première utilisation ? Le premier compte créé devient administrateur.</p>
       </div>
     </div>
 
@@ -80,38 +90,46 @@
         <img src="/logo.svg" alt="Toumai" width="34" height="34" />
         <div>
           <h1>Toumai</h1>
-          <p>Automatisation e-commerce</p>
+          <p data-i18n="subtitle">Automatisation e-commerce</p>
         </div>
       </div>
       <div class="topbar-actions">
-        <span id="autopilot-pill" class="pill pill-off">○ Pilote arrêté</span>
-        <button id="autopilot-toggle" class="btn btn-primary">Démarrer le pilote</button>
-        <button id="install-btn" class="btn btn-ghost" hidden>⤓ Installer</button>
+        <span id="autopilot-pill" class="pill pill-off" data-i18n="pilot_off">○ Pilote arrêté</span>
+        <button id="autopilot-toggle" class="btn btn-primary" data-i18n="start_pilot">Démarrer le pilote</button>
+        <button id="install-btn" class="btn btn-ghost" hidden data-i18n="install">⤓ Installer</button>
+        <select class="input lang-select" aria-label="Langue / Language">
+          <option value="fr">🇫🇷 FR</option>
+          <option value="en">🇬🇧 EN</option>
+          <option value="ar">🇸🇦 ع</option>
+          <option value="tr">🇹🇷 TR</option>
+          <option value="es">🇪🇸 ES</option>
+          <option value="zh">🇨🇳 中</option>
+        </select>
         <span id="user-chip" class="pill pill-off" hidden></span>
-        <button id="logout-btn" class="btn btn-ghost" hidden>Déconnexion</button>
+        <button id="logout-btn" class="btn btn-ghost" hidden data-i18n="logout">Déconnexion</button>
       </div>
     </header>
 
     <nav class="tabs" id="tabs">
-      <button class="tab active" data-tab="dashboard">Tableau de bord</button>
-      <button class="tab" data-tab="market">Marché</button>
-      <button class="tab" data-tab="products">Produits</button>
-      <button class="tab" data-tab="suppliers">Fournisseurs</button>
-      <button class="tab" data-tab="orders">Commandes</button>
-      <button class="tab" data-tab="channels">Canaux de vente</button>
-      <button class="tab" data-tab="discovery">Recherche</button>
-      <button class="tab" data-tab="competitors">Compétiteurs</button>
-      <button class="tab" data-tab="ads">Publicités</button>
-      <button class="tab" data-tab="reports">Tableur</button>
-      <button class="tab" data-tab="wallet">Portefeuille</button>
-      <button class="tab" data-tab="settings">Paramètres</button>
+      <button class="tab active" data-tab="dashboard" data-i18n="nav_dashboard">Tableau de bord</button>
+      <button class="tab" data-tab="market" data-i18n="nav_market">Marché</button>
+      <button class="tab" data-tab="products" data-i18n="nav_products">Produits</button>
+      <button class="tab" data-tab="suppliers" data-i18n="nav_suppliers">Fournisseurs</button>
+      <button class="tab" data-tab="orders" data-i18n="nav_orders">Commandes</button>
+      <button class="tab" data-tab="channels" data-i18n="nav_channels">Canaux de vente</button>
+      <button class="tab" data-tab="discovery" data-i18n="nav_discovery">Recherche</button>
+      <button class="tab" data-tab="competitors" data-i18n="nav_competitors">Compétiteurs</button>
+      <button class="tab" data-tab="ads" data-i18n="nav_ads">Publicités</button>
+      <button class="tab" data-tab="reports" data-i18n="nav_reports">Tableur</button>
+      <button class="tab" data-tab="wallet" data-i18n="nav_wallet">Portefeuille</button>
+      <button class="tab" data-tab="settings" data-i18n="nav_settings">Paramètres</button>
     </nav>
 
     <main>
       <!-- TABLEAU DE BORD -->
       <section class="panel active" id="tab-dashboard">
         <div class="toolbar">
-          <button id="run-cycle" class="btn btn-primary">⚙️ Lancer un cycle complet</button>
+          <button id="run-cycle" class="btn btn-primary" data-i18n="run_cycle">⚙️ Lancer un cycle complet</button>
           <span id="cycle-status" class="muted"></span>
         </div>
         <div class="kpi-grid" id="kpis"></div>
@@ -339,6 +357,7 @@
     </div>
 
     <div id="toast" class="toast" hidden></div>
+    <script src="/i18n.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

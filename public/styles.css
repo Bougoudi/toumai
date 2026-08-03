@@ -298,3 +298,11 @@ select.input { appearance: none; background-image: none; }
 .auth-hint { color: var(--muted); font-size: 12px; text-align: center; margin: 16px 0 0; }
 .auth-hint a { color: var(--accent); text-decoration: none; font-weight: 600; }
 .auth-hint a:hover { text-decoration: underline; }
+
+/* Sélecteur de langue */
+.lang-row { display: flex; justify-content: center; margin: 0 0 14px; }
+.lang-select { width: auto; min-width: 128px; padding: 7px 10px; font-size: 13px; cursor: pointer; }
+.topbar-actions .lang-select { min-width: 66px; padding: 6px 8px; }
+/* Arabe : mise en page de droite à gauche */
+[dir="rtl"] .tabs { direction: rtl; }
+[dir="rtl"] .toolbar { flex-direction: row-reverse; }

@@ -1365,13 +1365,13 @@ function renderAutopilot(state) {
   const pill = $('#autopilot-pill');
   const toggle = $('#autopilot-toggle');
   if (state.running) {
-    pill.textContent = `● Pilote actif (cycle ${state.intervalSeconds}s)`;
+    pill.textContent = i18n.t('pilot_active', { s: state.intervalSeconds });
     pill.className = 'pill pill-on';
-    toggle.textContent = 'Arrêter le pilote';
+    toggle.textContent = i18n.t('stop_pilot');
   } else {
-    pill.textContent = '○ Pilote arrêté';
+    pill.textContent = i18n.t('pilot_off');
     pill.className = 'pill pill-off';
-    toggle.textContent = 'Démarrer le pilote';
+    toggle.textContent = i18n.t('start_pilot');
   }
 }
 async function refreshAutopilot() {
@@ -1420,7 +1420,7 @@ document.querySelectorAll('.auth-tab').forEach((t) =>
     document.querySelectorAll('.auth-tab').forEach((x) => x.classList.remove('active'));
     t.classList.add('active');
     $('#field-name').hidden = authMode !== 'register';
-    $('#a-submit').textContent = authMode === 'register' ? 'Créer le compte' : 'Se connecter';
+    $('#a-submit').textContent = authMode === 'register' ? i18n.t('register_btn') : i18n.t('signin_btn');
     $('#a-password').autocomplete = authMode === 'register' ? 'new-password' : 'current-password';
     $('#auth-error').hidden = true;
   }),
