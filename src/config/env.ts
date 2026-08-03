@@ -110,6 +110,16 @@ export const env = {
   },
 
   /**
+   * eBay : jeton de vérification pour la « notification de suppression de compte »
+   * (obligatoire pour activer un jeu de clés Production). Le même jeton doit être
+   * saisi dans le portail développeur eBay, à côté de l'URL de notification
+   * `${PUBLIC_URL}/api/ebay/account-deletion`.
+   */
+  ebay: {
+    verificationToken: process.env.EBAY_VERIFICATION_TOKEN ?? '',
+  },
+
+  /**
    * Paiement iyzico (cartes — Turquie). Modèle « carte → portefeuille → retrait
    * IBAN » : le client paie par carte sur la page hébergée iyzico, iyzico détient
    * l'argent puis le solde apparaît dans le portefeuille de l'appli ; le retrait
