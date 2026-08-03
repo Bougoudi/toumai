@@ -8,6 +8,7 @@ import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { adRouter } from './modules/ads/ad.routes.js';
 import { authRouter } from './modules/auth/auth.routes.js';
 import { channelController } from './modules/channels/channel.controller.js';
+import { ebayDeletionController } from './modules/channels/ebayDeletion.controller.js';
 import { channelRouter } from './modules/channels/channel.routes.js';
 import { competitorRouter } from './modules/competitors/competitor.routes.js';
 import { autopilotRouter, dashboardRouter } from './modules/dashboard/dashboard.routes.js';
@@ -132,6 +133,11 @@ export function createApp() {
   // Callback OAuth des canaux de vente : public (la marketplace redirige le
   // navigateur sans notre jeton ; l'identité est portée par l'état signé).
   app.get('/api/oauth/callback', asyncHandler(channelController.oauthCallback));
+
+  // Notification eBay « suppression de compte » (RGPD) : PUBLIC (eBay appelle
+  // sans jeton). GET = défi de validation, POST = notification réelle.
+  app.get('/api/ebay/account-deletion', ebayDeletionController.challenge);
+  app.post('/api/ebay/account-deletion', ebayDeletionController.notify);
 
   // À partir d'ici, toutes les routes /api exigent un jeton valide.
   app.use('/api', requireAuth);
