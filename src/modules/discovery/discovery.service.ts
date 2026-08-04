@@ -1,4 +1,5 @@
-import { getBarcodeConnector, getVisionConnector } from '../../automation/connectors/registry.js';
+import { getBarcodeConnector, getProductConnector, getVisionConnector } from '../../automation/connectors/registry.js';
+import { env } from '../../config/env.js';
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 import { computeSalePrice } from '../../utils/pricing.js';
@@ -25,9 +26,12 @@ const IDEAS = [
 ];
 
 function makeIdeas(query: string, source: string): Idea[] {
-  const q = query.toLowerCase();
+  const q = query.toLowerCase().trim();
   const matched = IDEAS.filter((i) => !q || i.title.toLowerCase().includes(q) || i.category.includes(q));
-  const base = matched.length ? matched : IDEAS;
+  // Avec un mot-clé : uniquement les correspondances (liste vide si aucune) —
+  // on n'affiche PAS tout le catalogue quand rien ne correspond. Sans mot-clé
+  // (parcours) : le catalogue de démonstration.
+  const base = q ? matched : IDEAS;
   return base.slice(0, 8).map((i) => ({
     title: i.title,
     category: i.category,
@@ -38,10 +42,32 @@ function makeIdeas(query: string, source: string): Idea[] {
   }));
 }
 
+/**
+ * Résout une recherche de produits par mots-clés : source réelle (AliExpress)
+ * si configurée, sinon catalogue de démonstration (mode démo uniquement).
+ * En production sans source configurée : liste vide (aucun produit inventé).
+ */
+async function resolveProducts(query: string, source: string): Promise<Idea[]> {
+  const connector = getProductConnector();
+  if (connector) {
+    const results = await connector.search(query, { limit: 20 });
+    return results.map((r) => ({
+      title: r.title,
+      category: r.category,
+      keywords: r.keywords,
+      estimatedPrice: r.estimatedPrice,
+      source: r.source,
+      imageUrl: r.imageUrl,
+    }));
+  }
+  if (env.demoMode) return makeIdeas(query, source);
+  return [];
+}
+
 export const discoveryService = {
   /** Recherche par écriture (texte). */
-  searchText(query: string): Idea[] {
-    return makeIdeas(query, 'search-text');
+  searchText(query: string): Promise<Idea[]> {
+    return resolveProducts(query, 'search-text');
   },
 
   /**
@@ -82,7 +108,8 @@ export const discoveryService = {
           : 'Fournissez une photo (vision configurée) ou un indice (ex: "gourde", "lampe").',
       );
     }
-    return { results: makeIdeas(query, mode === 'ai' ? 'search-photo-ai' : 'search-photo'), detectedLabels, mode };
+    const results = await resolveProducts(query, mode === 'ai' ? 'search-photo-ai' : 'search-photo');
+    return { results, detectedLabels, mode };
   },
 
   /**

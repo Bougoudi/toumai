@@ -20,8 +20,8 @@ const favoriteSchema = z.object({
 });
 
 export const discoveryController = {
-  searchText(req: Request, res: Response) {
-    res.json({ results: discoveryService.searchText(String(req.query.q ?? '')) });
+  async searchText(req: Request, res: Response) {
+    res.json({ results: await discoveryService.searchText(String(req.query.q ?? '')) });
   },
   async searchPhoto(req: Request, res: Response) {
     const input = parseBody(photoSchema, req);

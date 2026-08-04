@@ -62,3 +62,10 @@ services:
         sync: false
       - key: EBAY_CLIENT_SECRET
         sync: false
+      # Recherche de produits AliExpress (« Trouver des produits ») :
+      - key: ALIEXPRESS_APP_KEY
+        sync: false
+      - key: ALIEXPRESS_APP_SECRET
+        sync: false
+      - key: ALIEXPRESS_TRACKING_ID
+        sync: false

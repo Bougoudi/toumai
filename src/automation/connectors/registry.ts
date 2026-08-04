@@ -13,6 +13,8 @@ import type { BarcodeConnector } from './barcode/base.barcode.connector.js';
 import { HttpBarcodeConnector } from './barcode/http.barcode.connector.js';
 import type { VisionConnector } from './vision/base.vision.connector.js';
 import { HttpVisionConnector } from './vision/http.vision.connector.js';
+import type { ProductSearchConnector } from './product/base.product.connector.js';
+import { AliExpressProductConnector } from './product/aliexpress.product.connector.js';
 
 /**
  * Sélectionne les connecteurs à utiliser :
@@ -92,6 +94,23 @@ export function getBarcodeConnector(): BarcodeConnector | null {
   if (url) {
     logger.info('Connecteur code-barres : HTTP (base de données réelle)');
     return new HttpBarcodeConnector(url, key);
+  }
+  return null;
+}
+
+/**
+ * Connecteur de recherche de produits (« Trouver des produits »). Renvoie
+ * `null` s'il n'est pas configuré : la recherche par texte retombe alors sur
+ * le catalogue de démonstration (aucun vrai produit inventé).
+ */
+export function getProductConnector(): ProductSearchConnector | null {
+  const ali = env.connectors.aliexpress;
+  if (ali.appKey && ali.appSecret) {
+    logger.info('Connecteur produits : AliExpress (recherche réelle)');
+    return new AliExpressProductConnector(ali.appKey, ali.appSecret, {
+      trackingId: ali.trackingId,
+      currency: env.pricing.currency,
+    });
   }
   return null;
 }
