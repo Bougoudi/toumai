@@ -48,6 +48,8 @@ const DEF: Record<
     scopes: [
       'https://api.ebay.com/oauth/api_scope/sell.inventory',
       'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+      // Requis pour créer/lire les « business policies » (règles de vente).
+      'https://api.ebay.com/oauth/api_scope/sell.account',
     ],
     pkce: false,
     clientIdKey: 'clientId',
