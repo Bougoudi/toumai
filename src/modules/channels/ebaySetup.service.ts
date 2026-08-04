@@ -119,6 +119,10 @@ export const ebaySetupService = {
     });
 
     // ── 3. Politique de livraison ────────────────────────────
+    // Transporteur configurable : par défaut un service international générique
+    // (le vendeur expédie souvent depuis un autre pays que la marketplace).
+    const shipType = (config.shippingOptionType || 'INTERNATIONAL').toUpperCase();
+    const shipCode = config.shippingServiceCode || 'OtherInternationalShipping';
     report.fulfillmentPolicyId = await this.ensurePolicy(token, report, {
       kind: 'livraison',
       listUrl: `${ACCOUNT}/fulfillment_policy?marketplace_id=${MARKETPLACE}`,
@@ -132,11 +136,9 @@ export const ebaySetupService = {
         handlingTime: { value: 3, unit: 'DAY' },
         shippingOptions: [
           {
-            optionType: 'DOMESTIC',
+            optionType: shipType,
             costType: 'FLAT_RATE',
-            shippingServices: [
-              { sortOrder: 1, shippingServiceCode: 'FR_LaPosteColissimo', freeShipping: true },
-            ],
+            shippingServices: [{ sortOrder: 1, shippingServiceCode: shipCode, freeShipping: true }],
           },
         ],
       },
