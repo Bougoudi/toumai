@@ -80,6 +80,11 @@ export const ebaySetupService = {
 
     const report: SetupReport = { created: [], reused: [], warnings: [], ready: false };
 
+    // ── 0. Inscription au « Gestionnaire des conditions de vente » ──
+    // Requis avant de pouvoir créer des business policies. Idempotent : si le
+    // vendeur y est déjà inscrit, eBay renvoie une erreur qu'on ignore.
+    await this.optInBusinessPolicies(token, report);
+
     // ── 1. Politique de paiement ─────────────────────────────
     report.paymentPolicyId = await this.ensurePolicy(token, report, {
       kind: 'paiement',
@@ -155,6 +160,24 @@ export const ebaySetupService = {
     return report;
   },
 
+  /** Inscrit le vendeur au programme « business policies » (idempotent). */
+  async optInBusinessPolicies(token: string, report: SetupReport): Promise<void> {
+    const res = await callEbay(token, 'POST', `${ACCOUNT}/program/opt_in`, {
+      programType: 'SELLING_POLICY_MANAGEMENT',
+    });
+    if (res.ok || res.status === 200 || res.status === 204) {
+      report.created.push('inscription règles de vente');
+      return;
+    }
+    // Déjà inscrit → eBay renvoie une erreur « already opted in » : on l'ignore.
+    const msg = ebayError(res.data).toLowerCase();
+    if (msg.includes('already') || msg.includes('déjà') || res.status === 409) {
+      report.reused.push('inscription règles de vente');
+      return;
+    }
+    report.warnings.push(`Inscription règles de vente : ${ebayError(res.data)}`);
+  },
+
   /** Récupère la première règle existante, sinon tente d'en créer une. */
   async ensurePolicy(
     token: string,
@@ -188,9 +211,11 @@ export const ebaySetupService = {
       return list.data.locations[0].merchantLocationKey;
     }
     const key = 'TOUMAI_MAIN';
-    const address: Record<string, string> = { country: 'FR' };
+    const address: Record<string, string> = { country: (config.locationCountry || 'FR').toUpperCase() };
     if (config.locationPostalCode) address.postalCode = config.locationPostalCode;
     if (config.locationCity) address.city = config.locationCity;
+    if (config.locationAddress) address.addressLine1 = config.locationAddress;
+    if (config.locationState) address.stateOrProvince = config.locationState;
     const created = await callEbay(token, 'POST', `${INVENTORY}/location/${key}`, {
       location: { address },
       name: 'Toumai',
