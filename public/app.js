@@ -136,7 +136,7 @@ async function loadMarket() {
   try {
     const d = await api('/api/market/opportunities?take=25&minScore=0');
     $('#market-table').innerHTML = tableHtml(
-      ['Produit', 'Catégorie', 'Score', 'Demande', 'Concur.', 'Prix vente', 'Statut'],
+      [i18n.t('th_product'), i18n.t('th_category'), i18n.t('th_score'), i18n.t('th_demand'), i18n.t('th_competition'), i18n.t('th_sale_price'), i18n.t('th_status')],
       d.items.map((o) => [
         esc(o.title),
         esc(o.category),
@@ -181,7 +181,7 @@ async function loadProducts() {
     $('#products-table').innerHTML =
       `<div class="muted" style="margin-bottom:10px">${d.total} produit(s)</div>` +
       tableHtml(
-        ['Nom', 'Catégorie', 'Achat', 'Vente', 'Marge', 'Statut'],
+        [i18n.t('th_name'), i18n.t('th_category'), i18n.t('th_purchase'), i18n.t('th_sale'), i18n.t('th_margin'), i18n.t('th_status')],
         d.items.map((p) => [
           esc(p.name),
           esc(p.category),
@@ -227,7 +227,7 @@ $('#search-suppliers').addEventListener('click', async (ev) => {
       body: { query, category: category || undefined, region: $('#s-region').value.trim() || undefined, limit: 15, async: false },
     });
     $('#suppliers-table').innerHTML = tableHtml(
-      ['#', 'Fournisseur', 'Pays', 'Note', 'Score', 'Meilleure offre'],
+      ['#', i18n.t('th_supplier'), i18n.t('th_country'), i18n.t('th_rating'), i18n.t('th_score'), i18n.t('th_best_offer')],
       r.results.map((m) => {
         const row = [
           m.rank,
@@ -263,7 +263,7 @@ async function loadDirectory() {
     $('#directory-table').innerHTML =
       `<div class="muted" style="margin-bottom:10px">${d.total} fournisseur(s)</div>` +
       tableHtml(
-        ['Fournisseur', 'Pays', 'Région', 'Note', 'Vérifié', 'Offres'],
+        [i18n.t('th_supplier'), i18n.t('th_country'), i18n.t('th_region'), i18n.t('th_rating'), i18n.t('th_verified'), i18n.t('th_offers')],
         d.items.map((s) => {
           const row = [
             `<span class="link">${esc(s.name)}</span>`,
@@ -305,7 +305,7 @@ async function showSupplier(id) {
       </div>
       <h4>Offres (${s.offers.length})</h4>
       <div class="table-wrap">${tableHtml(
-        ['Titre', 'Catégorie', 'Prix', 'MOQ', 'Délai', 'Stock'],
+        [i18n.t('th_title'), i18n.t('th_category'), i18n.t('th_price'), 'MOQ', i18n.t('th_leadtime'), i18n.t('th_stock')],
         s.offers.map((o) => [
           esc(o.title),
           esc(o.category),
@@ -328,7 +328,7 @@ async function loadOrders() {
     if (status) params.set('status', status);
     const d = await api('/api/orders?' + params.toString());
     $('#orders-table').innerHTML = tableHtml(
-      ['N°', 'Client', 'Statut', 'Total', 'Créée'],
+      [i18n.t('th_number'), i18n.t('th_client'), i18n.t('th_status'), i18n.t('th_total'), i18n.t('th_created')],
       d.items.map((o) => {
         const row = [
           esc(o.orderNumber),
@@ -359,7 +359,7 @@ async function showOrder(id) {
   try {
     const o = await api('/api/orders/' + id);
     const items = tableHtml(
-      ['Produit', 'Qté', 'PU vente', 'Sous-total'],
+      [i18n.t('th_product'), i18n.t('th_qty'), i18n.t('th_unit_price'), i18n.t('th_subtotal')],
       o.items.map((it) => [
         esc(it.product?.name || it.productId),
         it.quantity,
@@ -368,7 +368,7 @@ async function showOrder(id) {
       ]),
     );
     const pos = tableHtml(
-      ['Fournisseur', 'Statut', 'Coût', 'Transporteur', 'Suivi'],
+      [i18n.t('th_supplier'), i18n.t('th_status'), i18n.t('th_cost'), i18n.t('th_carrier'), i18n.t('th_tracking')],
       o.purchaseOrders.map((p) => [
         esc(p.supplier?.name || '—'),
         badge(p.status),
@@ -577,7 +577,7 @@ async function loadChannels() {
         actions,
       ];
     });
-    $('#channels-table').innerHTML = tableHtml(['Canal', 'Nom', 'Statut', 'Détail', 'Actions'], rows);
+    $('#channels-table').innerHTML = tableHtml([i18n.t('th_channel'), i18n.t('th_name'), i18n.t('th_status'), i18n.t('th_detail'), i18n.t('th_actions')], rows);
     document.querySelectorAll('#channels-table [data-auth]').forEach((b) =>
       b.addEventListener('click', () => authorizeChannel(b.dataset.auth)),
     );
@@ -696,7 +696,7 @@ function renderDiscoveryResults(res) {
     esc(r.title), esc(r.category), `<span class="num">${money(r.estimatedPrice)}</span>`,
     `<button class="btn btn-ghost btn-xs" data-fav="${i}">☆ Favori</button>`,
   ]);
-  $('#discovery-results').innerHTML = tableHtml(['Produit', 'Catégorie', 'Prix estimé', ''], rows);
+  $('#discovery-results').innerHTML = tableHtml([i18n.t('th_product'), i18n.t('th_category'), i18n.t('th_est_price'), ''], rows);
   document.querySelectorAll('#discovery-results [data-fav]').forEach((b) =>
     b.addEventListener('click', async () => {
       const r = res.results[Number(b.dataset.fav)];
@@ -838,7 +838,7 @@ async function loadFavorites() {
       f.productId ? '<span class="badge ok">SOURCÉ</span>' : '<span class="badge wait">À SOURCER</span>',
       `<button class="btn btn-ghost btn-xs" data-src="${f.id}">Sourcer</button> <button class="btn btn-ghost btn-xs" data-pub="${f.id}">Publier</button> <button class="btn btn-ghost btn-xs" data-delf="${f.id}">✕</button>`,
     ]);
-    $('#favorites-table').innerHTML = tableHtml(['Produit', 'Catégorie', 'Prix', 'Statut', 'Actions'], rows);
+    $('#favorites-table').innerHTML = tableHtml([i18n.t('th_product'), i18n.t('th_category'), i18n.t('th_price'), i18n.t('th_status'), i18n.t('th_actions')], rows);
     document.querySelectorAll('#favorites-table [data-src]').forEach((b) => b.addEventListener('click', () => sourceFav(b.dataset.src)));
     document.querySelectorAll('#favorites-table [data-pub]').forEach((b) => b.addEventListener('click', () => publishFav(b.dataset.pub)));
     document.querySelectorAll('#favorites-table [data-delf]').forEach((b) => b.addEventListener('click', async () => { await api('/api/favorites/' + b.dataset.delf, { method: 'DELETE' }); loadFavorites(); }));
@@ -876,7 +876,7 @@ async function loadCompetitors() {
       c.lastScanAt ? dt(c.lastScanAt) : '—', `${c._count?.products ?? 0} produits`,
       `<button class="btn btn-ghost btn-xs" data-scan="${c.id}">Scanner</button> <button class="btn btn-ghost btn-xs" data-delc="${c.id}">✕</button>`,
     ]);
-    $('#competitors-table').innerHTML = tableHtml(['Boutique', 'Plateforme', 'Suivi', 'Dernier scan', 'Produits', 'Actions'], rows);
+    $('#competitors-table').innerHTML = tableHtml([i18n.t('th_shop'), i18n.t('th_platform'), i18n.t('th_followed'), i18n.t('th_last_scan'), i18n.t('th_products'), i18n.t('th_actions')], rows);
     document.querySelectorAll('#competitors-table [data-scan]').forEach((b) => b.addEventListener('click', async () => { b.textContent = '…'; try { const r = await api(`/api/competitors/${b.dataset.scan}/scan`, { method: 'POST' }); toast(r.found + ' produits gagnants'); loadCompetitors(); } catch (e) { toast(e.message); } }));
     document.querySelectorAll('#competitors-table [data-delc]').forEach((b) => b.addEventListener('click', async () => { await api('/api/competitors/' + b.dataset.delc, { method: 'DELETE' }); loadCompetitors(); }));
     document.querySelectorAll('#competitors-table [data-follow]').forEach((b) => b.addEventListener('change', async () => { await api(`/api/competitors/${b.dataset.follow}/follow`, { method: 'PATCH', body: { followed: b.checked } }); toast(b.checked ? 'Boutique suivie' : 'Suivi arrêté'); }));
@@ -885,7 +885,7 @@ async function loadCompetitors() {
       esc(w.title), esc(w.category), `<b class="num">${w.soldCount}</b>`, `<span class="num">${money(w.price)}</span>`,
       esc(w.competitor?.shopName || ''), w.favorited ? '★' : `<button class="btn btn-ghost btn-xs" data-wfav="${w.id}">☆ Favori</button>`,
     ]);
-    $('#winning-table').innerHTML = tableHtml(['Produit', 'Catégorie', 'Ventes', 'Prix', 'Boutique', ''], wrows);
+    $('#winning-table').innerHTML = tableHtml([i18n.t('th_product'), i18n.t('th_category'), i18n.t('th_sales'), i18n.t('th_price'), i18n.t('th_shop'), ''], wrows);
     document.querySelectorAll('#winning-table [data-wfav]').forEach((b) => b.addEventListener('click', async () => { await api(`/api/competitors/products/${b.dataset.wfav}/favorite`, { method: 'POST' }); toast('Ajouté aux favoris'); loadCompetitors(); }));
   } catch (e) { toast(e.message); }
 }
@@ -918,7 +918,7 @@ async function loadAds() {
       `<span class="num">${money(a.budget)}</span>`,
       `<button class="btn btn-ghost btn-xs" data-adstat="${a.id}" data-next="${a.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'}">${a.status === 'ACTIVE' ? 'Pause' : 'Activer'}</button> <button class="btn btn-ghost btn-xs" data-adel="${a.id}">✕</button>`,
     ]);
-    $('#ads-table').innerHTML = tableHtml(['Produit', 'Plateforme', 'Accroche', 'Statut', 'Budget/j', 'Actions'], rows);
+    $('#ads-table').innerHTML = tableHtml([i18n.t('th_product'), i18n.t('th_platform'), i18n.t('th_hook'), i18n.t('th_status'), i18n.t('th_budget_day'), i18n.t('th_actions')], rows);
     document.querySelectorAll('#ads-table [data-adstat]').forEach((b) => b.addEventListener('click', async () => { await api(`/api/ads/${b.dataset.adstat}/status`, { method: 'PATCH', body: { status: b.dataset.next } }); loadAds(); }));
     document.querySelectorAll('#ads-table [data-adel]').forEach((b) => b.addEventListener('click', async () => { await api('/api/ads/' + b.dataset.adel, { method: 'DELETE' }); loadAds(); }));
   } catch (e) { toast(e.message); }
@@ -942,7 +942,7 @@ async function loadReports() {
       kpiCard('', 'Coûts', money(t.cost), '') +
       kpiCard('green', 'Bénéfice', money(t.profit), 'marge ' + t.margin + '%');
     const rows = r.rows.map((x) => [x.date, x.orders, `<span class="num">${money(x.revenue)}</span>`, `<span class="num">${money(x.cost)}</span>`, `<span class="num" style="color:${x.profit >= 0 ? 'var(--green)' : 'var(--red)'}">${money(x.profit)}</span>`]);
-    $('#pnl-table').innerHTML = tableHtml(['Date', 'Commandes', 'Revenus', 'Coûts', 'Bénéfice'], rows);
+    $('#pnl-table').innerHTML = tableHtml([i18n.t('th_date'), i18n.t('th_orders'), i18n.t('th_revenue'), i18n.t('th_costs'), i18n.t('th_profit')], rows);
   } catch (e) { toast(e.message); }
 }
 const kpiCard = (cls, l, v, s) => `<div class="kpi ${cls}"><div class="label">${l}</div><div class="value num">${v}</div><div class="sub">${s}</div></div>`;
@@ -972,7 +972,7 @@ async function loadWallet() {
       badge(x.status),
       x.status === 'PENDING' ? `<button class="btn btn-ghost btn-xs" data-wcancel="${x.id}">Annuler</button>` : '',
     ]);
-    $('#withdrawals-table').innerHTML = tableHtml(['Date', 'Montant', 'Méthode', 'Destination', 'Statut', ''], rows);
+    $('#withdrawals-table').innerHTML = tableHtml([i18n.t('th_date'), i18n.t('th_amount'), i18n.t('th_method'), i18n.t('th_destination'), i18n.t('th_status'), ''], rows);
     document.querySelectorAll('#withdrawals-table [data-wcancel]').forEach((b) =>
       b.addEventListener('click', async () => { await api('/api/wallet/' + b.dataset.wcancel + '/cancel', { method: 'POST' }); toast('Demande annulée'); loadWallet(); }),
     );
@@ -1238,7 +1238,7 @@ async function loadLoginHistory() {
       esc((e.userAgent || '').split(')')[0].split('(')[1] || e.userAgent || '—').slice(0, 40),
       e.newDevice ? '<span class="badge wait">Nouvel appareil</span>' : '<span class="badge ok">Connu</span>',
     ]);
-    $('#login-history').innerHTML = tableHtml(['Date', 'Méthode', 'Appareil', ''], rows);
+    $('#login-history').innerHTML = tableHtml([i18n.t('th_date'), i18n.t('th_method'), i18n.t('th_device'), ''], rows);
   } catch (e) { /* ignore */ }
 }
 
