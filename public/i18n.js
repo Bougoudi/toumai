@@ -64,6 +64,9 @@
       th_budget_day: 'Budget/j', th_date: 'Date', th_orders: 'Commandes', th_revenue: 'Revenus',
       th_costs: 'Coûts', th_profit: 'Bénéfice', th_amount: 'Montant', th_method: 'Méthode',
       th_destination: 'Destination', th_device: 'Appareil', th_followed: 'Suivi',
+      help_channels: "Connectez vos boutiques Etsy, eBay et Amazon : Toumai importe automatiquement les commandes clients, puis achète chez le fournisseur et expédie. Chaque canal nécessite vos identifiants développeur de la plateforme (clé API / jeton OAuth). Amazon requiert un compte vendeur Professionnel et une inscription SP-API validée.",
+      help_wallet: "Le solde disponible correspond à vos bénéfices non encore retirés. Chaque demande de retrait exige une confirmation d'identité (mot de passe ou code d'authentification). En production, le versement réel s'effectue via un prestataire (Stripe Payouts / virement) — la mécanique est prête, il suffit de brancher tes identifiants.",
+      help_clean: "Supprime toutes les données de démonstration (commandes, produits, fournisseurs, clients, chiffres…) pour repartir de zéro avec tes vraies ventes. Ton compte et tes réglages sont conservés. Action irréversible.",
     },
     en: {
       subtitle: 'E-commerce automation', login_tab: 'Sign in', register_tab: 'Create account',
@@ -119,6 +122,9 @@
       th_budget_day: 'Budget/day', th_date: 'Date', th_orders: 'Orders', th_revenue: 'Revenue',
       th_costs: 'Costs', th_profit: 'Profit', th_amount: 'Amount', th_method: 'Method',
       th_destination: 'Destination', th_device: 'Device', th_followed: 'Followed',
+      help_channels: "Connect your Etsy, eBay and Amazon shops: Toumai automatically imports customer orders, then buys from the supplier and ships. Each channel requires your platform developer credentials (API key / OAuth token). Amazon requires a Professional seller account and an approved SP-API registration.",
+      help_wallet: "The available balance is your profit not yet withdrawn. Each withdrawal request requires an identity confirmation (password or authentication code). In production, the actual payout is made through a provider (Stripe Payouts / bank transfer) — the mechanism is ready, just plug in your credentials.",
+      help_clean: "Deletes all demo data (orders, products, suppliers, customers, figures…) to start fresh with your real sales. Your account and settings are kept. Irreversible action.",
     },
     ar: {
       subtitle: 'أتمتة التجارة الإلكترونية', login_tab: 'تسجيل الدخول', register_tab: 'إنشاء حساب',
@@ -174,6 +180,9 @@
       th_budget_day: 'ميزانية/يوم', th_date: 'التاريخ', th_orders: 'الطلبات', th_revenue: 'الإيرادات',
       th_costs: 'التكاليف', th_profit: 'الربح', th_amount: 'المبلغ', th_method: 'الطريقة',
       th_destination: 'الوجهة', th_device: 'الجهاز', th_followed: 'متابَع',
+      help_channels: "اربط متاجرك على Etsy وeBay وAmazon: يستورد Toumai طلبات العملاء تلقائيًا، ثم يشتري من المورّد ويشحن. يتطلب كل قناة بيانات اعتماد المطوّر الخاصة بالمنصّة (مفتاح API / رمز OAuth). يتطلب Amazon حساب بائع احترافي وتسجيل SP-API معتمَد.",
+      help_wallet: "الرصيد المتاح هو أرباحك التي لم تُسحب بعد. يتطلب كل طلب سحب تأكيد الهوية (كلمة المرور أو رمز المصادقة). في وضع الإنتاج، يتم الدفع الفعلي عبر مزوّد خدمة (Stripe Payouts / تحويل بنكي) — الآلية جاهزة، ما عليك سوى إدخال بيانات اعتمادك.",
+      help_clean: "يحذف جميع البيانات التجريبية (الطلبات، المنتجات، المورّدون، العملاء، الأرقام…) للبدء من جديد بمبيعاتك الحقيقية. يُحتفظ بحسابك وإعداداتك. إجراء لا يمكن التراجع عنه.",
     },
     tr: {
       subtitle: 'E-ticaret otomasyonu', login_tab: 'Giriş', register_tab: 'Hesap oluştur',
@@ -229,6 +238,9 @@
       th_budget_day: 'Bütçe/gün', th_date: 'Tarih', th_orders: 'Siparişler', th_revenue: 'Gelir',
       th_costs: 'Maliyetler', th_profit: 'Kâr', th_amount: 'Tutar', th_method: 'Yöntem',
       th_destination: 'Hedef', th_device: 'Cihaz', th_followed: 'Takip edilen',
+      help_channels: "Etsy, eBay ve Amazon mağazalarınızı bağlayın: Toumai müşteri siparişlerini otomatik olarak içe aktarır, ardından tedarikçiden satın alıp gönderir. Her kanal, platformun geliştirici kimlik bilgilerini gerektirir (API anahtarı / OAuth belirteci). Amazon, Profesyonel satıcı hesabı ve onaylı bir SP-API kaydı gerektirir.",
+      help_wallet: "Kullanılabilir bakiye, henüz çekmediğiniz kârınızdır. Her çekim talebi bir kimlik doğrulaması gerektirir (parola veya kimlik doğrulama kodu). Üretimde, gerçek ödeme bir sağlayıcı aracılığıyla yapılır (Stripe Payouts / banka havalesi) — mekanizma hazır, yalnızca kimlik bilgilerinizi girin.",
+      help_clean: "Gerçek satışlarınızla sıfırdan başlamak için tüm demo verilerini (siparişler, ürünler, tedarikçiler, müşteriler, rakamlar…) siler. Hesabınız ve ayarlarınız korunur. Geri alınamaz işlem.",
     },
     es: {
       subtitle: 'Automatización de comercio electrónico', login_tab: 'Iniciar sesión', register_tab: 'Crear cuenta',
@@ -284,6 +296,9 @@
       th_budget_day: 'Presup./día', th_date: 'Fecha', th_orders: 'Pedidos', th_revenue: 'Ingresos',
       th_costs: 'Costos', th_profit: 'Beneficio', th_amount: 'Importe', th_method: 'Método',
       th_destination: 'Destino', th_device: 'Dispositivo', th_followed: 'Seguido',
+      help_channels: "Conecta tus tiendas de Etsy, eBay y Amazon: Toumai importa automáticamente los pedidos de los clientes, luego compra al proveedor y envía. Cada canal requiere tus credenciales de desarrollador de la plataforma (clave API / token OAuth). Amazon requiere una cuenta de vendedor Profesional y un registro SP-API aprobado.",
+      help_wallet: "El saldo disponible son tus beneficios aún no retirados. Cada solicitud de retiro requiere una confirmación de identidad (contraseña o código de autenticación). En producción, el pago real se realiza a través de un proveedor (Stripe Payouts / transferencia bancaria) — el mecanismo está listo, solo tienes que introducir tus credenciales.",
+      help_clean: "Elimina todos los datos de demostración (pedidos, productos, proveedores, clientes, cifras…) para empezar de cero con tus ventas reales. Se conservan tu cuenta y tu configuración. Acción irreversible.",
     },
     zh: {
       subtitle: '电子商务自动化', login_tab: '登录', register_tab: '创建账户',
@@ -339,6 +354,9 @@
       th_budget_day: '预算/天', th_date: '日期', th_orders: '订单', th_revenue: '收入',
       th_costs: '成本', th_profit: '利润', th_amount: '金额', th_method: '方式',
       th_destination: '目标', th_device: '设备', th_followed: '已关注',
+      help_channels: "连接您的 Etsy、eBay 和 Amazon 店铺：Toumai 会自动导入客户订单，然后向供应商下单并发货。每个渠道都需要您在该平台的开发者凭证（API 密钥 / OAuth 令牌）。Amazon 需要专业卖家账户和已通过审核的 SP-API 注册。",
+      help_wallet: "可用余额是您尚未提现的利润。每次提现请求都需要身份确认（密码或验证码）。在生产环境中，实际付款通过服务提供商完成（Stripe Payouts / 银行转账）——机制已就绪，只需填入您的凭证即可。",
+      help_clean: "删除所有演示数据（订单、产品、供应商、客户、数据…），以便用您的真实销售重新开始。您的账户和设置将保留。此操作不可撤销。",
     },
   };
 
