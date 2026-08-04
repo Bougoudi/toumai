@@ -40,11 +40,13 @@ function badge(status) {
   const ok = ['SHIPPED', 'DELIVERED', 'COMPLETED', 'ACTIVE', 'PAID', 'IMPORTED'];
   const wait = ['FULFILLING', 'RUNNING', 'PENDING', 'EVALUATED', 'NEW', 'DRAFT', 'CREATED', 'PLACED'];
   const cls = ok.includes(s) ? 'ok' : wait.includes(s) ? 'wait' : 'bad';
-  return `<span class="badge ${cls}">${s}</span>`;
+  // Libellé traduit si disponible, sinon le code brut.
+  const lbl = i18n.t('st_' + s);
+  return `<span class="badge ${cls}">${lbl === 'st_' + s ? s : lbl}</span>`;
 }
 
 function tableHtml(headers, rows) {
-  if (!rows.length) return '<div class="empty">Aucune donnée</div>';
+  if (!rows.length) return `<div class="empty">${i18n.t('no_data')}</div>`;
   return (
     '<table><thead><tr>' +
     headers.map((h) => `<th>${h}</th>`).join('') +
@@ -106,17 +108,17 @@ async function loadDashboard() {
     const d = await api('/api/dashboard');
     const orderCount = Object.values(d.orders.byStatus).reduce((a, b) => a + b, 0);
     $('#kpis').replaceChildren(
-      el(`<div class="kpi accent"><div class="label">Opportunités</div><div class="value num">${d.market.opportunities}</div><div class="sub">score moyen ${d.market.avgOpportunityScore}/100</div></div>`),
-      el(`<div class="kpi"><div class="label">Produits actifs</div><div class="value num">${d.catalog.active}</div><div class="sub">${d.catalog.generatedToday} générés aujourd'hui</div></div>`),
-      el(`<div class="kpi"><div class="label">Commandes</div><div class="value num">${orderCount}</div><div class="sub">${d.suppliers.total} fournisseurs</div></div>`),
-      el(`<div class="kpi green"><div class="label">Profit estimé</div><div class="value num">${money(d.finance.estimatedProfit)}</div><div class="sub">CA ${money(d.finance.revenue)}</div></div>`),
+      el(`<div class="kpi accent"><div class="label">${i18n.t('kpi_opportunities')}</div><div class="value num">${d.market.opportunities}</div><div class="sub">${i18n.t('kpi_score_avg')} ${d.market.avgOpportunityScore}/100</div></div>`),
+      el(`<div class="kpi"><div class="label">${i18n.t('kpi_active_products')}</div><div class="value num">${d.catalog.active}</div><div class="sub">${d.catalog.generatedToday} ${i18n.t('kpi_generated_today')}</div></div>`),
+      el(`<div class="kpi"><div class="label">${i18n.t('kpi_orders')}</div><div class="value num">${orderCount}</div><div class="sub">${d.suppliers.total} ${i18n.t('kpi_suppliers')}</div></div>`),
+      el(`<div class="kpi green"><div class="label">${i18n.t('kpi_estimated_profit')}</div><div class="value num">${money(d.finance.estimatedProfit)}</div><div class="sub">${i18n.t('kpi_revenue_short')} ${money(d.finance.revenue)}</div></div>`),
     );
     $('#finance').innerHTML = `
-      <div class="f"><div class="l">Chiffre d'affaires</div><div class="v num">${money(d.finance.revenue)}</div></div>
-      <div class="f"><div class="l">Coût d'achat</div><div class="v num">${money(d.finance.purchaseCost)}</div></div>
-      <div class="f"><div class="l">Profit estimé</div><div class="v num" style="color:var(--green)">${money(d.finance.estimatedProfit)}</div></div>`;
+      <div class="f"><div class="l">${i18n.t('fin_revenue')}</div><div class="v num">${money(d.finance.revenue)}</div></div>
+      <div class="f"><div class="l">${i18n.t('fin_cost')}</div><div class="v num">${money(d.finance.purchaseCost)}</div></div>
+      <div class="f"><div class="l">${i18n.t('kpi_estimated_profit')}</div><div class="v num" style="color:var(--green)">${money(d.finance.estimatedProfit)}</div></div>`;
     $('#recent-orders').innerHTML = tableHtml(
-      ['N°', 'Client', 'Statut', 'Total', 'Articles'],
+      [i18n.t('th_number'), i18n.t('th_client'), i18n.t('th_status'), i18n.t('th_total'), i18n.t('th_items')],
       d.recent.orders.map((o) => {
         const r = [esc(o.orderNumber), esc(o.customer), badge(o.status), `<span class="num">${money(o.total)}</span>`, o.items];
         r._attr = ` class="clickable" data-order="${o.id}"`;
