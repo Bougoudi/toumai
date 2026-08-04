@@ -68,6 +68,16 @@ export const env = {
     },
     /** Base de données de codes-barres (scan EAN/UPC). La clé est optionnelle (ex. Open Food Facts). */
     barcode: { url: process.env.BARCODE_API_URL ?? '', key: process.env.BARCODE_API_KEY ?? '' },
+    /**
+     * Recherche de produits AliExpress (« Trouver des produits »). App Key +
+     * App Secret depuis le portail AliExpress Open Platform. `trackingId`
+     * (facultatif) = identifiant de suivi affilié.
+     */
+    aliexpress: {
+      appKey: process.env.ALIEXPRESS_APP_KEY ?? '',
+      appSecret: process.env.ALIEXPRESS_APP_SECRET ?? '',
+      trackingId: process.env.ALIEXPRESS_TRACKING_ID ?? '',
+    },
   },
 
   /** Authentification (JWT). */
