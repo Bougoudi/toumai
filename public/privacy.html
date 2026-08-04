@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Toumai — Politique de confidentialité</title>
+    <meta name="description" content="Politique de confidentialité de l'application Toumai (automatisation e-commerce)." />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="icon" href="/logo.svg" />
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        font: 16px/1.7 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 2rem 1rem 4rem;
+      }
+      .wrap { max-width: 780px; margin: 0 auto; }
+      .brand { display: flex; align-items: center; gap: .6rem; margin-bottom: 1.5rem; }
+      .brand img { width: 40px; height: 40px; }
+      .brand h1 { font-size: 1.4rem; margin: 0; }
+      h2 { color: #38bdf8; font-size: 1.15rem; margin: 2rem 0 .5rem; }
+      p, li { color: #cbd5e1; }
+      a { color: #38bdf8; }
+      .muted { color: #94a3b8; font-size: .9rem; }
+      code { background: #1e293b; padding: .1rem .4rem; border-radius: .3rem; }
+      hr { border: none; border-top: 1px solid #1e293b; margin: 2rem 0; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="brand">
+        <img src="/logo.svg" alt="Toumai" />
+        <h1>Toumai</h1>
+      </div>
+
+      <h1>Politique de confidentialité</h1>
+      <p class="muted">Dernière mise à jour : 4 août 2026</p>
+
+      <p>
+        Toumai est une application d'automatisation e-commerce (dropshipping) qui aide son
+        utilisateur à analyser le marché, sourcer des produits, et gérer les commandes et
+        expéditions sur les places de marché connectées (eBay, Etsy, Amazon). La présente
+        politique explique quelles données sont traitées et comment.
+      </p>
+
+      <h2>1. Responsable du traitement</h2>
+      <p>
+        Toumai est exploité par son propriétaire. Pour toute question relative à vos données ou
+        à cette politique, contactez : <a href="mailto:abakarousmanh1@gmail.com">abakarousmanh1@gmail.com</a>.
+      </p>
+
+      <h2>2. Données que nous traitons</h2>
+      <ul>
+        <li><strong>Compte :</strong> adresse e-mail et identifiants de connexion (le mot de passe est stocké de façon chiffrée/hachée).</li>
+        <li><strong>Places de marché connectées :</strong> lorsque vous reliez un compte (eBay, Etsy, Amazon) via OAuth, nous recevons des jetons d'accès et des données strictement nécessaires à la gestion des annonces et des commandes (produits, commandes, adresses de livraison).</li>
+        <li><strong>Commandes &amp; expéditions :</strong> détails des commandes traitées et informations d'expédition nécessaires à l'acheminement des colis.</li>
+        <li><strong>Paiements :</strong> les paiements sont traités par des prestataires tiers (iyzico, Stripe). Nous ne stockons pas les numéros de carte bancaire.</li>
+      </ul>
+
+      <h2>3. Utilisation des données</h2>
+      <p>
+        Les données servent uniquement à faire fonctionner le service : importer les commandes
+        des places de marché, acheter chez le fournisseur, organiser l'expédition, et afficher
+        vos statistiques de vente. Nous ne vendons ni ne louons vos données personnelles.
+      </p>
+
+      <h2>4. Partage</h2>
+      <p>
+        Les données ne sont partagées qu'avec les tiers indispensables à l'exécution du service :
+        les places de marché connectées, les fournisseurs/transporteurs pour l'expédition, et les
+        prestataires de paiement. Chaque échange se limite au strict nécessaire.
+      </p>
+
+      <h2>5. Données eBay et suppression de compte</h2>
+      <p>
+        Les données provenant d'eBay sont traitées conformément aux règles d'eBay. Nous prenons en
+        charge la notification eBay de « suppression / fermeture de compte » : à sa réception, les
+        données personnelles eBay associées sont supprimées de nos systèmes. Point de terminaison
+        dédié : <code>/api/ebay/account-deletion</code>.
+      </p>
+
+      <h2>6. Conservation et suppression</h2>
+      <p>
+        Vos données sont conservées tant que votre compte est actif. Vous pouvez demander la
+        suppression de votre compte et des données associées à tout moment en écrivant à l'adresse
+        de contact ci-dessus. Vous pouvez également déconnecter une place de marché à tout moment,
+        ce qui révoque nos jetons d'accès.
+      </p>
+
+      <h2>7. Sécurité</h2>
+      <p>
+        Les identifiants des places de marché sont chiffrés au repos. Les échanges avec
+        l'application se font via des connexions sécurisées (HTTPS).
+      </p>
+
+      <h2>8. Modifications</h2>
+      <p>
+        Cette politique peut être mise à jour. La date de dernière mise à jour figure en haut de
+        cette page.
+      </p>
+
+      <hr />
+      <p class="muted">
+        <a href="/">← Retour à l'application Toumai</a>
+      </p>
+    </div>
+  </body>
+</html>
