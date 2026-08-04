@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { parseBody } from '../../middleware/validate.js';
 import { connectChannelSchema, updateChannelSchema } from './channel.schema.js';
 import { channelService } from './channel.service.js';
+import { ebaySetupService } from './ebaySetup.service.js';
 import { oauthService } from './oauth.service.js';
 
 export const channelController = {
@@ -46,6 +47,11 @@ export const channelController = {
   /** POST /api/channels/:id/sync — importe les commandes du canal. */
   async sync(req: Request, res: Response) {
     res.json(await channelService.syncOrders(req.params.id));
+  },
+
+  /** POST /api/channels/:id/ebay/setup — crée/récupère les règles de vente eBay. */
+  async ebaySetup(req: Request, res: Response) {
+    res.json(await ebaySetupService.autoConfigure(req.params.id));
   },
 
   /** POST /api/channels/:id/oauth/start — URL d'autorisation OAuth. */
