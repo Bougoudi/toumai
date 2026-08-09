@@ -15,6 +15,7 @@ import type { VisionConnector } from './vision/base.vision.connector.js';
 import { HttpVisionConnector } from './vision/http.vision.connector.js';
 import type { ProductSearchConnector } from './product/base.product.connector.js';
 import { AliExpressProductConnector } from './product/aliexpress.product.connector.js';
+import { getAliexpressCreds } from '../../modules/settings/settings.service.js';
 
 /**
  * Sélectionne les connecteurs à utiliser :
@@ -103,13 +104,14 @@ export function getBarcodeConnector(): BarcodeConnector | null {
  * `null` s'il n'est pas configuré : la recherche par texte retombe alors sur
  * le catalogue de démonstration (aucun vrai produit inventé).
  */
-export function getProductConnector(): ProductSearchConnector | null {
-  const ali = env.connectors.aliexpress;
-  if (ali.appKey && ali.appSecret) {
+export async function getProductConnector(): Promise<ProductSearchConnector | null> {
+  const creds = await getAliexpressCreds();
+  if (creds.appKey && creds.appSecret) {
     logger.info('Connecteur produits : AliExpress (recherche réelle)');
-    return new AliExpressProductConnector(ali.appKey, ali.appSecret, {
-      trackingId: ali.trackingId,
+    return new AliExpressProductConnector(creds.appKey, creds.appSecret, {
+      trackingId: creds.trackingId,
       currency: env.pricing.currency,
+      feedName: creds.feedName,
     });
   }
   return null;

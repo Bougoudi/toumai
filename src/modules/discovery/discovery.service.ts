@@ -48,7 +48,7 @@ function makeIdeas(query: string, source: string): Idea[] {
  * En production sans source configurée : liste vide (aucun produit inventé).
  */
 async function resolveProducts(query: string, source: string): Promise<Idea[]> {
-  const connector = getProductConnector();
+  const connector = await getProductConnector();
   if (connector) {
     const results = await connector.search(query, { limit: 20 });
     return results.map((r) => ({
