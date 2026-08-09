@@ -50,7 +50,7 @@ function makeIdeas(query: string, source: string): Idea[] {
 async function resolveProducts(query: string, source: string): Promise<Idea[]> {
   const connector = await getProductConnector();
   if (connector) {
-    const results = await connector.search(query, { limit: 20 });
+    const results = await connector.search(query, { limit: 40 });
     return results.map((r) => ({
       title: r.title,
       category: r.category,
