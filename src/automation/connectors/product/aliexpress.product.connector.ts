@@ -59,22 +59,34 @@ export class AliExpressProductConnector implements ProductSearchConnector {
       }
     }
 
-    // 2) Repli : flux de produits réels, filtré par mot-clé côté serveur.
-    const feed = await this.call('aliexpress.ds.recommend.feed.get', {
-      feed_name: this.feedName,
-      target_currency: this.currency,
-      target_language: 'EN',
-      country: 'FR',
-      page_size: '50',
-      page_no: '1',
-    });
-    let products = findProducts(feed);
-    if (q) {
-      const ql = q.toLowerCase();
-      const matched = products.filter((p) => String(p.product_title ?? '').toLowerCase().includes(ql));
-      if (matched.length) products = matched;
+    // 2) Repli : flux de vrais produits, filtré par mot-clé côté serveur.
+    // On parcourt plusieurs pages pour élargir la couverture.
+    const all: Record<string, any>[] = [];
+    for (let page = 1; page <= 3; page++) {
+      const feed = await this.call('aliexpress.ds.recommend.feed.get', {
+        feed_name: this.feedName,
+        target_currency: this.currency,
+        target_language: 'EN',
+        country: 'FR',
+        page_size: '50',
+        page_no: String(page),
+      }).catch(() => null);
+      const prods = findProducts(feed);
+      all.push(...prods);
+      if (prods.length < 50) break;
     }
-    return products.slice(0, limit).map((p) => this.map(p));
+
+    if (!q) return all.slice(0, limit).map((p) => this.map(p)); // parcours : tendances
+
+    // Mots-clés à chercher : la requête + ses traductions FR→EN.
+    const terms = expandTerms(q);
+    const matched = all.filter((p) => {
+      const title = String(p.product_title ?? '').toLowerCase();
+      return terms.some((t) => title.includes(t));
+    });
+    // Avec un mot-clé : uniquement les correspondances (liste vide si aucune) —
+    // on n'affiche PAS de produits sans rapport.
+    return matched.slice(0, limit).map((p) => this.map(p));
   }
 
   /** Appel signé de la passerelle AliExpress. */
@@ -121,6 +133,65 @@ export class AliExpressProductConnector implements ProductSearchConnector {
       url: p.product_detail_url ? String(p.product_detail_url) : undefined,
     };
   }
+}
+
+/**
+ * Petit lexique produit FR→EN : les titres AliExpress sont en anglais, mais
+ * l'utilisateur cherche en français. On complète donc la requête avec ses
+ * traductions pour que le filtrage du flux fonctionne.
+ */
+const FR_EN: Record<string, string[]> = {
+  montre: ['watch'],
+  bouteille: ['bottle'],
+  gourde: ['bottle', 'flask'],
+  lampe: ['lamp', 'light'],
+  ecouteur: ['earphone', 'headphone', 'earbud'],
+  ecouteurs: ['earphone', 'headphone', 'earbud'],
+  casque: ['headset', 'headphone'],
+  telephone: ['phone'],
+  chargeur: ['charger'],
+  cable: ['cable'],
+  coque: ['case', 'cover'],
+  sac: ['bag'],
+  sacados: ['backpack'],
+  montres: ['watch'],
+  chaussure: ['shoe', 'sneaker'],
+  chaussures: ['shoe', 'sneaker'],
+  jouet: ['toy'],
+  cuisine: ['kitchen'],
+  maison: ['home'],
+  brosse: ['brush'],
+  bijou: ['jewelry'],
+  collier: ['necklace'],
+  bague: ['ring'],
+  bracelet: ['bracelet'],
+  lunettes: ['glasses', 'sunglasses'],
+  couteau: ['knife'],
+  outil: ['tool'],
+  jouets: ['toy'],
+  vetement: ['clothing', 'shirt'],
+  robe: ['dress'],
+  pantalon: ['pants', 'trousers'],
+  chapeau: ['hat', 'cap'],
+  ceinture: ['belt'],
+  portefeuille: ['wallet'],
+  parfum: ['perfume'],
+  maquillage: ['makeup'],
+  velo: ['bike', 'bicycle'],
+  voiture: ['car'],
+  animal: ['pet'],
+  chien: ['dog'],
+  chat: ['cat'],
+};
+
+/** Requête + traductions EN (minuscules, sans accents). */
+function expandTerms(query: string): string[] {
+  const norm = (s: string) =>
+    s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const words = norm(query).split(/\s+/).filter(Boolean);
+  const terms = new Set<string>(words);
+  for (const w of words) for (const en of FR_EN[w] ?? []) terms.add(en);
+  return [...terms];
 }
 
 /**
