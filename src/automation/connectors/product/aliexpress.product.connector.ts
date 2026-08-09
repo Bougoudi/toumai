@@ -53,16 +53,16 @@ export class AliExpressProductConnector implements ProductSearchConnector {
           sortBy: 'orders,desc',
         });
         const products = findProducts(res);
-        if (products.length) return products.slice(0, limit).map((p) => this.map(p));
+        if (products.length) return this.finalize(products, limit);
       } catch (e) {
         logger.warn('AliExpress text.search indisponible, repli sur le flux', { err: String(e).slice(0, 120) });
       }
     }
 
     // 2) Repli : flux de vrais produits, filtré par mot-clé côté serveur.
-    // On parcourt plusieurs pages pour élargir la couverture.
+    // On parcourt plusieurs pages pour élargir la couverture (plus de choix).
     const all: Record<string, any>[] = [];
-    for (let page = 1; page <= 3; page++) {
+    for (let page = 1; page <= 5; page++) {
       const feed = await this.call('aliexpress.ds.recommend.feed.get', {
         feed_name: this.feedName,
         target_currency: this.currency,
@@ -76,7 +76,7 @@ export class AliExpressProductConnector implements ProductSearchConnector {
       if (prods.length < 50) break;
     }
 
-    if (!q) return all.slice(0, limit).map((p) => this.map(p)); // parcours : tendances
+    if (!q) return this.finalize(all, limit); // parcours : tendances (moins cher d'abord)
 
     // Mots-clés à chercher : la requête + ses traductions FR→EN.
     const terms = expandTerms(q);
@@ -86,7 +86,18 @@ export class AliExpressProductConnector implements ProductSearchConnector {
     });
     // Avec un mot-clé : uniquement les correspondances (liste vide si aucune) —
     // on n'affiche PAS de produits sans rapport.
-    return matched.slice(0, limit).map((p) => this.map(p));
+    return this.finalize(matched, limit);
+  }
+
+  /** Mappe, trie du MOINS CHER au plus cher (prix inconnu en dernier), puis limite. */
+  private finalize(products: Record<string, any>[], limit: number): ProductSearchResult[] {
+    const mapped = products.map((p) => this.map(p));
+    mapped.sort((a, b) => {
+      const pa = a.estimatedPrice > 0 ? a.estimatedPrice : Number.POSITIVE_INFINITY;
+      const pb = b.estimatedPrice > 0 ? b.estimatedPrice : Number.POSITIVE_INFINITY;
+      return pa - pb;
+    });
+    return mapped.slice(0, limit);
   }
 
   /** Appel signé de la passerelle AliExpress. */
