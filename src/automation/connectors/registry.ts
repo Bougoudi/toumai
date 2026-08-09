@@ -8,6 +8,7 @@ import { HttpSupplierConnector } from './http.supplier.connector.js';
 import type { MarketConnector } from './market/base.market.connector.js';
 import { HttpMarketConnector } from './market/http.market.connector.js';
 import { MockMarketConnector } from './market/mock.market.connector.js';
+import { AliexpressMarketConnector } from './market/aliexpress.market.connector.js';
 import { MockConnector } from './mock.connector.js';
 import type { BarcodeConnector } from './barcode/base.barcode.connector.js';
 import { HttpBarcodeConnector } from './barcode/http.barcode.connector.js';
@@ -26,15 +27,22 @@ import { getAliexpressCreds } from '../../modules/settings/settings.service.js';
  * Passer en production = ajouter les variables d'environnement et DEMO_MODE=false.
  */
 
-export function getMarketConnectors(): MarketConnector[] {
+export async function getMarketConnectors(): Promise<MarketConnector[]> {
+  const list: MarketConnector[] = [];
   const { url, key } = env.connectors.market;
   if (url && key) {
     logger.info('Connecteur marché : HTTP (source réelle)');
-    return [new HttpMarketConnector(url, key)];
+    list.push(new HttpMarketConnector(url, key));
   }
-  if (env.demoMode) return [new MockMarketConnector()];
-  logger.info('Connecteur marché : aucun (production sans source configurée)');
-  return [];
+  // AliExpress : les vrais produits du flux deviennent des opportunités.
+  const ali = await getAliexpressCreds();
+  if (ali.appKey && ali.appSecret) {
+    logger.info('Connecteur marché : AliExpress (analyse réelle)');
+    list.push(new AliexpressMarketConnector(ali.appKey, ali.appSecret, { currency: env.pricing.currency, feedName: ali.feedName }));
+  }
+  if (!list.length && env.demoMode) list.push(new MockMarketConnector());
+  if (!list.length) logger.info('Connecteur marché : aucun (production sans source configurée)');
+  return list;
 }
 
 export function getSupplierConnectors(): SupplierConnector[] {
