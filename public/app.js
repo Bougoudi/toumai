@@ -284,6 +284,18 @@ async function loadDirectory() {
   }
 }
 $('#d-list').addEventListener('click', loadDirectory);
+$('#refresh-suppliers').addEventListener('click', async (ev) => {
+  busy(ev.currentTarget, true, 'Import…');
+  try {
+    const r = await api('/api/suppliers/refresh', { method: 'POST' });
+    toast(`${r.count} fournisseurs importés d'AliExpress`);
+    await loadDirectory();
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    busy(ev.currentTarget, false);
+  }
+});
 
 // ── Détail fournisseur (modale) ────────────────────────────
 function bindSupplierRows(sel) {

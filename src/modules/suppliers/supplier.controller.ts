@@ -7,11 +7,18 @@ import {
   updateSupplierSchema,
 } from './supplier.schema.js';
 import { supplierService } from './supplier.service.js';
+import { refreshSuppliersJob } from '../../automation/jobs/refreshSuppliers.job.js';
 
 export const supplierController = {
   async list(req: Request, res: Response) {
     const query = parseQuery(listSuppliersQuerySchema, req);
     res.json(await supplierService.list(query));
+  },
+
+  /** POST /api/suppliers/refresh — importe/actualise les fournisseurs (AliExpress…). */
+  async refresh(_req: Request, res: Response) {
+    const count = await refreshSuppliersJob();
+    res.json({ count });
   },
 
   async get(req: Request, res: Response) {

@@ -5,6 +5,7 @@ import type { FulfillmentConnector, PlaceOrderResult } from './fulfillment/base.
 import { HttpFulfillmentConnector } from './fulfillment/http.fulfillment.connector.js';
 import { MockFulfillmentConnector } from './fulfillment/mock.fulfillment.connector.js';
 import { HttpSupplierConnector } from './http.supplier.connector.js';
+import { AliexpressSupplierConnector } from './aliexpress.supplier.connector.js';
 import type { MarketConnector } from './market/base.market.connector.js';
 import { HttpMarketConnector } from './market/http.market.connector.js';
 import { MockMarketConnector } from './market/mock.market.connector.js';
@@ -45,15 +46,22 @@ export async function getMarketConnectors(): Promise<MarketConnector[]> {
   return list;
 }
 
-export function getSupplierConnectors(): SupplierConnector[] {
+export async function getSupplierConnectors(): Promise<SupplierConnector[]> {
+  const list: SupplierConnector[] = [];
   const { url, key } = env.connectors.supplier;
   if (url && key) {
     logger.info('Connecteur fournisseurs : HTTP (source réelle)');
-    return [new HttpSupplierConnector(url, key)];
+    list.push(new HttpSupplierConnector(url, key));
   }
-  if (env.demoMode) return [new MockConnector()];
-  logger.info('Connecteur fournisseurs : aucun (production sans source configurée)');
-  return [];
+  // AliExpress : chaque boutique du flux devient un fournisseur.
+  const ali = await getAliexpressCreds();
+  if (ali.appKey && ali.appSecret) {
+    logger.info('Connecteur fournisseurs : AliExpress');
+    list.push(new AliexpressSupplierConnector(ali.appKey, ali.appSecret, { currency: getSettings().currency, feedName: ali.feedName }));
+  }
+  if (!list.length && env.demoMode) list.push(new MockConnector());
+  if (!list.length) logger.info('Connecteur fournisseurs : aucun (production sans source configurée)');
+  return list;
 }
 
 /**

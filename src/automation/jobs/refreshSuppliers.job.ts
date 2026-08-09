@@ -3,8 +3,6 @@ import { logger } from '../../utils/logger.js';
 import type { NormalizedSupplier } from '../connectors/base.connector.js';
 import { getSupplierConnectors } from '../connectors/registry.js';
 
-/** Connecteurs fournisseurs (HTTP réel si configuré, sinon mock). */
-const connectors = getSupplierConnectors();
 
 /**
  * Upsert d'un fournisseur normalisé et de ses offres.
@@ -64,6 +62,7 @@ async function upsertSupplier(source: string, s: NormalizedSupplier) {
  */
 export async function refreshSuppliersJob(params?: { category?: string; region?: string }) {
   let count = 0;
+  const connectors = await getSupplierConnectors();
   for (const connector of connectors) {
     const suppliers = await connector.fetchSuppliers(params);
     for (const s of suppliers) {
