@@ -693,10 +693,11 @@ $('#connect-channel').addEventListener('click', async () => {
 /** Affiche une liste de résultats de recherche (partagée par la saisie et la caméra). */
 function renderDiscoveryResults(res) {
   const rows = res.results.map((r, i) => [
+    r.imageUrl ? `<img class="thumb" src="${esc(r.imageUrl)}" alt="" loading="lazy"/>` : '',
     esc(r.title), esc(r.category), `<span class="num">${money(r.estimatedPrice)}</span>`,
     `<button class="btn btn-ghost btn-xs" data-fav="${i}">☆ Favori</button>`,
   ]);
-  $('#discovery-results').innerHTML = tableHtml([i18n.t('th_product'), i18n.t('th_category'), i18n.t('th_est_price'), ''], rows);
+  $('#discovery-results').innerHTML = tableHtml(['', i18n.t('th_product'), i18n.t('th_category'), i18n.t('th_est_price'), ''], rows);
   document.querySelectorAll('#discovery-results [data-fav]').forEach((b) =>
     b.addEventListener('click', async () => {
       const r = res.results[Number(b.dataset.fav)];
