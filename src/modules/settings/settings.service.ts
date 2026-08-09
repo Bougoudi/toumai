@@ -1,6 +1,10 @@
 import { env } from '../../config/env.js';
 import { prisma } from '../../db/prisma.js';
+import { decrypt, encrypt } from '../../utils/crypto.js';
 import { logger } from '../../utils/logger.js';
+
+/** Préfixe des réglages secrets : non exposés via l'API, ignorés par le cache. */
+const SECRET_PREFIX = 'secret.';
 
 /** Réglages modifiables de l'application (surchargent les valeurs d'environnement). */
 export interface AppSettings {
@@ -31,6 +35,7 @@ export async function loadSettings() {
     const rows = await prisma.setting.findMany();
     const merged = { ...DEFAULTS };
     for (const row of rows) {
+      if (row.key.startsWith(SECRET_PREFIX)) continue; // secrets : hors cache/API
       try {
         (merged as Record<string, unknown>)[row.key] = JSON.parse(row.value);
       } catch {
@@ -47,6 +52,67 @@ export async function loadSettings() {
 /** Réglages courants (synchrone, depuis le cache). */
 export function getSettings(): AppSettings {
   return cache;
+}
+
+export interface AliexpressCreds {
+  appKey?: string;
+  appSecret?: string;
+  trackingId?: string;
+  feedName?: string;
+}
+
+/** Identifiants AliExpress : base (secret déchiffré) puis repli sur l'environnement. */
+export async function getAliexpressCreds(): Promise<AliexpressCreds> {
+  const envAli = env.connectors.aliexpress;
+  try {
+    const rows = await prisma.setting.findMany({
+      where: {
+        key: {
+          in: [
+            `${SECRET_PREFIX}aliexpressAppKey`,
+            `${SECRET_PREFIX}aliexpressAppSecret`,
+            `${SECRET_PREFIX}aliexpressTrackingId`,
+            `${SECRET_PREFIX}aliexpressFeedName`,
+          ],
+        },
+      },
+    });
+    const m: Record<string, string> = {};
+    for (const r of rows) m[r.key.slice(SECRET_PREFIX.length)] = r.value;
+    const enc = m.aliexpressAppSecret;
+    return {
+      appKey: m.aliexpressAppKey || envAli.appKey || undefined,
+      appSecret: enc ? decrypt(enc) : envAli.appSecret || undefined,
+      trackingId: m.aliexpressTrackingId || envAli.trackingId || undefined,
+      feedName: m.aliexpressFeedName || undefined,
+    };
+  } catch {
+    return {
+      appKey: envAli.appKey || undefined,
+      appSecret: envAli.appSecret || undefined,
+      trackingId: envAli.trackingId || undefined,
+    };
+  }
+}
+
+/** Enregistre les identifiants AliExpress (secret chiffré au repos). */
+export async function setAliexpressCreds(input: AliexpressCreds): Promise<{ ok: true; configured: boolean }> {
+  const ops = [] as ReturnType<typeof prisma.setting.upsert>[];
+  const put = (key: string, value: string) =>
+    ops.push(
+      prisma.setting.upsert({
+        where: { key: SECRET_PREFIX + key },
+        create: { key: SECRET_PREFIX + key, value },
+        update: { value },
+      }),
+    );
+  if (input.appKey != null) put('aliexpressAppKey', input.appKey.trim());
+  if (input.appSecret != null) put('aliexpressAppSecret', encrypt(input.appSecret.trim()));
+  if (input.trackingId != null) put('aliexpressTrackingId', input.trackingId.trim());
+  if (input.feedName != null) put('aliexpressFeedName', input.feedName.trim());
+  if (ops.length) await prisma.$transaction(ops);
+  const creds = await getAliexpressCreds();
+  return { ok: true, configured: Boolean(creds.appKey && creds.appSecret) };
 }
 
 export const settingsService = {

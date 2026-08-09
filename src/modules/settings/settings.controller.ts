@@ -1,7 +1,15 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody } from '../../middleware/validate.js';
+import { setAliexpressCreds } from './settings.service.js';
 import { settingsService } from './settings.service.js';
+
+const aliexpressSchema = z.object({
+  appKey: z.string().min(1).max(64).optional(),
+  appSecret: z.string().min(1).max(200).optional(),
+  trackingId: z.string().max(64).optional(),
+  feedName: z.string().max(128).optional(),
+});
 
 const updateSchema = z.object({
   defaultMarkup: z.number().min(1).max(20).optional(),
@@ -27,5 +35,11 @@ export const settingsController = {
   /** POST /api/settings/purge — supprime les données de démonstration (garde le compte). */
   async purge(_req: Request, res: Response) {
     res.json(await settingsService.purgeBusinessData());
+  },
+
+  /** POST /api/settings/aliexpress — enregistre les clés de recherche AliExpress. */
+  async aliexpress(req: Request, res: Response) {
+    const input = parseBody(aliexpressSchema, req);
+    res.json(await setAliexpressCreds(input));
   },
 };
