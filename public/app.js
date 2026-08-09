@@ -693,19 +693,59 @@ $('#connect-channel').addEventListener('click', async () => {
 /** Affiche une liste de résultats de recherche (partagée par la saisie et la caméra). */
 function renderDiscoveryResults(res) {
   const rows = res.results.map((r, i) => [
-    r.imageUrl ? `<img class="thumb" src="${esc(r.imageUrl)}" alt="" loading="lazy"/>` : '',
-    esc(r.title), esc(r.category), `<span class="num">${money(r.estimatedPrice)}</span>`,
+    r.imageUrl ? `<img class="thumb" src="${esc(r.imageUrl)}" alt="" loading="lazy" data-detail="${i}"/>` : '',
+    `<a href="#" class="prod-link" data-detail="${i}">${esc(r.title)}</a>`,
+    esc(r.category), `<span class="num">${money(r.estimatedPrice)}</span>`,
     `<button class="btn btn-ghost btn-xs" data-fav="${i}">☆ Favori</button>`,
   ]);
   $('#discovery-results').innerHTML = tableHtml(['', i18n.t('th_product'), i18n.t('th_category'), i18n.t('th_est_price'), ''], rows);
+  // Clic sur la photo ou le titre → fiche produit (grande image + prix modifiable).
+  document.querySelectorAll('#discovery-results [data-detail]').forEach((el) =>
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      openProductDetail(res.results[Number(el.dataset.detail)]);
+    }),
+  );
   document.querySelectorAll('#discovery-results [data-fav]').forEach((b) =>
     b.addEventListener('click', async () => {
       const r = res.results[Number(b.dataset.fav)];
-      await api('/api/favorites', { method: 'POST', body: { source: r.source, title: r.title, category: r.category, keywords: r.keywords, price: r.estimatedPrice, imageUrl: r.imageUrl } });
+      await api('/api/favorites', { method: 'POST', body: { source: r.source, title: r.title, category: r.category, keywords: r.keywords, price: r.estimatedPrice, imageUrl: r.imageUrl, url: r.url } });
       toast('Ajouté aux favoris');
       loadFavorites();
     }),
   );
+}
+
+/** Fiche produit : grande image + prix de vente modifiable avant l'ajout aux favoris. */
+function openProductDetail(r) {
+  const price = Number(r.estimatedPrice) || 0;
+  openModal(
+    `<h2>${esc(r.title)}</h2>` +
+      (r.imageUrl ? `<img src="${esc(r.imageUrl)}" alt="" class="prod-detail-img"/>` : '') +
+      `<div class="field" style="margin-top:12px"><label>Catégorie</label><div class="muted">${esc(r.category)}</div></div>` +
+      `<div class="field"><label>Prix de vente (modifiable avant publication)</label>` +
+      `<input class="input" id="pd-price" type="number" min="0" step="0.01" value="${price}"/></div>` +
+      (r.url ? `<p><a href="${esc(r.url)}" target="_blank" rel="noopener" class="prod-link">Voir la fiche sur AliExpress ↗</a></p>` : '') +
+      `<div class="form-actions"><button class="btn btn-ghost" data-close>Fermer</button>` +
+      `<button class="btn btn-primary" id="pd-fav">☆ Ajouter aux favoris</button></div>`,
+  );
+  $('#modal-content [data-close]').addEventListener('click', closeModal);
+  $('#pd-fav').addEventListener('click', async (ev) => {
+    const newPrice = parseFloat($('#pd-price').value);
+    busy(ev.currentTarget, true, 'Ajout…');
+    try {
+      await api('/api/favorites', {
+        method: 'POST',
+        body: { source: r.source, title: r.title, category: r.category, keywords: r.keywords, price: Number.isFinite(newPrice) ? newPrice : price, imageUrl: r.imageUrl, url: r.url },
+      });
+      toast('Ajouté aux favoris au prix indiqué');
+      closeModal();
+      loadFavorites();
+    } catch (e) {
+      toast(e.message);
+      busy(ev.currentTarget, false);
+    }
+  });
 }
 async function doSearch() {
   const mode = $('#d-mode').value;
