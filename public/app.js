@@ -31,7 +31,8 @@ async function api(path, { method = 'GET', body, stepUp } = {}) {
   return data;
 }
 
-const money = (n, c = 'EUR') =>
+let APP_CURRENCY = 'EUR'; // devise de l'app, chargée depuis les réglages à la connexion
+const money = (n, c = APP_CURRENCY) =>
   (n ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + c;
 const dt = (s) => new Date(s).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -1605,11 +1606,13 @@ $('#logout-btn').addEventListener('click', () => {
   location.reload();
 });
 
-function onAuthed(user) {
+async function onAuthed(user) {
   hideAuth();
   $('#user-chip').textContent = '👤 ' + user.name + (user.role === 'admin' ? ' (admin)' : '');
   $('#user-chip').hidden = false;
   $('#logout-btn').hidden = false;
+  // Charge la devise de l'app pour l'affichage des prix (évite un « EUR » erroné).
+  try { const s = await api('/api/settings'); if (s && s.currency) APP_CURRENCY = s.currency; } catch {}
   startApp();
 }
 
