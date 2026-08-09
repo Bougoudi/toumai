@@ -16,7 +16,7 @@ import type { VisionConnector } from './vision/base.vision.connector.js';
 import { HttpVisionConnector } from './vision/http.vision.connector.js';
 import type { ProductSearchConnector } from './product/base.product.connector.js';
 import { AliExpressProductConnector } from './product/aliexpress.product.connector.js';
-import { getAliexpressCreds } from '../../modules/settings/settings.service.js';
+import { getAliexpressCreds, getSettings } from '../../modules/settings/settings.service.js';
 
 /**
  * Sélectionne les connecteurs à utiliser :
@@ -38,7 +38,7 @@ export async function getMarketConnectors(): Promise<MarketConnector[]> {
   const ali = await getAliexpressCreds();
   if (ali.appKey && ali.appSecret) {
     logger.info('Connecteur marché : AliExpress (analyse réelle)');
-    list.push(new AliexpressMarketConnector(ali.appKey, ali.appSecret, { currency: env.pricing.currency, feedName: ali.feedName }));
+    list.push(new AliexpressMarketConnector(ali.appKey, ali.appSecret, { currency: getSettings().currency, feedName: ali.feedName }));
   }
   if (!list.length && env.demoMode) list.push(new MockMarketConnector());
   if (!list.length) logger.info('Connecteur marché : aucun (production sans source configurée)');
@@ -118,7 +118,7 @@ export async function getProductConnector(): Promise<ProductSearchConnector | nu
     logger.info('Connecteur produits : AliExpress (recherche réelle)');
     return new AliExpressProductConnector(creds.appKey, creds.appSecret, {
       trackingId: creds.trackingId,
-      currency: env.pricing.currency,
+      currency: getSettings().currency,
       feedName: creds.feedName,
     });
   }
