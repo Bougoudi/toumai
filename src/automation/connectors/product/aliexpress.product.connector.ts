@@ -100,33 +100,61 @@ export class AliExpressProductConnector implements ProductSearchConnector {
     return mapped.slice(0, limit);
   }
 
-  /** Appel signé de la passerelle AliExpress. */
-  private async call(method: string, biz: Record<string, string>): Promise<unknown> {
-    const params: Record<string, string> = {
-      app_key: this.appKey,
-      timestamp: String(Date.now()),
-      sign_method: 'sha256',
-      method,
-      ...biz,
-    };
-    const concat = Object.keys(params)
-      .sort()
-      .map((k) => k + params[k])
-      .join('');
-    params.sign = createHmac('sha256', this.appSecret).update(concat, 'utf8').digest('hex').toUpperCase();
-
-    const res = await fetch(GATEWAY, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams(params).toString(),
-    });
-    if (!res.ok) throw new Error(`AliExpress HTTP ${res.status}`);
-    const body = await res.json().catch(() => ({}));
-    if (body?.error_response) {
-      const e = body.error_response;
-      throw new Error(`AliExpress: ${e.msg || e.code || 'erreur API'}`);
+  /** Récupère les produits bruts du flux (plusieurs pages) — champs complets. */
+  async fetchFeed(maxPages = 3): Promise<Record<string, any>[]> {
+    const all: Record<string, any>[] = [];
+    for (let page = 1; page <= maxPages; page++) {
+      const feed = await this.call('aliexpress.ds.recommend.feed.get', {
+        feed_name: this.feedName,
+        target_currency: this.currency,
+        target_language: 'EN',
+        country: 'FR',
+        page_size: '50',
+        page_no: String(page),
+      }).catch(() => null);
+      const prods = findProducts(feed);
+      all.push(...prods);
+      if (prods.length < 50) break;
     }
-    return body;
+    return all;
+  }
+
+  /** Appel signé de la passerelle AliExpress (avec réessais sur erreur passagère). */
+  private async call(method: string, biz: Record<string, string>): Promise<unknown> {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const params: Record<string, string> = {
+          app_key: this.appKey,
+          timestamp: String(Date.now()),
+          sign_method: 'sha256',
+          method,
+          ...biz,
+        };
+        const concat = Object.keys(params)
+          .sort()
+          .map((k) => k + params[k])
+          .join('');
+        params.sign = createHmac('sha256', this.appSecret).update(concat, 'utf8').digest('hex').toUpperCase();
+
+        const res = await fetch(GATEWAY, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(params).toString(),
+        });
+        if (!res.ok) throw new Error(`AliExpress HTTP ${res.status}`);
+        const body = await res.json().catch(() => ({}));
+        if (body?.error_response) {
+          const e = body.error_response;
+          throw new Error(`AliExpress: ${e.msg || e.code || 'erreur API'}`);
+        }
+        return body;
+      } catch (e) {
+        lastErr = e;
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      }
+    }
+    throw lastErr;
   }
 
   private map(p: Record<string, any>): ProductSearchResult {

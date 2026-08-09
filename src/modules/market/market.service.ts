@@ -6,8 +6,6 @@ import { logger } from '../../utils/logger.js';
 import { opportunityScore } from '../../utils/opportunity.js';
 import type { ScanMarketInput } from './market.schema.js';
 
-/** Connecteurs d'analyse marché (HTTP réel si configuré, sinon mock). */
-const connectors = getMarketConnectors();
 
 async function upsertOpportunity(source: string, o: NormalizedOpportunity) {
   const score = opportunityScore(o);
@@ -56,6 +54,7 @@ export const marketService = {
   /** Lance une analyse de marché (pilier 1) via tous les connecteurs. */
   async scan(input: ScanMarketInput = {}) {
     let discovered = 0;
+    const connectors = await getMarketConnectors();
     for (const connector of connectors) {
       const opportunities = await connector.discover(input);
       for (const o of opportunities) {
