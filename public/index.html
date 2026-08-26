@@ -112,12 +112,16 @@
 
     <nav class="tabs" id="tabs">
       <button class="tab active" data-tab="dashboard" data-i18n="nav_dashboard">Tableau de bord</button>
-      <button class="tab" data-tab="market" data-i18n="nav_market">Marché</button>
-      <button class="tab" data-tab="products" data-i18n="nav_products">Produits</button>
-      <button class="tab" data-tab="suppliers" data-i18n="nav_suppliers">Fournisseurs</button>
-      <button class="tab" data-tab="orders" data-i18n="nav_orders">Commandes</button>
+      <div class="tab-group" role="group" aria-label="Sourcing">
+        <span class="tab-group-label" data-i18n="nav_group_sourcing">Sourcing</span>
+        <button class="tab" data-tab="market" data-i18n="nav_market">Marché</button>
+        <button class="tab" data-tab="products" data-i18n="nav_products">Produits</button>
+        <button class="tab" data-tab="suppliers" data-i18n="nav_suppliers">Fournisseurs</button>
+        <button class="tab" data-tab="discovery" data-i18n="nav_discovery">Recherche</button>
+      </div>
+      <button class="tab" data-tab="orders" data-i18n="nav_orders">Ordres</button>
       <button class="tab" data-tab="channels" data-i18n="nav_channels">Canaux de vente</button>
-      <button class="tab" data-tab="discovery" data-i18n="nav_discovery">Recherche</button>
+      <button class="tab" data-tab="customers" data-i18n="nav_customers">Service clientèle</button>
       <button class="tab" data-tab="competitors" data-i18n="nav_competitors">Compétiteurs</button>
       <button class="tab" data-tab="ads" data-i18n="nav_ads">Publicités</button>
       <button class="tab" data-tab="reports" data-i18n="nav_reports">Tableur</button>
@@ -218,6 +222,16 @@
           <button id="refresh-orders" class="btn btn-ghost" data-i18n="refresh_btn">↻ Actualiser</button>
         </div>
         <div class="card"><div id="orders-table" class="table-wrap"></div></div>
+      </section>
+
+      <!-- SERVICE CLIENTÈLE -->
+      <section class="panel" id="tab-customers">
+        <div class="toolbar">
+          <input id="cust-search" class="input" data-i18n-ph="cust_search_ph" placeholder="Rechercher un client (nom, e-mail)…" />
+          <button id="refresh-customers" class="btn btn-ghost" data-i18n="refresh_btn">↻ Actualiser</button>
+        </div>
+        <div class="kpi-grid" id="cust-kpis"></div>
+        <div class="card"><div id="customers-table" class="table-wrap"></div></div>
       </section>
 
       <!-- CANAUX DE VENTE -->

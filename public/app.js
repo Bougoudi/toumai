@@ -368,6 +368,49 @@ function bindOrderRows(sel) {
   );
 }
 
+// ── Service clientèle ──────────────────────────────────────
+let _customersCache = [];
+async function loadCustomers() {
+  try {
+    const d = await api('/api/orders/customers?take=200');
+    _customersCache = d.items || [];
+    renderCustomers();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+function renderCustomers() {
+  const q = ($('#cust-search')?.value || '').trim().toLowerCase();
+  const list = q
+    ? _customersCache.filter((c) =>
+        [c.name, c.email, c.phone, c.city, c.country].some((v) => (v || '').toLowerCase().includes(q)),
+      )
+    : _customersCache;
+
+  $('#cust-kpis').replaceChildren(
+    el(`<div class="kpi accent"><div class="label">${i18n.t('cust_total')}</div><div class="value num">${_customersCache.length}</div></div>`),
+  );
+
+  $('#customers-table').innerHTML = tableHtml(
+    [i18n.t('th_client'), 'E-mail', i18n.t('cust_phone'), i18n.t('cust_location'), i18n.t('cust_contact')],
+    list.map((c) => {
+      const loc = [c.city, c.country].filter(Boolean).join(', ') || '—';
+      const mail = c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—';
+      const contacts = [];
+      if (c.email) contacts.push(`<a class="btn btn-ghost btn-sm" href="mailto:${esc(c.email)}">✉️</a>`);
+      if (c.phone) {
+        const wa = (c.phone || '').replace(/[^0-9]/g, '');
+        contacts.push(`<a class="btn btn-ghost btn-sm" href="https://wa.me/${wa}" target="_blank" rel="noopener">💬</a>`);
+      }
+      return [esc(c.name || '—'), mail, esc(c.phone || '—'), esc(loc), contacts.join(' ') || '—'];
+    }),
+  );
+  if (!list.length) $('#customers-table').innerHTML = `<p class="muted">${i18n.t('cust_empty')}</p>`;
+}
+$('#refresh-customers').addEventListener('click', loadCustomers);
+$('#cust-search').addEventListener('input', renderCustomers);
+
 async function showOrder(id) {
   try {
     const o = await api('/api/orders/' + id);
@@ -1390,6 +1433,7 @@ const loaders = {
   products: loadProducts,
   suppliers: loadDirectory,
   orders: loadOrders,
+  customers: loadCustomers,
   channels: loadChannels,
   discovery: loadDiscovery,
   competitors: loadCompetitors,
