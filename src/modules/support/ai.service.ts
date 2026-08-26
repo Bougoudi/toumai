@@ -14,7 +14,7 @@ export interface ChatMessage {
 }
 
 const DEFAULT_MODEL: Record<string, string> = {
-  gemini: 'gemini-2.0-flash',
+  gemini: 'gemini-3.6-flash',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-latest',
 };
@@ -42,7 +42,7 @@ export const aiService = {
     }
   },
 
-  async gemini(apiKey: string, model: string, system: string, messages: ChatMessage[]): Promise<string> {
+  async gemini(apiKey: string, model: string, system: string, messages: ChatMessage[], retry = true): Promise<string> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
     const contents = messages.map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
@@ -58,7 +58,16 @@ export const aiService = {
       }),
     });
     const data = (await res.json().catch(() => ({}))) as any;
-    if (!res.ok) throw new HttpError(502, `Gemini: ${data?.error?.message || res.status}`);
+    if (!res.ok) {
+      const msg = String(data?.error?.message || res.status);
+      // Modèle retiré : Google indique le remplaçant (« use models/<nom> ») → on réessaie.
+      const suggested = msg.match(/models\/([\w.-]+)\s+for the latest/)?.[1];
+      if (retry && suggested && suggested !== model) {
+        logger.info('Gemini : modèle retiré, bascule sur le remplaçant', { from: model, to: suggested });
+        return this.gemini(apiKey, suggested, system, messages, false);
+      }
+      throw new HttpError(502, `Gemini: ${msg}`);
+    }
     const text = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') ?? '';
     if (!text) throw new HttpError(502, 'Réponse IA vide.');
     return text.trim();
