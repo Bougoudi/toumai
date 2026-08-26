@@ -420,21 +420,42 @@ function renderSupportQueue() {
   );
 }
 
+let _csOrder = null;
+let _csChat = [];
+let _aiConfigured = null;
+
+// Suggestions rapides : pré-remplissent le problème du client pour l'agent IA.
+const CS_QUICK = [
+  { k: 'cs_p_not_received', msg: "Le client n'a pas reçu son colis." },
+  { k: 'cs_p_delay', msg: 'Le client se plaint d\'un retard de livraison.' },
+  { k: 'cs_p_damaged', msg: 'Le client dit que le produit est arrivé cassé / défectueux.' },
+  { k: 'cs_p_wrong', msg: "Le client a reçu un article différent de sa commande." },
+  { k: 'cs_p_refund', msg: 'Le client demande un remboursement.' },
+  { k: 'cs_p_cancel', msg: 'Le client veut annuler sa commande.' },
+];
+
 async function openSupport(id) {
   _supportCurrent = id;
+  _csChat = [];
   renderSupportQueue();
   const panel = $('#support-panel');
-  panel.innerHTML = `<p class="muted">${i18n.t('loading') || '…'}</p>`;
+  panel.innerHTML = `<p class="muted">…</p>`;
   try {
     const o = await api('/api/orders/' + id);
+    _csOrder = o;
+    if (_aiConfigured === null) {
+      try { _aiConfigured = (await api('/api/support/ai-status')).configured; } catch { _aiConfigured = false; }
+    }
     const c = o.customer || {};
     const track = (o.purchaseOrders || []).find((p) => p.trackingNumber);
     const trackLine = track
       ? `${i18n.t('cs_tracking')} : <b>${esc(track.trackingNumber)}</b>${track.carrier ? ' (' + esc(track.carrier) + ')' : ''}`
       : `<span class="muted">${i18n.t('cs_no_tracking')}</span>`;
-    const problems = Object.entries(CS_PROBLEMS)
-      .map(([k, p]) => `<button class="btn btn-ghost btn-sm cs-problem" data-problem="${k}">${p.label()}</button>`)
-      .join(' ');
+    const chips = CS_QUICK.map((p) => `<button class="btn btn-ghost btn-sm cs-chip" data-msg="${esc(p.msg)}">${i18n.t(p.k)}</button>`).join(' ');
+    const canCancel = !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(o.status);
+    const banner = _aiConfigured
+      ? ''
+      : `<div class="banner">🤖 ${i18n.t('cs_ai_off')} <button class="btn btn-ghost btn-sm" id="cs-go-settings">${i18n.t('nav_settings')}</button></div>`;
     panel.innerHTML = `
       <div class="cs-head">
         <div><h3 style="margin:0">${esc(c.name || i18n.t('th_client'))}</h3>
@@ -442,157 +463,101 @@ async function openSupport(id) {
         <div class="cs-contact">
           ${c.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(c.email)}">✉️ ${i18n.t('cs_email')}</a>` : ''}
           ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${(c.phone || '').replace(/[^0-9]/g, '')}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
+          ${canCancel ? `<button class="btn btn-danger btn-sm" id="cs-cancel">${i18n.t('cs_cancel_order')}</button>` : ''}
         </div>
       </div>
       <div class="cs-track">${trackLine}</div>
-      <p class="muted" style="margin:14px 0 6px">${i18n.t('cs_choose_problem')}</p>
-      <div class="cs-problems">${problems}</div>
-      <div id="cs-resolution"></div>`;
-    panel._order = o;
-    panel.querySelectorAll('.cs-problem').forEach((b) =>
-      b.addEventListener('click', () => {
-        panel.querySelectorAll('.cs-problem').forEach((x) => x.classList.remove('active'));
-        b.classList.add('active');
-        renderResolution(o, b.dataset.problem);
-      }),
+      ${banner}
+      <p class="muted" style="margin:12px 0 6px">${i18n.t('cs_choose_problem')}</p>
+      <div class="cs-problems">${chips}</div>
+      <div id="cs-chat" class="cs-chat"></div>
+      <div class="cs-inputrow">
+        <textarea id="cs-input" class="input" rows="2" data-i18n-ph="cs_input_ph" placeholder="Décris le problème du client, ou colle son message…"></textarea>
+        <button class="btn btn-primary" id="cs-send">${i18n.t('cs_send')}</button>
+      </div>`;
+    renderCsChat();
+    panel.querySelectorAll('.cs-chip').forEach((b) =>
+      b.addEventListener('click', () => sendCs(b.dataset.msg)),
     );
+    $('#cs-send').addEventListener('click', () => {
+      const v = $('#cs-input').value.trim();
+      if (v) { $('#cs-input').value = ''; sendCs(v); }
+    });
+    $('#cs-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#cs-send').click(); }
+    });
+    const goSettings = $('#cs-go-settings');
+    if (goSettings) goSettings.addEventListener('click', () => document.querySelector('[data-tab=settings]').click());
+    const cancel = $('#cs-cancel');
+    if (cancel) cancel.addEventListener('click', async (ev) => {
+      if (!confirm(i18n.t('cs_cancel_confirm'))) return;
+      busy(ev.currentTarget, true, '...');
+      try {
+        await api('/api/orders/' + o.id + '/cancel', { method: 'POST' });
+        toast(i18n.t('cs_cancelled'));
+        await loadCustomers();
+        openSupport(o.id);
+      } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+    });
   } catch (e) {
     panel.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
   }
 }
 
-function renderResolution(order, key) {
-  const p = CS_PROBLEMS[key];
-  const c = order.customer || {};
-  const track = (order.purchaseOrders || []).find((x) => x.trackingNumber);
-  const ctx = {
-    name: c.name || 'client',
-    orderNumber: order.orderNumber,
-    tracking: track?.trackingNumber || '',
-    carrier: track?.carrier || '',
-    status: order.status,
-  };
-  const r = p.resolve(ctx, order);
-  const canCancel = !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(order.status);
-  const reply = r.reply;
-  $('#cs-resolution').innerHTML = `
-    <div class="cs-block">
-      <h4>${i18n.t('cs_recommended')}</h4>
-      <ul class="cs-steps">${r.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>
-    </div>
-    <div class="cs-block">
-      <h4>${i18n.t('cs_reply')}</h4>
-      <textarea id="cs-reply" class="input" rows="7">${esc(reply)}</textarea>
-      <div class="form-actions" style="margin-top:8px">
-        <button class="btn btn-ghost btn-sm" id="cs-copy">📋 ${i18n.t('cs_copy')}</button>
-        ${c.email ? `<a class="btn btn-ghost btn-sm" id="cs-send-mail" href="#">✉️ ${i18n.t('cs_send_email')}</a>` : ''}
-        ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${(c.phone || '').replace(/[^0-9]/g, '')}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
-        ${p.canCancel && canCancel ? `<button class="btn btn-danger btn-sm" id="cs-cancel">${i18n.t('cs_cancel_order')}</button>` : ''}
-      </div>
-    </div>`;
-  $('#cs-copy').addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText($('#cs-reply').value); toast(i18n.t('cs_copied')); }
-    catch { toast($('#cs-reply').value); }
-  });
-  const mail = $('#cs-send-mail');
-  if (mail) mail.addEventListener('click', (e) => {
-    e.preventDefault();
-    const subject = encodeURIComponent(`${i18n.t('cs_email_subject')} ${order.orderNumber}`);
-    const bodyTxt = encodeURIComponent($('#cs-reply').value);
-    window.location.href = `mailto:${c.email}?subject=${subject}&body=${bodyTxt}`;
-  });
-  const cancel = $('#cs-cancel');
-  if (cancel) cancel.addEventListener('click', async (ev) => {
-    if (!confirm(i18n.t('cs_cancel_confirm'))) return;
-    busy(ev.currentTarget, true, '...');
-    try {
-      await api('/api/orders/' + order.id + '/cancel', { method: 'POST' });
-      toast(i18n.t('cs_cancelled'));
-      await loadCustomers();
-      openSupport(order.id);
-    } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
-  });
+function renderCsChat() {
+  const box = $('#cs-chat');
+  if (!box) return;
+  const c = (_csOrder && _csOrder.customer) || {};
+  box.innerHTML = _csChat
+    .map((m, i) => {
+      if (m.role === 'user') return `<div class="cs-msg cs-user">${esc(m.content)}</div>`;
+      const wa = (c.phone || '').replace(/[^0-9]/g, '');
+      return `<div class="cs-msg cs-ai">
+        <div class="cs-ai-text">${esc(m.content)}</div>
+        <div class="cs-ai-actions">
+          <button class="btn btn-ghost btn-sm cs-copy" data-i="${i}">📋 ${i18n.t('cs_copy')}</button>
+          ${c.email ? `<button class="btn btn-ghost btn-sm cs-mail" data-i="${i}">✉️ ${i18n.t('cs_send_email')}</button>` : ''}
+          ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${wa}?text=${encodeURIComponent(m.content)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
+        </div>
+      </div>`;
+    })
+    .join('');
+  box.querySelectorAll('.cs-copy').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const txt = _csChat[+b.dataset.i].content;
+      try { await navigator.clipboard.writeText(txt); toast(i18n.t('cs_copied')); } catch { toast(txt); }
+    }),
+  );
+  box.querySelectorAll('.cs-mail').forEach((b) =>
+    b.addEventListener('click', () => {
+      const txt = _csChat[+b.dataset.i].content;
+      const subject = encodeURIComponent(`${i18n.t('cs_email_subject')} ${_csOrder.orderNumber}`);
+      window.location.href = `mailto:${c.email}?subject=${subject}&body=${encodeURIComponent(txt)}`;
+    }),
+  );
+  box.scrollTop = box.scrollHeight;
 }
 
-/**
- * Catalogue de problèmes clients. Chaque entrée fournit des étapes de
- * résolution concrètes (selon l'état réel de la commande) et un message de
- * réponse prêt à envoyer, personnalisé. Déterministe — aucune donnée inventée.
- */
-const CS_PROBLEMS = {
-  not_received: {
-    label: () => i18n.t('cs_p_not_received'),
-    resolve: (x, o) => {
-      const shipped = ['SHIPPED', 'DELIVERED'].includes(o.status) || (o.purchaseOrders || []).some((p) => ['SHIPPED', 'DELIVERED'].includes(p.status));
-      const steps = shipped
-        ? [
-            i18n.t('cs_s_check_tracking'),
-            i18n.t('cs_s_ask_patience'),
-            i18n.t('cs_s_offer_reship'),
-          ]
-        : [i18n.t('cs_s_not_shipped'), i18n.t('cs_s_confirm_address'), i18n.t('cs_s_offer_refund')];
-      const t = x.tracking ? `\n${i18n.t('cs_tracking')} : ${x.tracking}${x.carrier ? ' (' + x.carrier + ')' : ''}` : '';
-      return {
-        steps,
-        reply: `Bonjour ${x.name},\n\nMerci pour votre message concernant la commande ${x.orderNumber}.${t}\n\nNous avons vérifié votre colis. ${shipped ? `Il est bien en route ; les délais internationaux peuvent prendre quelques jours supplémentaires. Nous suivons son acheminement de près et, sans livraison sous peu, nous vous renverrons le produit ou vous rembourserons.` : `Votre commande est en cours de préparation et partira très rapidement. Nous vous tiendrons informé(e) dès l'expédition.`}\n\nMerci de votre patience,\nLe service client`,
-      };
-    },
-  },
-  delay: {
-    label: () => i18n.t('cs_p_delay'),
-    resolve: (x) => ({
-      steps: [i18n.t('cs_s_check_tracking'), i18n.t('cs_s_reassure_delay'), i18n.t('cs_s_offer_gesture')],
-      reply: `Bonjour ${x.name},\n\nNous comprenons votre impatience pour la commande ${x.orderNumber} et nous en sommes désolés. ${x.tracking ? `Votre colis est en transit (suivi : ${x.tracking}).` : `Votre colis est en transit.`}\n\nLes livraisons internationales peuvent prendre un peu plus de temps que prévu. Il arrive très bientôt. Pour la gêne occasionnée, nous restons à votre disposition.\n\nCordialement,\nLe service client`,
-    }),
-  },
-  damaged: {
-    label: () => i18n.t('cs_p_damaged'),
-    resolve: (x) => ({
-      steps: [i18n.t('cs_s_ask_photo'), i18n.t('cs_s_offer_replace_refund'), i18n.t('cs_s_no_return_needed')],
-      reply: `Bonjour ${x.name},\n\nNous sommes vraiment désolés que votre article (commande ${x.orderNumber}) soit arrivé endommagé. Pourriez-vous nous envoyer une photo du produit ? Cela nous permettra de traiter votre dossier immédiatement.\n\nDès réception, nous vous renvoyons un article neuf gratuitement, ou nous vous remboursons — au choix. Vous n'avez pas besoin de renvoyer l'article.\n\nAvec toutes nos excuses,\nLe service client`,
-    }),
-  },
-  wrong_item: {
-    label: () => i18n.t('cs_p_wrong'),
-    resolve: (x) => ({
-      steps: [i18n.t('cs_s_ask_photo'), i18n.t('cs_s_confirm_order'), i18n.t('cs_s_offer_replace_refund')],
-      reply: `Bonjour ${x.name},\n\nNous sommes navrés : il semble que vous ayez reçu un article différent de votre commande ${x.orderNumber}. Pourriez-vous nous envoyer une photo de ce que vous avez reçu ?\n\nNous corrigeons cela tout de suite : envoi du bon article ou remboursement complet, selon votre préférence.\n\nMerci de votre compréhension,\nLe service client`,
-    }),
-  },
-  refund: {
-    label: () => i18n.t('cs_p_refund'),
-    canCancel: true,
-    resolve: (x, o) => {
-      const canCancel = !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(o.status);
-      return {
-        steps: canCancel
-          ? [i18n.t('cs_s_can_refund'), i18n.t('cs_s_use_cancel_btn')]
-          : [i18n.t('cs_s_already_shipped'), i18n.t('cs_s_refund_on_return')],
-        reply: `Bonjour ${x.name},\n\nNous avons bien reçu votre demande de remboursement pour la commande ${x.orderNumber}. ${canCancel ? `Celle-ci n'étant pas encore expédiée, nous procédons au remboursement complet immédiatement.` : `Votre commande étant déjà partie, nous organisons le remboursement dès le retour ou la confirmation du problème.`}\n\nLe montant sera recrédité sous quelques jours ouvrés.\n\nCordialement,\nLe service client`,
-      };
-    },
-  },
-  cancel: {
-    label: () => i18n.t('cs_p_cancel'),
-    canCancel: true,
-    resolve: (x, o) => {
-      const canCancel = !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(o.status);
-      return {
-        steps: canCancel
-          ? [i18n.t('cs_s_can_cancel'), i18n.t('cs_s_use_cancel_btn')]
-          : [i18n.t('cs_s_already_shipped'), i18n.t('cs_s_cancel_impossible')],
-        reply: `Bonjour ${x.name},\n\nVous souhaitez annuler la commande ${x.orderNumber}. ${canCancel ? `C'est fait : la commande est annulée et vous serez intégralement remboursé(e).` : `Malheureusement, la commande est déjà expédiée et ne peut plus être annulée. Dès réception, refusez le colis ou renvoyez-le pour un remboursement.`}\n\nCordialement,\nLe service client`,
-      };
-    },
-  },
-  other: {
-    label: () => i18n.t('cs_p_other'),
-    resolve: (x) => ({
-      steps: [i18n.t('cs_s_ask_details'), i18n.t('cs_s_reply_fast')],
-      reply: `Bonjour ${x.name},\n\nMerci pour votre message au sujet de la commande ${x.orderNumber}. Pourriez-vous nous donner un peu plus de détails afin que nous puissions vous aider au mieux ?\n\nNous vous répondrons très rapidement.\n\nCordialement,\nLe service client`,
-    }),
-  },
-};
+async function sendCs(content) {
+  if (!_csOrder) return;
+  _csChat.push({ role: 'user', content });
+  _csChat.push({ role: 'assistant', content: '…', pending: true });
+  renderCsChat();
+  const btn = $('#cs-send');
+  if (btn) busy(btn, true, '…');
+  try {
+    const payload = { orderId: _csOrder.id, messages: _csChat.filter((m) => !m.pending) };
+    const { reply } = await api('/api/support/chat', { method: 'POST', body: payload });
+    _csChat = _csChat.filter((m) => !m.pending);
+    _csChat.push({ role: 'assistant', content: reply });
+  } catch (e) {
+    _csChat = _csChat.filter((m) => !m.pending);
+    _csChat.push({ role: 'assistant', content: '⚠️ ' + e.message });
+  } finally {
+    if (btn) busy(btn, false);
+    renderCsChat();
+  }
+}
 
 $('#refresh-customers').addEventListener('click', loadCustomers);
 $('#cust-search').addEventListener('input', renderSupportQueue);
@@ -1370,7 +1335,44 @@ async function loadSettingsTab() {
   } catch (e) { toast(e.message); }
   loadSecurityPanel();
   loadAliexpressStatus();
+  loadAiStatus();
 }
+
+async function loadAiStatus() {
+  const box = $('#ai-status');
+  if (!box) return;
+  try {
+    const s = await api('/api/support/ai-status');
+    _aiConfigured = s.configured;
+    box.innerHTML = s.configured
+      ? `<span class="pill pill-on">✅ ${i18n.t('ai_on')}</span> (${esc(s.provider)})`
+      : `<span class="pill pill-off">${i18n.t('ai_off')}</span>`;
+  } catch { box.textContent = ''; }
+}
+$('#ai-save')?.addEventListener('click', async (ev) => {
+  const apiKey = $('#ai-key').value.trim();
+  const provider = $('#ai-provider').value;
+  if (!apiKey) return toast(i18n.t('ai_key_missing'));
+  busy(ev.currentTarget, true, '...');
+  try {
+    const r = await api('/api/settings/ai', { method: 'POST', body: { apiKey, provider } });
+    _aiConfigured = r.configured;
+    $('#ai-key').value = '';
+    toast(i18n.t('ai_saved'));
+    loadAiStatus();
+  } catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+// Le lien « obtenir une clé » pointe vers la bonne plateforme selon le fournisseur.
+$('#ai-provider')?.addEventListener('change', () => {
+  const link = $('#ai-getkey');
+  const p = $('#ai-provider').value;
+  const map = {
+    gemini: ['https://aistudio.google.com/app/apikey', '🔑 Obtenir une clé Gemini gratuite'],
+    openai: ['https://platform.openai.com/api-keys', '🔑 Obtenir une clé OpenAI'],
+    anthropic: ['https://console.anthropic.com/settings/keys', '🔑 Obtenir une clé Anthropic'],
+  };
+  if (link && map[p]) { link.href = map[p][0]; link.textContent = map[p][1]; }
+});
 
 async function loadAliexpressStatus() {
   const box = $('#ali-status');

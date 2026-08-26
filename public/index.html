@@ -374,6 +374,28 @@
           </div>
         </div>
         <div class="card">
+          <h3 data-i18n="ai_title">Assistant IA — service client</h3>
+          <p class="muted" data-i18n="ai_help">Colle ta clé IA pour activer l'agent qui rédige les réponses aux clients.
+            Recommandé : Google Gemini (gratuit).</p>
+          <div id="ai-status" class="muted" style="margin:8px 0"></div>
+          <div class="field">
+            <label data-i18n="ai_key_label">Clé API</label>
+            <input id="ai-key" class="input" type="password" placeholder="AIza…" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label data-i18n="ai_provider_label">Fournisseur</label>
+            <select id="ai-provider" class="input">
+              <option value="gemini">Google Gemini (gratuit)</option>
+              <option value="openai">OpenAI (ChatGPT)</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+            </select>
+          </div>
+          <div class="form-actions">
+            <a class="btn btn-ghost" id="ai-getkey" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" data-i18n="ai_getkey">🔑 Obtenir une clé Gemini gratuite</a>
+            <button id="ai-save" class="btn btn-primary" data-i18n="ai_save">Enregistrer la clé</button>
+          </div>
+        </div>
+        <div class="card">
           <h3 data-i18n="clean_start">Démarrer sur une base propre</h3>
           <p class="muted" data-i18n="help_clean">Supprime toutes les données de démonstration (commandes, produits,
             fournisseurs, clients, chiffres…) pour repartir de zéro avec tes vraies ventes.

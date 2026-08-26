@@ -95,6 +95,57 @@ export async function getAliexpressCreds(): Promise<AliexpressCreds> {
   }
 }
 
+export interface AiCreds {
+  provider: string; // 'gemini' | 'openai' | 'anthropic'
+  apiKey?: string;
+  model?: string;
+}
+
+/** Identifiants de l'IA (service client) : clé chiffrée au repos. */
+export async function getAiCreds(): Promise<AiCreds> {
+  try {
+    const rows = await prisma.setting.findMany({
+      where: {
+        key: {
+          in: [
+            `${SECRET_PREFIX}aiProvider`,
+            `${SECRET_PREFIX}aiApiKey`,
+            `${SECRET_PREFIX}aiModel`,
+          ],
+        },
+      },
+    });
+    const m: Record<string, string> = {};
+    for (const r of rows) m[r.key.slice(SECRET_PREFIX.length)] = r.value;
+    return {
+      provider: m.aiProvider || 'gemini',
+      apiKey: m.aiApiKey ? decrypt(m.aiApiKey) : undefined,
+      model: m.aiModel || undefined,
+    };
+  } catch {
+    return { provider: 'gemini' };
+  }
+}
+
+/** Enregistre les identifiants de l'IA (clé chiffrée au repos). */
+export async function setAiCreds(input: Partial<AiCreds>): Promise<{ ok: true; configured: boolean }> {
+  const ops = [] as ReturnType<typeof prisma.setting.upsert>[];
+  const put = (key: string, value: string) =>
+    ops.push(
+      prisma.setting.upsert({
+        where: { key: SECRET_PREFIX + key },
+        create: { key: SECRET_PREFIX + key, value },
+        update: { value },
+      }),
+    );
+  if (input.provider != null) put('aiProvider', input.provider.trim());
+  if (input.apiKey != null) put('aiApiKey', encrypt(input.apiKey.trim()));
+  if (input.model != null) put('aiModel', input.model.trim());
+  if (ops.length) await prisma.$transaction(ops);
+  const creds = await getAiCreds();
+  return { ok: true, configured: Boolean(creds.apiKey) };
+}
+
 export interface AliexpressTokens {
   accessToken?: string;
   refreshToken?: string;

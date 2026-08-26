@@ -181,7 +181,14 @@ body {
 .cs-block { margin-top: 16px; }
 .cs-block h4 { margin: 0 0 6px; font-size: 14px; }
 .cs-steps { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
-#cs-reply { width: 100%; font-family: inherit; font-size: 13.5px; line-height: 1.5; resize: vertical; }
+/* Fil de discussion de l'agent IA */
+.cs-chat { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; max-height: 46vh; overflow-y: auto; padding-right: 4px; }
+.cs-msg { max-width: 88%; padding: 10px 13px; border-radius: 12px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+.cs-user { align-self: flex-end; background: var(--accent); color: #06212a; border-bottom-right-radius: 3px; }
+.cs-ai { align-self: flex-start; background: var(--bg-2); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+.cs-ai-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cs-inputrow { display: flex; gap: 8px; align-items: flex-end; margin-top: 12px; }
+.cs-inputrow textarea { flex: 1; font-family: inherit; font-size: 14px; resize: vertical; }
 @media (max-width: 820px) { .support-grid { grid-template-columns: 1fr; } .support-list { max-height: none; } }
 
 /* Panels */
