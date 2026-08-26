@@ -392,15 +392,16 @@ model Order {
   @@index([status])
 }
 
-/// Message d'une conversation de service client (sauvegardée, par client).
+/// Message d'une conversation de service client (sauvegardée).
+/// customerId nul = conversation générale avec l'assistant (chat direct).
 /// role : 'user' (message reçu / saisi par le vendeur) | 'assistant' (agent IA).
 model SupportMessage {
-  id         String   @id @default(cuid())
-  customerId String
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id         String    @id @default(cuid())
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
   role       String
   content    String
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([customerId])
 }
