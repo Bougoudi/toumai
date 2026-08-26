@@ -439,13 +439,18 @@ async function openSupport(id) {
   _csChat = [];
   renderSupportQueue();
   const panel = $('#support-panel');
-  panel.innerHTML = `<p class="muted">…</p>`;
+  panel.innerHTML = `<p class="muted chat-empty">…</p>`;
   try {
     const o = await api('/api/orders/' + id);
     _csOrder = o;
     if (_aiConfigured === null) {
       try { _aiConfigured = (await api('/api/support/ai-status')).configured; } catch { _aiConfigured = false; }
     }
+    // Charge la conversation SAUVEGARDÉE (historique réel, persistant).
+    try {
+      const th = await api('/api/support/thread/' + id);
+      _csChat = (th.messages || []).map((m) => ({ role: m.role, content: m.content, ts: m.createdAt }));
+    } catch { _csChat = []; }
     const c = o.customer || {};
     const track = (o.purchaseOrders || []).find((p) => p.trackingNumber);
     const trackLine = track
@@ -467,6 +472,7 @@ async function openSupport(id) {
           <div class="chat-actions">
             ${c.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(c.email)}" title="E-mail">✉️</a>` : ''}
             ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${(c.phone || '').replace(/[^0-9]/g, '')}" target="_blank" rel="noopener" title="WhatsApp">💬</a>` : ''}
+            <button class="btn btn-ghost btn-sm" id="cs-clear" title="${i18n.t('cs_new_convo')}">🗑️</button>
             ${canCancel ? `<button class="btn btn-danger btn-sm" id="cs-cancel">${i18n.t('cs_cancel_order')}</button>` : ''}
           </div>
         </div>
@@ -495,6 +501,16 @@ async function openSupport(id) {
     });
     const goSettings = $('#cs-go-settings');
     if (goSettings) goSettings.addEventListener('click', () => document.querySelector('[data-tab=settings]').click());
+    const clearBtn = $('#cs-clear');
+    if (clearBtn) clearBtn.addEventListener('click', async () => {
+      if (!_csChat.length) return;
+      if (!confirm(i18n.t('cs_clear_confirm'))) return;
+      try {
+        await api('/api/support/thread/' + o.id, { method: 'DELETE' });
+        _csChat = [];
+        renderCsChat();
+      } catch (e) { toast(e.message); }
+    });
     const cancel = $('#cs-cancel');
     if (cancel) cancel.addEventListener('click', async (ev) => {
       if (!confirm(i18n.t('cs_cancel_confirm'))) return;
@@ -568,8 +584,8 @@ async function sendCs(content) {
   const btn = $('#cs-send');
   if (btn) busy(btn, true, '…');
   try {
-    const payload = { orderId: _csOrder.id, messages: _csChat.filter((m) => !m.pending).map((m) => ({ role: m.role, content: m.content })) };
-    const { reply } = await api('/api/support/chat', { method: 'POST', body: payload });
+    // Le serveur enregistre le message + la réponse (conversation persistante).
+    const { reply } = await api('/api/support/chat', { method: 'POST', body: { orderId: _csOrder.id, message: content } });
     _csChat = _csChat.filter((m) => !m.pending);
     _csChat.push({ role: 'assistant', content: reply, ts: Date.now() });
   } catch (e) {
