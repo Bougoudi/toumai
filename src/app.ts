@@ -24,6 +24,8 @@ import { orderRouter } from './modules/orders/order.routes.js';
 import { productRouter } from './modules/products/product.routes.js';
 import { searchRouter } from './modules/search/search.routes.js';
 import { supplierRouter } from './modules/suppliers/supplier.routes.js';
+import { aliexpressRouter } from './modules/aliexpress/aliexpress.routes.js';
+import { aliexpressController } from './modules/aliexpress/aliexpress.controller.js';
 
 /**
  * Dossier des fichiers statiques (PWA). En développement (tsx) le module est
@@ -139,6 +141,10 @@ export function createApp() {
   app.get('/api/ebay/account-deletion', ebayDeletionController.challenge);
   app.post('/api/ebay/account-deletion', ebayDeletionController.notify);
 
+  // Callback OAuth AliExpress : PUBLIC (AliExpress redirige le navigateur sans
+  // notre jeton ; l'identité est portée par l'état signé).
+  app.get('/api/aliexpress/oauth/callback', asyncHandler(aliexpressController.callback));
+
   // À partir d'ici, toutes les routes /api exigent un jeton valide.
   app.use('/api', requireAuth);
 
@@ -148,6 +154,7 @@ export function createApp() {
   app.use('/api/products', productRouter); // pilier 2
   app.use('/api/orders', orderRouter); // pilier 3
   app.use('/api/suppliers', supplierRouter); // pilier 4
+  app.use('/api/aliexpress', aliexpressRouter); // connexion AliExpress (OAuth)
   app.use('/api/search', searchRouter); // pilier 4
   app.use('/api/payments', paymentRouter); // paiement (Stripe)
   app.use('/api/channels', channelRouter); // canaux de vente (Etsy/eBay/Amazon)
