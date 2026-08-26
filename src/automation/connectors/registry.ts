@@ -18,6 +18,7 @@ import { HttpVisionConnector } from './vision/http.vision.connector.js';
 import type { ProductSearchConnector } from './product/base.product.connector.js';
 import { AliExpressProductConnector } from './product/aliexpress.product.connector.js';
 import { getAliexpressCreds, getSettings } from '../../modules/settings/settings.service.js';
+import { aliexpressOAuthService } from '../../modules/aliexpress/aliexpress.oauth.service.js';
 
 /**
  * Sélectionne les connecteurs à utiliser :
@@ -124,10 +125,13 @@ export async function getProductConnector(): Promise<ProductSearchConnector | nu
   const creds = await getAliexpressCreds();
   if (creds.appKey && creds.appSecret) {
     logger.info('Connecteur produits : AliExpress (recherche réelle)');
+    // Jeton OAuth (si connecté) : débloque la recherche par mot-clé.
+    const accessToken = await aliexpressOAuthService.getValidAccessToken().catch(() => undefined);
     return new AliExpressProductConnector(creds.appKey, creds.appSecret, {
       trackingId: creds.trackingId,
       currency: getSettings().currency,
       feedName: creds.feedName,
+      accessToken,
     });
   }
   return null;

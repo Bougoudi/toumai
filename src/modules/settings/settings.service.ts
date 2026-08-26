@@ -95,6 +95,55 @@ export async function getAliexpressCreds(): Promise<AliexpressCreds> {
   }
 }
 
+export interface AliexpressTokens {
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number; // epoch ms
+}
+
+/** Jetons OAuth AliExpress (secrets chiffrés au repos). */
+export async function getAliexpressTokens(): Promise<AliexpressTokens> {
+  try {
+    const rows = await prisma.setting.findMany({
+      where: {
+        key: {
+          in: [
+            `${SECRET_PREFIX}aliexpressAccessToken`,
+            `${SECRET_PREFIX}aliexpressRefreshToken`,
+            `${SECRET_PREFIX}aliexpressTokenExpiresAt`,
+          ],
+        },
+      },
+    });
+    const m: Record<string, string> = {};
+    for (const r of rows) m[r.key.slice(SECRET_PREFIX.length)] = r.value;
+    return {
+      accessToken: m.aliexpressAccessToken ? decrypt(m.aliexpressAccessToken) : undefined,
+      refreshToken: m.aliexpressRefreshToken ? decrypt(m.aliexpressRefreshToken) : undefined,
+      expiresAt: m.aliexpressTokenExpiresAt ? Number(m.aliexpressTokenExpiresAt) : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+/** Enregistre les jetons OAuth AliExpress (access/refresh chiffrés). */
+export async function setAliexpressTokens(t: AliexpressTokens): Promise<void> {
+  const ops = [] as ReturnType<typeof prisma.setting.upsert>[];
+  const put = (key: string, value: string) =>
+    ops.push(
+      prisma.setting.upsert({
+        where: { key: SECRET_PREFIX + key },
+        create: { key: SECRET_PREFIX + key, value },
+        update: { value },
+      }),
+    );
+  if (t.accessToken != null) put('aliexpressAccessToken', encrypt(t.accessToken));
+  if (t.refreshToken != null) put('aliexpressRefreshToken', encrypt(t.refreshToken));
+  if (t.expiresAt != null) put('aliexpressTokenExpiresAt', String(t.expiresAt));
+  if (ops.length) await prisma.$transaction(ops);
+}
+
 /** Enregistre les identifiants AliExpress (secret chiffré au repos). */
 export async function setAliexpressCreds(input: AliexpressCreds): Promise<{ ok: true; configured: boolean }> {
   const ops = [] as ReturnType<typeof prisma.setting.upsert>[];

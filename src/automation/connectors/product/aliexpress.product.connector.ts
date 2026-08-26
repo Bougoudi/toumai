@@ -25,25 +25,30 @@ export class AliExpressProductConnector implements ProductSearchConnector {
 
   private readonly currency: string;
   private readonly feedName: string;
+  private readonly accessToken?: string;
 
   constructor(
     private readonly appKey: string,
     private readonly appSecret: string,
-    opts: { trackingId?: string; currency?: string; feedName?: string } = {},
+    opts: { trackingId?: string; currency?: string; feedName?: string; accessToken?: string } = {},
   ) {
     this.currency = (opts.currency || 'EUR').toUpperCase();
     // Flux large par défaut (produits sélectionnés dropshipping).
     this.feedName = opts.feedName || 'AEB_BR_DropiSelectedItems_20241106';
+    // Jeton OAuth : débloque la recherche par mot-clé (text.search).
+    this.accessToken = opts.accessToken;
   }
 
   async search(query: string, opts?: { limit?: number }): Promise<ProductSearchResult[]> {
     const q = (query ?? '').trim();
     const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 50);
 
-    // 1) Recherche par mot-clé (si l'app le permet).
-    if (q) {
+    // 1) Recherche par mot-clé (nécessite un jeton OAuth « access_token »).
+    if (q && this.accessToken) {
       try {
         const res = await this.call('aliexpress.ds.text.search', {
+          session: this.accessToken,
+          access_token: this.accessToken,
           keyWord: q,
           local: 'en_US',
           countryCode: 'FR',

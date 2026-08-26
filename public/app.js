@@ -1183,7 +1183,32 @@ async function loadSettingsTab() {
       `<div class="field"><label>Demande simulée (démo)</label><select class="input set-f" data-key="simulateDemand"><option value="true" ${s.simulateDemand ? 'selected' : ''}>Activée</option><option value="false" ${!s.simulateDemand ? 'selected' : ''}>Désactivée</option></select></div>`;
   } catch (e) { toast(e.message); }
   loadSecurityPanel();
+  loadAliexpressStatus();
 }
+
+async function loadAliexpressStatus() {
+  const box = $('#ali-status');
+  if (!box) return;
+  try {
+    const s = await api('/api/aliexpress/status');
+    if (s.connected) {
+      const exp = s.expiresAt ? ` (${i18n.t('ali_until')} ${dt(s.expiresAt)})` : '';
+      box.innerHTML = `<span class="pill pill-on">✅ ${i18n.t('ali_connected')}</span>${exp}`;
+    } else if (s.configured) {
+      box.innerHTML = `<span class="pill pill-off">${i18n.t('ali_not_connected')}</span>`;
+    } else {
+      box.innerHTML = `<span class="pill pill-off">${i18n.t('ali_not_configured')}</span>`;
+    }
+  } catch { box.textContent = ''; }
+}
+$('#ali-connect')?.addEventListener('click', async (ev) => {
+  busy(ev.currentTarget, true, '...');
+  try {
+    const { url } = await api('/api/aliexpress/oauth/start');
+    window.open(url, '_blank', 'noopener');
+    toast(i18n.t('ali_opening'));
+  } catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
 $('#settings-save').addEventListener('click', async (ev) => {
   const patch = {};
   document.querySelectorAll('#settings-form .set-f').forEach((i) => {
@@ -1734,6 +1759,12 @@ if (params.get('paid')) {
   history.replaceState({}, '', '/');
 } else if (params.get('connected')) {
   toast(`Canal ${params.get('channel') || ''} autorisé ✓`);
+  history.replaceState({}, '', '/');
+} else if (params.get('aliexpress') === 'connected') {
+  toast('✅ AliExpress connecté — la recherche par mot-clé est activée !');
+  history.replaceState({}, '', '/');
+} else if (params.get('aliexpress') === 'error') {
+  toast('AliExpress : ' + (params.get('msg') || 'échec de la connexion'));
   history.replaceState({}, '', '/');
 }
 
