@@ -425,7 +425,6 @@ function updateAiBanner() {
 function buildChatShell() {
   const panel = $('#support-panel');
   if (_csBuilt && $('#cs-chat')) return; // déjà construit
-  const chips = CS_QUICK.map((p) => `<button class="btn btn-ghost btn-sm cs-chip" data-msg="${esc(p.msg)}">${i18n.t(p.k)}</button>`).join(' ');
   panel.innerHTML = `
     <div class="chat-wrap">
       <div class="chat-header">
@@ -440,17 +439,15 @@ function buildChatShell() {
       </div>
       <div id="cs-banner"></div>
       <div id="cs-chat" class="chat-body"></div>
-      <div class="chat-quick" id="cs-quick">${chips}</div>
       <div class="chat-inputbar">
-        <textarea id="cs-input" class="input" rows="1" data-i18n-ph="cs_input_ph" placeholder="Écris un message…"></textarea>
-        <button class="btn btn-primary chat-send" id="cs-send" title="${i18n.t('cs_send')}" aria-label="${i18n.t('cs_send')}">➤</button>
+        <textarea id="cs-input" class="input" rows="1" data-i18n-ph="cs_input_ph" placeholder="Comment puis-je vous aider ?"></textarea>
+        <button class="chat-send" id="cs-send" title="${i18n.t('cs_send')}" aria-label="${i18n.t('cs_send')}">➤</button>
       </div>
     </div>`;
   _csBuilt = true;
   const input = $('#cs-input');
   const autogrow = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; };
   input.addEventListener('input', autogrow);
-  panel.querySelectorAll('.cs-chip').forEach((b) => b.addEventListener('click', () => sendCs(b.dataset.msg)));
   $('#cs-send').addEventListener('click', () => {
     const v = input.value.trim();
     if (v) { input.value = ''; autogrow(); sendCs(v); }
@@ -474,10 +471,21 @@ function csTime(ts) {
 function renderCsChat() {
   const box = $('#cs-chat');
   if (!box) return;
-  const quick = $('#cs-quick');
-  if (quick) quick.style.display = _csChat.length ? 'none' : ''; // masque les suggestions dès qu'on discute
   if (!_csChat.length) {
-    box.innerHTML = `<div class="chat-hello">🤖 ${esc(i18n.t('cs_greeting'))}</div>`;
+    // Écran d'accueil (façon assistant) : titre, sous-titre et suggestions cliquables.
+    const cards = CS_QUICK.map(
+      (p) => `<button class="chat-suggest" data-msg="${esc(p.msg)}">${i18n.t(p.k)}</button>`,
+    ).join('');
+    box.innerHTML = `
+      <div class="chat-hero">
+        <div class="chat-hero-icon">🤖</div>
+        <h2 class="chat-hero-title">${esc(i18n.t('cs_hero_title'))}</h2>
+        <p class="chat-hero-sub">${esc(i18n.t('cs_hero_sub'))}</p>
+        <div class="chat-suggests">${cards}</div>
+      </div>`;
+    box.querySelectorAll('.chat-suggest').forEach((b) =>
+      b.addEventListener('click', () => sendCs(b.dataset.msg)),
+    );
     return;
   }
   box.innerHTML = _csChat
