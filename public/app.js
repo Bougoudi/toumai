@@ -93,13 +93,29 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ── Onglets ────────────────────────────────────────────────
-document.querySelectorAll('.tab').forEach((tab) => {
+// Groupe repliable « Sourcing » : le bouton d'en-tête ouvre/ferme le sous-menu.
+const sourcingGroup = $('#group-sourcing');
+$('.group-toggle')?.addEventListener('click', () => {
+  const open = sourcingGroup.classList.toggle('open');
+  $('#sub-sourcing').hidden = !open;
+  $('.group-toggle').setAttribute('aria-expanded', String(open));
+});
+
+document.querySelectorAll('.tab[data-tab]').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
     document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
     tab.classList.add('active');
     $('#tab-' + tab.dataset.tab).classList.add('active');
     loaders[tab.dataset.tab]?.();
+    // Si l'onglet appartient au groupe « Sourcing », on l'ouvre et on le marque actif.
+    const inGroup = sourcingGroup && sourcingGroup.contains(tab);
+    if (sourcingGroup) sourcingGroup.classList.toggle('has-active', !!inGroup);
+    if (inGroup && !sourcingGroup.classList.contains('open')) {
+      sourcingGroup.classList.add('open');
+      $('#sub-sourcing').hidden = false;
+      $('.group-toggle').setAttribute('aria-expanded', 'true');
+    }
   });
 });
 
@@ -368,48 +384,218 @@ function bindOrderRows(sel) {
   );
 }
 
-// ── Service clientèle ──────────────────────────────────────
-let _customersCache = [];
+// ── Service clientèle : assistant de résolution ────────────
+let _supportOrders = [];
+let _supportCurrent = null;
+
 async function loadCustomers() {
   try {
-    const d = await api('/api/orders/customers?take=200');
-    _customersCache = d.items || [];
-    renderCustomers();
+    const d = await api('/api/orders?take=60');
+    _supportOrders = d.items || [];
+    renderSupportQueue();
   } catch (e) {
     toast(e.message);
   }
 }
 
-function renderCustomers() {
+function renderSupportQueue() {
   const q = ($('#cust-search')?.value || '').trim().toLowerCase();
   const list = q
-    ? _customersCache.filter((c) =>
-        [c.name, c.email, c.phone, c.city, c.country].some((v) => (v || '').toLowerCase().includes(q)),
+    ? _supportOrders.filter((o) =>
+        [o.orderNumber, o.customer?.name, o.customer?.email, o.status].some((v) => (v || '').toLowerCase().includes(q)),
       )
-    : _customersCache;
-
-  $('#cust-kpis').replaceChildren(
-    el(`<div class="kpi accent"><div class="label">${i18n.t('cust_total')}</div><div class="value num">${_customersCache.length}</div></div>`),
+    : _supportOrders;
+  const box = $('#support-orders');
+  if (!list.length) { box.innerHTML = `<p class="muted">${i18n.t('cust_empty')}</p>`; return; }
+  box.innerHTML = list
+    .map(
+      (o) => `<button class="support-row${_supportCurrent === o.id ? ' active' : ''}" data-order="${o.id}">
+        <div class="support-row-top"><b>${esc(o.customer?.name || '—')}</b>${badge(o.status)}</div>
+        <div class="muted support-row-sub">${esc(o.orderNumber)} · ${money(o.total)}</div>
+      </button>`,
+    )
+    .join('');
+  box.querySelectorAll('[data-order]').forEach((r) =>
+    r.addEventListener('click', () => openSupport(r.dataset.order)),
   );
-
-  $('#customers-table').innerHTML = tableHtml(
-    [i18n.t('th_client'), 'E-mail', i18n.t('cust_phone'), i18n.t('cust_location'), i18n.t('cust_contact')],
-    list.map((c) => {
-      const loc = [c.city, c.country].filter(Boolean).join(', ') || '—';
-      const mail = c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '—';
-      const contacts = [];
-      if (c.email) contacts.push(`<a class="btn btn-ghost btn-sm" href="mailto:${esc(c.email)}">✉️</a>`);
-      if (c.phone) {
-        const wa = (c.phone || '').replace(/[^0-9]/g, '');
-        contacts.push(`<a class="btn btn-ghost btn-sm" href="https://wa.me/${wa}" target="_blank" rel="noopener">💬</a>`);
-      }
-      return [esc(c.name || '—'), mail, esc(c.phone || '—'), esc(loc), contacts.join(' ') || '—'];
-    }),
-  );
-  if (!list.length) $('#customers-table').innerHTML = `<p class="muted">${i18n.t('cust_empty')}</p>`;
 }
+
+async function openSupport(id) {
+  _supportCurrent = id;
+  renderSupportQueue();
+  const panel = $('#support-panel');
+  panel.innerHTML = `<p class="muted">${i18n.t('loading') || '…'}</p>`;
+  try {
+    const o = await api('/api/orders/' + id);
+    const c = o.customer || {};
+    const track = (o.purchaseOrders || []).find((p) => p.trackingNumber);
+    const trackLine = track
+      ? `${i18n.t('cs_tracking')} : <b>${esc(track.trackingNumber)}</b>${track.carrier ? ' (' + esc(track.carrier) + ')' : ''}`
+      : `<span class="muted">${i18n.t('cs_no_tracking')}</span>`;
+    const problems = Object.entries(CS_PROBLEMS)
+      .map(([k, p]) => `<button class="btn btn-ghost btn-sm cs-problem" data-problem="${k}">${p.label()}</button>`)
+      .join(' ');
+    panel.innerHTML = `
+      <div class="cs-head">
+        <div><h3 style="margin:0">${esc(c.name || i18n.t('th_client'))}</h3>
+          <div class="muted">${esc(o.orderNumber)} · ${badge(o.status)}</div></div>
+        <div class="cs-contact">
+          ${c.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(c.email)}">✉️ ${i18n.t('cs_email')}</a>` : ''}
+          ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${(c.phone || '').replace(/[^0-9]/g, '')}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
+        </div>
+      </div>
+      <div class="cs-track">${trackLine}</div>
+      <p class="muted" style="margin:14px 0 6px">${i18n.t('cs_choose_problem')}</p>
+      <div class="cs-problems">${problems}</div>
+      <div id="cs-resolution"></div>`;
+    panel._order = o;
+    panel.querySelectorAll('.cs-problem').forEach((b) =>
+      b.addEventListener('click', () => {
+        panel.querySelectorAll('.cs-problem').forEach((x) => x.classList.remove('active'));
+        b.classList.add('active');
+        renderResolution(o, b.dataset.problem);
+      }),
+    );
+  } catch (e) {
+    panel.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
+  }
+}
+
+function renderResolution(order, key) {
+  const p = CS_PROBLEMS[key];
+  const c = order.customer || {};
+  const track = (order.purchaseOrders || []).find((x) => x.trackingNumber);
+  const ctx = {
+    name: c.name || 'client',
+    orderNumber: order.orderNumber,
+    tracking: track?.trackingNumber || '',
+    carrier: track?.carrier || '',
+    status: order.status,
+  };
+  const r = p.resolve(ctx, order);
+  const canCancel = !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(order.status);
+  const reply = r.reply;
+  $('#cs-resolution').innerHTML = `
+    <div class="cs-block">
+      <h4>${i18n.t('cs_recommended')}</h4>
+      <ul class="cs-steps">${r.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>
+    </div>
+    <div class="cs-block">
+      <h4>${i18n.t('cs_reply')}</h4>
+      <textarea id="cs-reply" class="input" rows="7">${esc(reply)}</textarea>
+      <div class="form-actions" style="margin-top:8px">
+        <button class="btn btn-ghost btn-sm" id="cs-copy">📋 ${i18n.t('cs_copy')}</button>
+        ${c.email ? `<a class="btn btn-ghost btn-sm" id="cs-send-mail" href="#">✉️ ${i18n.t('cs_send_email')}</a>` : ''}
+        ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${(c.phone || '').replace(/[^0-9]/g, '')}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
+        ${p.canCancel && canCancel ? `<button class="btn btn-danger btn-sm" id="cs-cancel">${i18n.t('cs_cancel_order')}</button>` : ''}
+      </div>
+    </div>`;
+  $('#cs-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('#cs-reply').value); toast(i18n.t('cs_copied')); }
+    catch { toast($('#cs-reply').value); }
+  });
+  const mail = $('#cs-send-mail');
+  if (mail) mail.addEventListener('click', (e) => {
+    e.preventDefault();
+    const subject = encodeURIComponent(`${i18n.t('cs_email_subject')} ${order.orderNumber}`);
+    const bodyTxt = encodeURIComponent($('#cs-reply').value);
+    window.location.href = `mailto:${c.email}?subject=${subject}&body=${bodyTxt}`;
+  });
+  const cancel = $('#cs-cancel');
+  if (cancel) cancel.addEventListener('click', async (ev) => {
+    if (!confirm(i18n.t('cs_cancel_confirm'))) return;
+    busy(ev.currentTarget, true, '...');
+    try {
+      await api('/api/orders/' + order.id + '/cancel', { method: 'POST' });
+      toast(i18n.t('cs_cancelled'));
+      await loadCustomers();
+      openSupport(order.id);
+    } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+  });
+}
+
+/**
+ * Catalogue de problèmes clients. Chaque entrée fournit des étapes de
+ * résolution concrètes (selon l'état réel de la commande) et un message de
+ * réponse prêt à envoyer, personnalisé. Déterministe — aucune donnée inventée.
+ */
+const CS_PROBLEMS = {
+  not_received: {
+    label: () => i18n.t('cs_p_not_received'),
+    resolve: (x, o) => {
+      const shipped = ['SHIPPED', 'DELIVERED'].includes(o.status) || (o.purchaseOrders || []).some((p) => ['SHIPPED', 'DELIVERED'].includes(p.status));
+      const steps = shipped
+        ? [
+            i18n.t('cs_s_check_tracking'),
+            i18n.t('cs_s_ask_patience'),
+            i18n.t('cs_s_offer_reship'),
+          ]
+        : [i18n.t('cs_s_not_shipped'), i18n.t('cs_s_confirm_address'), i18n.t('cs_s_offer_refund')];
+      const t = x.tracking ? `\n${i18n.t('cs_tracking')} : ${x.tracking}${x.carrier ? ' (' + x.carrier + ')' : ''}` : '';
+      return {
+        steps,
+        reply: `Bonjour ${x.name},\n\nMerci pour votre message concernant la commande ${x.orderNumber}.${t}\n\nNous avons vérifié votre colis. ${shipped ? `Il est bien en route ; les délais internationaux peuvent prendre quelques jours supplémentaires. Nous suivons son acheminement de près et, sans livraison sous peu, nous vous renverrons le produit ou vous rembourserons.` : `Votre commande est en cours de préparation et partira très rapidement. Nous vous tiendrons informé(e) dès l'expédition.`}\n\nMerci de votre patience,\nLe service client`,
+      };
+    },
+  },
+  delay: {
+    label: () => i18n.t('cs_p_delay'),
+    resolve: (x) => ({
+      steps: [i18n.t('cs_s_check_tracking'), i18n.t('cs_s_reassure_delay'), i18n.t('cs_s_offer_gesture')],
+      reply: `Bonjour ${x.name},\n\nNous comprenons votre impatience pour la commande ${x.orderNumber} et nous en sommes désolés. ${x.tracking ? `Votre colis est en transit (suivi : ${x.tracking}).` : `Votre colis est en transit.`}\n\nLes livraisons internationales peuvent prendre un peu plus de temps que prévu. Il arrive très bientôt. Pour la gêne occasionnée, nous restons à votre disposition.\n\nCordialement,\nLe service client`,
+    }),
+  },
+  damaged: {
+    label: () => i18n.t('cs_p_damaged'),
+    resolve: (x) => ({
+      steps: [i18n.t('cs_s_ask_photo'), i18n.t('cs_s_offer_replace_refund'), i18n.t('cs_s_no_return_needed')],
+      reply: `Bonjour ${x.name},\n\nNous sommes vraiment désolés que votre article (commande ${x.orderNumber}) soit arrivé endommagé. Pourriez-vous nous envoyer une photo du produit ? Cela nous permettra de traiter votre dossier immédiatement.\n\nDès réception, nous vous renvoyons un article neuf gratuitement, ou nous vous remboursons — au choix. Vous n'avez pas besoin de renvoyer l'article.\n\nAvec toutes nos excuses,\nLe service client`,
+    }),
+  },
+  wrong_item: {
+    label: () => i18n.t('cs_p_wrong'),
+    resolve: (x) => ({
+      steps: [i18n.t('cs_s_ask_photo'), i18n.t('cs_s_confirm_order'), i18n.t('cs_s_offer_replace_refund')],
+      reply: `Bonjour ${x.name},\n\nNous sommes navrés : il semble que vous ayez reçu un article différent de votre commande ${x.orderNumber}. Pourriez-vous nous envoyer une photo de ce que vous avez reçu ?\n\nNous corrigeons cela tout de suite : envoi du bon article ou remboursement complet, selon votre préférence.\n\nMerci de votre compréhension,\nLe service client`,
+    }),
+  },
+  refund: {
+    label: () => i18n.t('cs_p_refund'),
+    canCancel: true,
+    resolve: (x, o) => {
+      const canCancel = !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(o.status);
+      return {
+        steps: canCancel
+          ? [i18n.t('cs_s_can_refund'), i18n.t('cs_s_use_cancel_btn')]
+          : [i18n.t('cs_s_already_shipped'), i18n.t('cs_s_refund_on_return')],
+        reply: `Bonjour ${x.name},\n\nNous avons bien reçu votre demande de remboursement pour la commande ${x.orderNumber}. ${canCancel ? `Celle-ci n'étant pas encore expédiée, nous procédons au remboursement complet immédiatement.` : `Votre commande étant déjà partie, nous organisons le remboursement dès le retour ou la confirmation du problème.`}\n\nLe montant sera recrédité sous quelques jours ouvrés.\n\nCordialement,\nLe service client`,
+      };
+    },
+  },
+  cancel: {
+    label: () => i18n.t('cs_p_cancel'),
+    canCancel: true,
+    resolve: (x, o) => {
+      const canCancel = !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(o.status);
+      return {
+        steps: canCancel
+          ? [i18n.t('cs_s_can_cancel'), i18n.t('cs_s_use_cancel_btn')]
+          : [i18n.t('cs_s_already_shipped'), i18n.t('cs_s_cancel_impossible')],
+        reply: `Bonjour ${x.name},\n\nVous souhaitez annuler la commande ${x.orderNumber}. ${canCancel ? `C'est fait : la commande est annulée et vous serez intégralement remboursé(e).` : `Malheureusement, la commande est déjà expédiée et ne peut plus être annulée. Dès réception, refusez le colis ou renvoyez-le pour un remboursement.`}\n\nCordialement,\nLe service client`,
+      };
+    },
+  },
+  other: {
+    label: () => i18n.t('cs_p_other'),
+    resolve: (x) => ({
+      steps: [i18n.t('cs_s_ask_details'), i18n.t('cs_s_reply_fast')],
+      reply: `Bonjour ${x.name},\n\nMerci pour votre message au sujet de la commande ${x.orderNumber}. Pourriez-vous nous donner un peu plus de détails afin que nous puissions vous aider au mieux ?\n\nNous vous répondrons très rapidement.\n\nCordialement,\nLe service client`,
+    }),
+  },
+};
+
 $('#refresh-customers').addEventListener('click', loadCustomers);
-$('#cust-search').addEventListener('input', renderCustomers);
+$('#cust-search').addEventListener('input', renderSupportQueue);
 
 async function showOrder(id) {
   try {

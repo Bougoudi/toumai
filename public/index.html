@@ -110,14 +110,19 @@
       </div>
     </header>
 
+    <div class="layout">
     <nav class="tabs" id="tabs">
       <button class="tab active" data-tab="dashboard" data-i18n="nav_dashboard">Tableau de bord</button>
-      <div class="tab-group" role="group" aria-label="Sourcing">
-        <span class="tab-group-label" data-i18n="nav_group_sourcing">Sourcing</span>
-        <button class="tab" data-tab="market" data-i18n="nav_market">Marché</button>
-        <button class="tab" data-tab="products" data-i18n="nav_products">Produits</button>
-        <button class="tab" data-tab="suppliers" data-i18n="nav_suppliers">Fournisseurs</button>
-        <button class="tab" data-tab="discovery" data-i18n="nav_discovery">Recherche</button>
+      <div class="nav-group" id="group-sourcing">
+        <button type="button" class="tab group-toggle" aria-expanded="false" aria-controls="sub-sourcing">
+          <span data-i18n="nav_group_sourcing">Sourcing</span><span class="caret" aria-hidden="true">▸</span>
+        </button>
+        <div class="tab-sub" id="sub-sourcing" hidden>
+          <button class="tab" data-tab="market" data-i18n="nav_market">Marché</button>
+          <button class="tab" data-tab="products" data-i18n="nav_products">Produits</button>
+          <button class="tab" data-tab="suppliers" data-i18n="nav_suppliers">Fournisseurs</button>
+          <button class="tab" data-tab="discovery" data-i18n="nav_discovery">Recherche</button>
+        </div>
       </div>
       <button class="tab" data-tab="orders" data-i18n="nav_orders">Ordres</button>
       <button class="tab" data-tab="channels" data-i18n="nav_channels">Canaux de vente</button>
@@ -224,14 +229,23 @@
         <div class="card"><div id="orders-table" class="table-wrap"></div></div>
       </section>
 
-      <!-- SERVICE CLIENTÈLE -->
+      <!-- SERVICE CLIENTÈLE (assistant de résolution) -->
       <section class="panel" id="tab-customers">
         <div class="toolbar">
-          <input id="cust-search" class="input" data-i18n-ph="cust_search_ph" placeholder="Rechercher un client (nom, e-mail)…" />
+          <input id="cust-search" class="input" data-i18n-ph="cust_search_ph" placeholder="Rechercher une commande, un client…" />
           <button id="refresh-customers" class="btn btn-ghost" data-i18n="refresh_btn">↻ Actualiser</button>
         </div>
-        <div class="kpi-grid" id="cust-kpis"></div>
-        <div class="card"><div id="customers-table" class="table-wrap"></div></div>
+        <div class="support-grid">
+          <div class="card support-list">
+            <h3 data-i18n="cs_queue">Demandes clients</h3>
+            <div id="support-orders"></div>
+          </div>
+          <div class="card support-assistant">
+            <div id="support-panel">
+              <p class="muted" data-i18n="cs_pick">👈 Choisis une commande pour aider le client à résoudre son problème.</p>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- CANAUX DE VENTE -->
@@ -370,6 +384,7 @@
         </div>
       </section>
     </main>
+    </div>
 
     <!-- Modale générique -->
     <div id="modal" class="modal" hidden>
