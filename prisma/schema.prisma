@@ -352,6 +352,7 @@ model Customer {
   zip       String?
 
   orders Order[]
+  supportMessages SupportMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -383,7 +384,6 @@ model Order {
 
   items          OrderItem[]
   purchaseOrders PurchaseOrder[]
-  supportMessages SupportMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -392,17 +392,17 @@ model Order {
   @@index([status])
 }
 
-/// Message d'une conversation de service client (sauvegardée, par commande).
-/// role : 'user' (vendeur/client saisi) | 'assistant' (agent IA).
+/// Message d'une conversation de service client (sauvegardée, par client).
+/// role : 'user' (message reçu / saisi par le vendeur) | 'assistant' (agent IA).
 model SupportMessage {
-  id        String   @id @default(cuid())
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  role      String
-  content   String
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  role       String
+  content    String
+  createdAt  DateTime @default(now())
 
-  @@index([orderId])
+  @@index([customerId])
 }
 
 /// Ligne de commande.
