@@ -7,6 +7,7 @@ export const orderRouter = Router();
 // Clients
 orderRouter.post('/customers', asyncHandler(orderController.createCustomer));
 orderRouter.get('/customers', asyncHandler(orderController.listCustomers));
+orderRouter.delete('/customers/:id', asyncHandler(orderController.removeCustomer));
 
 // Commandes
 orderRouter.post('/', asyncHandler(orderController.create));

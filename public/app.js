@@ -496,7 +496,8 @@ async function openSupport(id) {
           <div class="chat-actions">
             ${c.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(c.email)}" title="E-mail">✉️</a>` : ''}
             ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${(c.phone || '').replace(/[^0-9]/g, '')}" target="_blank" rel="noopener" title="WhatsApp">💬</a>` : ''}
-            <button class="btn btn-ghost btn-sm" id="cs-clear" title="${i18n.t('cs_new_convo')}">🗑️</button>
+            <button class="btn btn-ghost btn-sm" id="cs-clear" title="${i18n.t('cs_new_convo')}">🧹</button>
+            <button class="btn btn-ghost btn-sm" id="cs-del-cust" title="${i18n.t('cs_delete_customer')}">🗑️</button>
           </div>
         </div>
         ${banner}
@@ -532,6 +533,19 @@ async function openSupport(id) {
         await api('/api/support/thread/' + id, { method: 'DELETE' });
         _csChat = [];
         renderCsChat();
+      } catch (e) { toast(e.message); }
+    });
+    const delCust = $('#cs-del-cust');
+    if (delCust) delCust.addEventListener('click', async () => {
+      if (!confirm(i18n.t('cs_delete_customer_confirm'))) return;
+      try {
+        await api('/api/orders/customers/' + id, { method: 'DELETE' });
+        _supportCurrent = null;
+        _csCustomer = null;
+        _csChat = [];
+        await loadCustomers();
+        $('#support-panel').innerHTML = `<p class="muted chat-empty" data-i18n="cs_pick">👈 ${i18n.t('cs_pick')}</p>`;
+        toast(i18n.t('cs_customer_deleted'));
       } catch (e) { toast(e.message); }
     });
   } catch (e) {

@@ -62,6 +62,8 @@
       cs_new_convo: 'Nouvelle conversation', cs_clear_confirm: 'Effacer toute cette conversation ?',
       cs_new_customer: 'Nouveau client', cs_no_customer: 'Aucun client. Ajoute-en un pour démarrer une discussion.',
       cs_name_required: 'Indique au moins le nom du client.', cs_cancel: 'Annuler', cs_create: 'Créer',
+      cs_delete_customer: 'Supprimer ce client', cs_delete_customer_confirm: 'Supprimer définitivement ce client et sa conversation ?',
+      cs_customer_deleted: 'Client supprimé',
       cs_ai_off: 'L’assistant IA n’est pas encore activé.',
       ai_title: 'Assistant IA — service client', ai_help: 'Colle ta clé IA pour activer l’agent qui rédige les réponses aux clients. Recommandé : Google Gemini (gratuit).',
       ai_key_label: 'Clé API', ai_provider_label: 'Fournisseur', ai_save: 'Enregistrer la clé',

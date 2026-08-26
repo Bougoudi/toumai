@@ -26,6 +26,10 @@ export const orderController = {
     res.json(await orderService.listCustomers(query));
   },
 
+  async removeCustomer(req: Request, res: Response) {
+    res.json(await orderService.deleteCustomer(req.params.id));
+  },
+
   async create(req: Request, res: Response) {
     const input = parseBody(createOrderSchema, req);
     res.status(201).json(await orderService.create(input));
