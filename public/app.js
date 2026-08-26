@@ -384,43 +384,10 @@ function bindOrderRows(sel) {
   );
 }
 
-// ── Service clientèle : assistant de résolution ────────────
-let _supportOrders = [];
+// ── Service clientèle : messagerie IA (une conversation par client) ─────
+let _supportCustomers = [];
 let _supportCurrent = null;
-
-async function loadCustomers() {
-  try {
-    const d = await api('/api/orders?take=60');
-    _supportOrders = d.items || [];
-    renderSupportQueue();
-  } catch (e) {
-    toast(e.message);
-  }
-}
-
-function renderSupportQueue() {
-  const q = ($('#cust-search')?.value || '').trim().toLowerCase();
-  const list = q
-    ? _supportOrders.filter((o) =>
-        [o.orderNumber, o.customer?.name, o.customer?.email, o.status].some((v) => (v || '').toLowerCase().includes(q)),
-      )
-    : _supportOrders;
-  const box = $('#support-orders');
-  if (!list.length) { box.innerHTML = `<p class="muted">${i18n.t('cust_empty')}</p>`; return; }
-  box.innerHTML = list
-    .map(
-      (o) => `<button class="support-row${_supportCurrent === o.id ? ' active' : ''}" data-order="${o.id}">
-        <div class="support-row-top"><b>${esc(o.customer?.name || '—')}</b>${badge(o.status)}</div>
-        <div class="muted support-row-sub">${esc(o.orderNumber)} · ${money(o.total)}</div>
-      </button>`,
-    )
-    .join('');
-  box.querySelectorAll('[data-order]').forEach((r) =>
-    r.addEventListener('click', () => openSupport(r.dataset.order)),
-  );
-}
-
-let _csOrder = null;
+let _csCustomer = null;
 let _csChat = [];
 let _aiConfigured = null;
 
@@ -434,6 +401,68 @@ const CS_QUICK = [
   { k: 'cs_p_cancel', msg: 'Le client veut annuler sa commande.' },
 ];
 
+async function loadCustomers() {
+  try {
+    const d = await api('/api/orders/customers?take=200');
+    _supportCustomers = d.items || [];
+    renderSupportQueue();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
+function renderSupportQueue() {
+  const q = ($('#cust-search')?.value || '').trim().toLowerCase();
+  const list = q
+    ? _supportCustomers.filter((c) =>
+        [c.name, c.email, c.phone, c.city, c.country].some((v) => (v || '').toLowerCase().includes(q)),
+      )
+    : _supportCustomers;
+  const box = $('#support-orders');
+  const newBtn = `<button class="btn btn-primary btn-sm" id="cs-new-customer" style="width:100%;margin-bottom:10px">➕ ${i18n.t('cs_new_customer')}</button>`;
+  if (!list.length) {
+    box.innerHTML = newBtn + `<p class="muted">${i18n.t('cs_no_customer')}</p>`;
+  } else {
+    box.innerHTML = newBtn + list
+      .map(
+        (c) => `<button class="support-row${_supportCurrent === c.id ? ' active' : ''}" data-cust="${c.id}">
+          <div class="support-row-top"><b>${esc(c.name || '—')}</b></div>
+          <div class="muted support-row-sub">${esc(c.email || c.phone || [c.city, c.country].filter(Boolean).join(', ') || '—')}</div>
+        </button>`,
+      )
+      .join('');
+  }
+  $('#cs-new-customer')?.addEventListener('click', newCustomerDialog);
+  box.querySelectorAll('[data-cust]').forEach((r) =>
+    r.addEventListener('click', () => openSupport(r.dataset.cust)),
+  );
+}
+
+function newCustomerDialog() {
+  openModal(
+    `<h2>${i18n.t('cs_new_customer')}</h2>
+     <div class="field"><label>${i18n.t('th_client')}</label><input id="nc-name" class="input" placeholder="Nom du client" /></div>
+     <div class="field"><label>E-mail</label><input id="nc-email" class="input" type="email" placeholder="email@exemple.com (facultatif)" /></div>
+     <div class="field"><label>${i18n.t('cust_phone')}</label><input id="nc-phone" class="input" placeholder="+90… (facultatif)" /></div>
+     <div class="form-actions"><button class="btn btn-ghost" data-close>${i18n.t('cs_cancel') || 'Annuler'}</button>
+       <button class="btn btn-primary" id="nc-save">${i18n.t('cs_create') || 'Créer'}</button></div>`,
+  );
+  $('#modal-content [data-close]').addEventListener('click', closeModal);
+  $('#nc-save').addEventListener('click', async (ev) => {
+    const name = $('#nc-name').value.trim();
+    const email = $('#nc-email').value.trim();
+    const phone = $('#nc-phone').value.trim();
+    if (!name) return toast(i18n.t('cs_name_required'));
+    busy(ev.currentTarget, true, '...');
+    try {
+      const c = await api('/api/orders/customers', { method: 'POST', body: { name, email: email || `${name.replace(/\s+/g, '.').toLowerCase()}@client.local`, phone: phone || undefined } });
+      closeModal();
+      await loadCustomers();
+      openSupport(c.id);
+    } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+  });
+}
+
 async function openSupport(id) {
   _supportCurrent = id;
   _csChat = [];
@@ -441,8 +470,8 @@ async function openSupport(id) {
   const panel = $('#support-panel');
   panel.innerHTML = `<p class="muted chat-empty">…</p>`;
   try {
-    const o = await api('/api/orders/' + id);
-    _csOrder = o;
+    const c = _supportCustomers.find((x) => x.id === id) || { id, name: i18n.t('th_client') };
+    _csCustomer = c;
     if (_aiConfigured === null) {
       try { _aiConfigured = (await api('/api/support/ai-status')).configured; } catch { _aiConfigured = false; }
     }
@@ -451,13 +480,8 @@ async function openSupport(id) {
       const th = await api('/api/support/thread/' + id);
       _csChat = (th.messages || []).map((m) => ({ role: m.role, content: m.content, ts: m.createdAt }));
     } catch { _csChat = []; }
-    const c = o.customer || {};
-    const track = (o.purchaseOrders || []).find((p) => p.trackingNumber);
-    const trackLine = track
-      ? `${i18n.t('cs_tracking')} : <b>${esc(track.trackingNumber)}</b>${track.carrier ? ' (' + esc(track.carrier) + ')' : ''}`
-      : `<span class="muted">${i18n.t('cs_no_tracking')}</span>`;
+    const sub = [c.email, c.phone, [c.city, c.country].filter(Boolean).join(', ')].filter(Boolean).join(' · ');
     const chips = CS_QUICK.map((p) => `<button class="btn btn-ghost btn-sm cs-chip" data-msg="${esc(p.msg)}">${i18n.t(p.k)}</button>`).join(' ');
-    const canCancel = !['SHIPPED', 'DELIVERED', 'CANCELLED'].includes(o.status);
     const banner = _aiConfigured
       ? ''
       : `<div class="banner">🤖 ${i18n.t('cs_ai_off')} <button class="btn btn-ghost btn-sm" id="cs-go-settings">${i18n.t('nav_settings')}</button></div>`;
@@ -467,13 +491,12 @@ async function openSupport(id) {
           <div class="chat-avatar">${esc((c.name || '?').trim().charAt(0).toUpperCase())}</div>
           <div class="chat-who">
             <b>${esc(c.name || i18n.t('th_client'))}</b>
-            <div class="muted chat-sub">${esc(o.orderNumber)} · ${badge(o.status)} · ${trackLine}</div>
+            <div class="muted chat-sub">${esc(sub || '—')}</div>
           </div>
           <div class="chat-actions">
             ${c.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(c.email)}" title="E-mail">✉️</a>` : ''}
             ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${(c.phone || '').replace(/[^0-9]/g, '')}" target="_blank" rel="noopener" title="WhatsApp">💬</a>` : ''}
             <button class="btn btn-ghost btn-sm" id="cs-clear" title="${i18n.t('cs_new_convo')}">🗑️</button>
-            ${canCancel ? `<button class="btn btn-danger btn-sm" id="cs-cancel">${i18n.t('cs_cancel_order')}</button>` : ''}
           </div>
         </div>
         ${banner}
@@ -506,21 +529,10 @@ async function openSupport(id) {
       if (!_csChat.length) return;
       if (!confirm(i18n.t('cs_clear_confirm'))) return;
       try {
-        await api('/api/support/thread/' + o.id, { method: 'DELETE' });
+        await api('/api/support/thread/' + id, { method: 'DELETE' });
         _csChat = [];
         renderCsChat();
       } catch (e) { toast(e.message); }
-    });
-    const cancel = $('#cs-cancel');
-    if (cancel) cancel.addEventListener('click', async (ev) => {
-      if (!confirm(i18n.t('cs_cancel_confirm'))) return;
-      busy(ev.currentTarget, true, '...');
-      try {
-        await api('/api/orders/' + o.id + '/cancel', { method: 'POST' });
-        toast(i18n.t('cs_cancelled'));
-        await loadCustomers();
-        openSupport(o.id);
-      } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
     });
   } catch (e) {
     panel.innerHTML = `<p class="muted">${esc(e.message)}</p>`;
@@ -535,7 +547,7 @@ function csTime(ts) {
 function renderCsChat() {
   const box = $('#cs-chat');
   if (!box) return;
-  const c = (_csOrder && _csOrder.customer) || {};
+  const c = _csCustomer || {};
   const wa = (c.phone || '').replace(/[^0-9]/g, '');
   const quick = $('#cs-quick');
   if (quick) quick.style.display = _csChat.length ? 'none' : ''; // masque les suggestions dès qu'on discute
@@ -569,7 +581,7 @@ function renderCsChat() {
   box.querySelectorAll('.cs-mail').forEach((b) =>
     b.addEventListener('click', () => {
       const txt = _csChat[+b.dataset.i].content;
-      const subject = encodeURIComponent(`${i18n.t('cs_email_subject')} ${_csOrder.orderNumber}`);
+      const subject = encodeURIComponent(`${i18n.t('cs_email_subject')}`);
       window.location.href = `mailto:${c.email}?subject=${subject}&body=${encodeURIComponent(txt)}`;
     }),
   );
@@ -577,7 +589,7 @@ function renderCsChat() {
 }
 
 async function sendCs(content) {
-  if (!_csOrder) return;
+  if (!_csCustomer) return;
   _csChat.push({ role: 'user', content, ts: Date.now() });
   _csChat.push({ role: 'assistant', content: '…', pending: true, ts: Date.now() });
   renderCsChat();
@@ -585,7 +597,7 @@ async function sendCs(content) {
   if (btn) busy(btn, true, '…');
   try {
     // Le serveur enregistre le message + la réponse (conversation persistante).
-    const { reply } = await api('/api/support/chat', { method: 'POST', body: { orderId: _csOrder.id, message: content } });
+    const { reply } = await api('/api/support/chat', { method: 'POST', body: { customerId: _csCustomer.id, message: content } });
     _csChat = _csChat.filter((m) => !m.pending);
     _csChat.push({ role: 'assistant', content: reply, ts: Date.now() });
   } catch (e) {
