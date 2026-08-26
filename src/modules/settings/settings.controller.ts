@@ -1,8 +1,14 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody } from '../../middleware/validate.js';
-import { setAliexpressCreds } from './settings.service.js';
+import { setAliexpressCreds, setAiCreds } from './settings.service.js';
 import { settingsService } from './settings.service.js';
+
+const aiSchema = z.object({
+  provider: z.enum(['gemini', 'openai', 'anthropic']).optional(),
+  apiKey: z.string().min(1).max(300).optional(),
+  model: z.string().max(80).optional(),
+});
 
 const aliexpressSchema = z.object({
   appKey: z.string().min(1).max(64).optional(),
@@ -41,5 +47,11 @@ export const settingsController = {
   async aliexpress(req: Request, res: Response) {
     const input = parseBody(aliexpressSchema, req);
     res.json(await setAliexpressCreds(input));
+  },
+
+  /** POST /api/settings/ai — enregistre la clé de l'assistant IA (service client). */
+  async ai(req: Request, res: Response) {
+    const input = parseBody(aiSchema, req);
+    res.json(await setAiCreds(input));
   },
 };

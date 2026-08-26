@@ -26,6 +26,7 @@ import { searchRouter } from './modules/search/search.routes.js';
 import { supplierRouter } from './modules/suppliers/supplier.routes.js';
 import { aliexpressRouter } from './modules/aliexpress/aliexpress.routes.js';
 import { aliexpressController } from './modules/aliexpress/aliexpress.controller.js';
+import { supportRouter } from './modules/support/support.routes.js';
 
 /**
  * Dossier des fichiers statiques (PWA). En développement (tsx) le module est
@@ -155,6 +156,7 @@ export function createApp() {
   app.use('/api/orders', orderRouter); // pilier 3
   app.use('/api/suppliers', supplierRouter); // pilier 4
   app.use('/api/aliexpress', aliexpressRouter); // connexion AliExpress (OAuth)
+  app.use('/api/support', supportRouter); // agent IA service client
   app.use('/api/search', searchRouter); // pilier 4
   app.use('/api/payments', paymentRouter); // paiement (Stripe)
   app.use('/api/channels', channelRouter); // canaux de vente (Etsy/eBay/Amazon)

@@ -10,3 +10,5 @@ settingsRouter.post('/reset', asyncHandler(settingsController.reset));
 settingsRouter.post('/purge', asyncHandler(settingsController.purge));
 // Clés de recherche produits AliExpress (secret chiffré au repos).
 settingsRouter.post('/aliexpress', asyncHandler(settingsController.aliexpress));
+// Clé de l'assistant IA du service client (secret chiffré au repos).
+settingsRouter.post('/ai', asyncHandler(settingsController.ai));
