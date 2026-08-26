@@ -13,6 +13,17 @@ export const orderService = {
     return prisma.customer.create({ data: input });
   },
 
+  /** Supprime un client (refusé s'il a des commandes, pour protéger les vraies ventes). */
+  async deleteCustomer(id: string) {
+    const customer = await prisma.customer.findUnique({ where: { id }, include: { _count: { select: { orders: true } } } });
+    if (!customer) throw new HttpError(404, 'Client introuvable');
+    if (customer._count.orders > 0) {
+      throw new HttpError(409, 'Ce client a des commandes : suppression impossible.');
+    }
+    await prisma.customer.delete({ where: { id } });
+    return { ok: true };
+  },
+
   async listCustomers(params: { take: number; skip: number }) {
     const [items, total] = await Promise.all([
       prisma.customer.findMany({ take: params.take, skip: params.skip, orderBy: { createdAt: 'desc' } }),
