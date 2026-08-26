@@ -93,47 +93,96 @@ body {
 .btn:disabled { opacity: 0.55; cursor: default; }
 
 /* Tabs */
+/* Disposition : barre latérale à gauche (comme un tableau de bord), contenu à droite. */
+.layout { display: flex; align-items: flex-start; }
 .tabs {
   display: flex;
-  gap: 4px;
-  padding: 10px 22px 0;
-  overflow-x: auto;
-  border-bottom: 1px solid var(--border);
+  flex-direction: column;
+  gap: 3px;
+  padding: 16px 12px;
+  flex: 0 0 232px;
+  width: 232px;
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 61px; /* sous la topbar */
+  align-self: stretch;
+  min-height: calc(100vh - 61px);
 }
 .tab {
   background: transparent;
   border: none;
   color: var(--muted);
-  padding: 10px 16px;
+  padding: 11px 14px;
   font-size: 14px;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
+  border-radius: 10px;
   white-space: nowrap;
+  text-align: left;
+  width: 100%;
 }
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-/* Regroupe Marché / Produits / Fournisseurs / Recherche dans une même « case ». */
-.tab-group {
+.tab:hover { color: var(--text); background: var(--card); }
+.tab.active { color: var(--accent); background: var(--card); font-weight: 600; }
+.layout main { flex: 1; min-width: 0; max-width: none; margin: 0; }
+
+/* Groupe repliable « Sourcing » (Marché / Produits / Fournisseurs / Recherche). */
+.nav-group { display: flex; flex-direction: column; gap: 3px; }
+.group-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.group-toggle .caret { transition: transform .18s ease; font-size: 11px; opacity: .8; }
+.nav-group.open .group-toggle .caret { transform: rotate(90deg); }
+.nav-group.has-active > .group-toggle { color: var(--accent); }
+.tab-sub {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 2px;
-  padding: 0 8px;
-  margin-bottom: -1px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-bottom: none;
-  border-radius: 12px 12px 0 0;
+  margin: 2px 0 2px 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
 }
-.tab-group-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: .6px;
-  color: var(--muted);
-  font-weight: 700;
-  padding: 0 4px;
-  white-space: nowrap;
+.tab-sub[hidden] { display: none; }
+.tab-sub .tab { font-size: 13.5px; padding: 9px 12px; }
+
+/* Mobile : la barre latérale redevient une barre horizontale déroulante. */
+@media (max-width: 820px) {
+  .layout { flex-direction: column; }
+  .tabs {
+    flex-direction: row;
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 0;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 10px 14px;
+    position: static;
+  }
+  .tab { width: auto; }
+  .nav-group { flex-direction: row; align-items: center; gap: 3px; }
+  .tab-sub { flex-direction: row; margin: 0 0 0 6px; padding-left: 6px; border-left: 1px solid var(--border); border-top: none; }
+  .layout main { width: 100%; }
 }
-.tab-group .tab { padding: 10px 12px; }
+
+/* Assistant service client */
+.support-grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+.support-list { max-height: 72vh; overflow-y: auto; }
+.support-row {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 8px; color: var(--text);
+}
+.support-row:hover { border-color: var(--accent); }
+.support-row.active { border-color: var(--accent); background: var(--card-2); }
+.support-row-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.support-row-sub { font-size: 12px; margin-top: 3px; }
+.cs-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cs-contact { display: flex; gap: 6px; flex-wrap: wrap; }
+.cs-track { margin-top: 8px; font-size: 14px; }
+.cs-problems { display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-problem.active { background: var(--accent); color: #06212a; border-color: var(--accent); font-weight: 600; }
+.cs-block { margin-top: 16px; }
+.cs-block h4 { margin: 0 0 6px; font-size: 14px; }
+.cs-steps { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }
+#cs-reply { width: 100%; font-family: inherit; font-size: 13.5px; line-height: 1.5; resize: vertical; }
+@media (max-width: 820px) { .support-grid { grid-template-columns: 1fr; } .support-list { max-height: none; } }
 
 /* Panels */
 main { padding: 22px; max-width: 1100px; margin: 0 auto; }
