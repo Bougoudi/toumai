@@ -229,22 +229,10 @@
         <div class="card"><div id="orders-table" class="table-wrap"></div></div>
       </section>
 
-      <!-- SERVICE CLIENTÈLE (assistant de résolution) -->
+      <!-- SERVICE CLIENTÈLE (chat IA direct) -->
       <section class="panel" id="tab-customers">
-        <div class="toolbar">
-          <input id="cust-search" class="input" data-i18n-ph="cust_search_ph" placeholder="Rechercher une commande, un client…" />
-          <button id="refresh-customers" class="btn btn-ghost" data-i18n="refresh_btn">↻ Actualiser</button>
-        </div>
-        <div class="support-grid">
-          <div class="card support-list">
-            <h3 data-i18n="cs_queue">Demandes clients</h3>
-            <div id="support-orders"></div>
-          </div>
-          <div class="card support-assistant">
-            <div id="support-panel">
-              <p class="muted chat-empty" data-i18n="cs_pick">👈 Choisis une commande pour aider le client à résoudre son problème.</p>
-            </div>
-          </div>
+        <div class="card support-assistant">
+          <div id="support-panel"></div>
         </div>
       </section>
 
