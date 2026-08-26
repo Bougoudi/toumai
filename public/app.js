@@ -457,34 +457,41 @@ async function openSupport(id) {
       ? ''
       : `<div class="banner">🤖 ${i18n.t('cs_ai_off')} <button class="btn btn-ghost btn-sm" id="cs-go-settings">${i18n.t('nav_settings')}</button></div>`;
     panel.innerHTML = `
-      <div class="cs-head">
-        <div><h3 style="margin:0">${esc(c.name || i18n.t('th_client'))}</h3>
-          <div class="muted">${esc(o.orderNumber)} · ${badge(o.status)}</div></div>
-        <div class="cs-contact">
-          ${c.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(c.email)}">✉️ ${i18n.t('cs_email')}</a>` : ''}
-          ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${(c.phone || '').replace(/[^0-9]/g, '')}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
-          ${canCancel ? `<button class="btn btn-danger btn-sm" id="cs-cancel">${i18n.t('cs_cancel_order')}</button>` : ''}
+      <div class="chat-wrap">
+        <div class="chat-header">
+          <div class="chat-avatar">${esc((c.name || '?').trim().charAt(0).toUpperCase())}</div>
+          <div class="chat-who">
+            <b>${esc(c.name || i18n.t('th_client'))}</b>
+            <div class="muted chat-sub">${esc(o.orderNumber)} · ${badge(o.status)} · ${trackLine}</div>
+          </div>
+          <div class="chat-actions">
+            ${c.email ? `<a class="btn btn-ghost btn-sm" href="mailto:${esc(c.email)}" title="E-mail">✉️</a>` : ''}
+            ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${(c.phone || '').replace(/[^0-9]/g, '')}" target="_blank" rel="noopener" title="WhatsApp">💬</a>` : ''}
+            ${canCancel ? `<button class="btn btn-danger btn-sm" id="cs-cancel">${i18n.t('cs_cancel_order')}</button>` : ''}
+          </div>
         </div>
-      </div>
-      <div class="cs-track">${trackLine}</div>
-      ${banner}
-      <p class="muted" style="margin:12px 0 6px">${i18n.t('cs_choose_problem')}</p>
-      <div class="cs-problems">${chips}</div>
-      <div id="cs-chat" class="cs-chat"></div>
-      <div class="cs-inputrow">
-        <textarea id="cs-input" class="input" rows="2" data-i18n-ph="cs_input_ph" placeholder="Décris le problème du client, ou colle son message…"></textarea>
-        <button class="btn btn-primary" id="cs-send">${i18n.t('cs_send')}</button>
+        ${banner}
+        <div id="cs-chat" class="chat-body"></div>
+        <div class="chat-quick" id="cs-quick">${chips}</div>
+        <div class="chat-inputbar">
+          <textarea id="cs-input" class="input" rows="1" data-i18n-ph="cs_input_ph" placeholder="Écris un message…"></textarea>
+          <button class="btn btn-primary chat-send" id="cs-send" title="${i18n.t('cs_send')}" aria-label="${i18n.t('cs_send')}">➤</button>
+        </div>
       </div>`;
     renderCsChat();
+    const input = $('#cs-input');
+    const autogrow = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; };
+    input.addEventListener('input', autogrow);
     panel.querySelectorAll('.cs-chip').forEach((b) =>
       b.addEventListener('click', () => sendCs(b.dataset.msg)),
     );
     $('#cs-send').addEventListener('click', () => {
-      const v = $('#cs-input').value.trim();
-      if (v) { $('#cs-input').value = ''; sendCs(v); }
+      const v = input.value.trim();
+      if (v) { input.value = ''; autogrow(); sendCs(v); }
     });
-    $('#cs-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#cs-send').click(); }
+    input.addEventListener('keydown', (e) => {
+      // Entrée = envoyer ; Maj+Entrée = nouvelle ligne (comme une messagerie).
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#cs-send').click(); }
     });
     const goSettings = $('#cs-go-settings');
     if (goSettings) goSettings.addEventListener('click', () => document.querySelector('[data-tab=settings]').click());
@@ -504,22 +511,37 @@ async function openSupport(id) {
   }
 }
 
+function csTime(ts) {
+  try { return new Date(ts || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  catch { return ''; }
+}
+
 function renderCsChat() {
   const box = $('#cs-chat');
   if (!box) return;
   const c = (_csOrder && _csOrder.customer) || {};
+  const wa = (c.phone || '').replace(/[^0-9]/g, '');
+  const quick = $('#cs-quick');
+  if (quick) quick.style.display = _csChat.length ? 'none' : ''; // masque les suggestions dès qu'on discute
+  if (!_csChat.length) {
+    box.innerHTML = `<div class="chat-hello">🤖 ${esc(i18n.t('cs_greeting'))}</div>`;
+    return;
+  }
   box.innerHTML = _csChat
     .map((m, i) => {
-      if (m.role === 'user') return `<div class="cs-msg cs-user">${esc(m.content)}</div>`;
-      const wa = (c.phone || '').replace(/[^0-9]/g, '');
-      return `<div class="cs-msg cs-ai">
-        <div class="cs-ai-text">${esc(m.content)}</div>
-        <div class="cs-ai-actions">
+      const time = `<time class="chat-time">${csTime(m.ts)}</time>`;
+      if (m.role === 'user') {
+        return `<div class="chat-line right"><div class="bubble bubble-user">${esc(m.content)}${time}</div></div>`;
+      }
+      if (m.pending) {
+        return `<div class="chat-line left"><div class="chat-bubble-av">🤖</div><div class="bubble bubble-ai typing"><span></span><span></span><span></span></div></div>`;
+      }
+      const actions = `<div class="bubble-actions">
           <button class="btn btn-ghost btn-sm cs-copy" data-i="${i}">📋 ${i18n.t('cs_copy')}</button>
           ${c.email ? `<button class="btn btn-ghost btn-sm cs-mail" data-i="${i}">✉️ ${i18n.t('cs_send_email')}</button>` : ''}
           ${c.phone ? `<a class="btn btn-ghost btn-sm" href="https://wa.me/${wa}?text=${encodeURIComponent(m.content)}" target="_blank" rel="noopener">💬 WhatsApp</a>` : ''}
-        </div>
-      </div>`;
+        </div>`;
+      return `<div class="chat-line left"><div class="chat-bubble-av">🤖</div><div class="bubble bubble-ai">${esc(m.content)}${time}${actions}</div></div>`;
     })
     .join('');
   box.querySelectorAll('.cs-copy').forEach((b) =>
@@ -540,19 +562,19 @@ function renderCsChat() {
 
 async function sendCs(content) {
   if (!_csOrder) return;
-  _csChat.push({ role: 'user', content });
-  _csChat.push({ role: 'assistant', content: '…', pending: true });
+  _csChat.push({ role: 'user', content, ts: Date.now() });
+  _csChat.push({ role: 'assistant', content: '…', pending: true, ts: Date.now() });
   renderCsChat();
   const btn = $('#cs-send');
   if (btn) busy(btn, true, '…');
   try {
-    const payload = { orderId: _csOrder.id, messages: _csChat.filter((m) => !m.pending) };
+    const payload = { orderId: _csOrder.id, messages: _csChat.filter((m) => !m.pending).map((m) => ({ role: m.role, content: m.content })) };
     const { reply } = await api('/api/support/chat', { method: 'POST', body: payload });
     _csChat = _csChat.filter((m) => !m.pending);
-    _csChat.push({ role: 'assistant', content: reply });
+    _csChat.push({ role: 'assistant', content: reply, ts: Date.now() });
   } catch (e) {
     _csChat = _csChat.filter((m) => !m.pending);
-    _csChat.push({ role: 'assistant', content: '⚠️ ' + e.message });
+    _csChat.push({ role: 'assistant', content: '⚠️ ' + e.message, ts: Date.now() });
   } finally {
     if (btn) busy(btn, false);
     renderCsChat();
