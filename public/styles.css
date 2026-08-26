@@ -112,6 +112,28 @@ body {
 }
 .tab:hover { color: var(--text); }
 .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+/* Regroupe Marché / Produits / Fournisseurs / Recherche dans une même « case ». */
+.tab-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  margin-bottom: -1px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+}
+.tab-group-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--muted);
+  font-weight: 700;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+.tab-group .tab { padding: 10px 12px; }
 
 /* Panels */
 main { padding: 22px; max-width: 1100px; margin: 0 auto; }
