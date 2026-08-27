@@ -85,7 +85,7 @@ export const discoveryService = {
     detectedLabels: string[];
     mode: 'ai' | 'keyword';
   }> {
-    const vision = getVisionConnector();
+    const vision = await getVisionConnector();
     let query = (input.hint ?? '').trim();
     let detectedLabels: string[] = [];
     let mode: 'ai' | 'keyword' = 'keyword';

@@ -962,14 +962,15 @@ async function openCamera() {
     <div class="cam-wrap"><video id="cam-video" playsinline muted></video><div class="cam-frame"></div></div>
     <canvas id="cam-canvas" hidden></canvas>
     <div id="cam-photo-panel" hidden>
-      <div class="field"><label>Mot-clé du produit (aide la recherche)</label>
-        <input class="input" id="cam-hint" placeholder="ex: gourde, lampe, brosse…"/></div>
+      <p class="muted" style="margin:0 0 8px">📸 Prends une photo du produit — l’IA le reconnaît et cherche des fournisseurs.</p>
+      <div class="field"><label>Mot-clé (optionnel, pour préciser)</label>
+        <input class="input" id="cam-hint" placeholder="ex: couleur, taille, marque…"/></div>
       <img id="cam-thumb" alt="" class="cam-thumb" hidden/>
     </div>
     <p class="muted" id="cam-status">${scanSupported ? 'Vise un code-barres — détection automatique.' : 'Le scanner de code-barres n’est pas supporté ici : prends une photo.'}</p>
     <div class="form-actions">
       <button class="btn btn-ghost" data-close>Fermer</button>
-      <button class="btn btn-primary" id="cam-capture" hidden>📸 Capturer &amp; rechercher</button>
+      <button class="btn btn-primary" id="cam-capture" hidden>📸 Prendre la photo &amp; identifier</button>
     </div>`);
   $('#modal-content [data-close]').addEventListener('click', () => { stopCamera(); closeModal(); });
 
@@ -1025,15 +1026,20 @@ async function openCamera() {
     const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
     const thumb = $('#cam-thumb'); thumb.src = dataUrl; thumb.hidden = false;
     const hint = $('#cam-hint').value.trim();
+    stopCamera(); // fige l'image : on a la photo, plus besoin du flux
+    $('#cam-status').textContent = '🔎 Analyse de la photo par l’IA…';
     busy(ev.currentTarget, true, '…');
     try {
-      // Envoie la photo (reconnaissance d'image si le service est configuré) + mot-clé optionnel.
+      // Envoie la photo : l'IA reconnaît le produit puis cherche les fournisseurs.
       const res = await api('/api/discovery/search/photo', { method: 'POST', body: { image: dataUrl, hint } });
-      stopCamera(); closeModal(); renderDiscoveryResults(res);
+      closeModal(); renderDiscoveryResults(res);
       toast(res.mode === 'ai' && res.detectedLabels?.length
-        ? 'Détecté : ' + res.detectedLabels.slice(0, 3).join(', ')
+        ? '✅ Produit reconnu : ' + res.detectedLabels.slice(0, 3).join(', ')
         : 'Recherche par photo effectuée');
-    } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
+    } catch (e) {
+      $('#cam-status').textContent = e.message;
+      toast(e.message); busy(ev.currentTarget, false);
+    }
   });
 
   if (mode === 'scan') startScanLoop(); else setMode('photo');

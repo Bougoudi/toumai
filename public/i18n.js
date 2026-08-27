@@ -81,7 +81,7 @@
       new_order: '＋ Nouvelle commande', ost_pending: 'En attente', ost_paid: 'Payées', ost_fulfilling: 'En traitement',
       ost_shipped: 'Expédiées', ost_delivered: 'Livrées', ost_cancelled: 'Annulées', refresh_btn: '↻ Actualiser',
       connect_channel: '＋ Connecter un canal', sync_orders: '↻ Synchroniser les commandes', how_it_works: 'Comment ça marche',
-      find_products: 'Trouver des produits', mode_text: 'Par écriture', mode_photo: 'Par photo (indice)',
+      find_products: 'Trouver des produits', mode_text: 'Par écriture', mode_photo: 'Par photo (IA)',
       mode_barcode: 'Par code-barres', d_input_ph: 'Mot-clé, indice photo, ou code-barres…', search_btn2: '🔎 Rechercher',
       camera_scan: '📷 Caméra / Scanner', title_gen: 'Générateur de titres optimisés',
       t_name_ph: 'Nom du produit (ex: gourde isotherme)', keywords_ph: 'mots-clés', generate_btn: 'Générer',
