@@ -15,9 +15,10 @@ import type { BarcodeConnector } from './barcode/base.barcode.connector.js';
 import { HttpBarcodeConnector } from './barcode/http.barcode.connector.js';
 import type { VisionConnector } from './vision/base.vision.connector.js';
 import { HttpVisionConnector } from './vision/http.vision.connector.js';
+import { GeminiVisionConnector } from './vision/gemini.vision.connector.js';
 import type { ProductSearchConnector } from './product/base.product.connector.js';
 import { AliExpressProductConnector } from './product/aliexpress.product.connector.js';
-import { getAliexpressCreds, getSettings } from '../../modules/settings/settings.service.js';
+import { getAliexpressCreds, getAiCreds, getSettings } from '../../modules/settings/settings.service.js';
 import { aliexpressOAuthService } from '../../modules/aliexpress/aliexpress.oauth.service.js';
 
 /**
@@ -92,12 +93,18 @@ export function getFulfillmentConnector(): FulfillmentConnector {
  * Connecteur de vision. Renvoie `null` s'il n'est pas configuré : la recherche
  * par photo retombe alors sur le mot-clé fourni (aucune reconnaissance fabriquée).
  */
-export function getVisionConnector(): VisionConnector | null {
+export async function getVisionConnector(): Promise<VisionConnector | null> {
   const { url, key, provider } = env.connectors.vision;
   // Google : la clé suffit (l'URL a une valeur par défaut). Générique : url + clé.
   if ((provider === 'google' && key) || (url && key)) {
     logger.info('Connecteur vision : HTTP (reconnaissance d’image réelle)', { provider: provider || 'générique' });
     return new HttpVisionConnector(url, key, provider);
+  }
+  // Repli : reconnaissance d'image via la clé IA (Gemini) déjà configurée.
+  const ai = await getAiCreds();
+  if (ai.apiKey && ai.provider === 'gemini') {
+    logger.info('Connecteur vision : Gemini (reconnaissance d’image via clé IA)');
+    return new GeminiVisionConnector(ai.apiKey, ai.model || undefined);
   }
   return null;
 }
