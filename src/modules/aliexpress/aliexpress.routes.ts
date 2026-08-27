@@ -5,3 +5,4 @@ import { aliexpressController } from './aliexpress.controller.js';
 export const aliexpressRouter = Router();
 aliexpressRouter.get('/oauth/start', asyncHandler(aliexpressController.start));
 aliexpressRouter.get('/status', asyncHandler(aliexpressController.status));
+aliexpressRouter.get('/diag', asyncHandler(aliexpressController.diag));

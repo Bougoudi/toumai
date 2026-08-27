@@ -105,6 +105,75 @@ export class AliExpressProductConnector implements ProductSearchConnector {
     return mapped.slice(0, limit);
   }
 
+  /**
+   * Diagnostic : essaie plusieurs variantes d'appel de la recherche par mot-clé
+   * et renvoie, pour chacune, la réponse brute ou l'erreur. Sert à identifier la
+   * convention attendue par le compte AliExpress (jeton, nom de méthode…).
+   */
+  async diagnoseTextSearch(q: string): Promise<Record<string, unknown>[]> {
+    const token = this.accessToken ?? '';
+    const base: Record<string, string> = {
+      keyWord: q,
+      local: 'en_US',
+      countryCode: 'FR',
+      currency: this.currency,
+      pageSize: '5',
+      pageIndex: '1',
+    };
+    const variants: { name: string; method: string; params: Record<string, string> }[] = [
+      { name: 'session', method: 'aliexpress.ds.text.search', params: { ...base, session: token } },
+      { name: 'access_token', method: 'aliexpress.ds.text.search', params: { ...base, access_token: token } },
+      { name: 'both', method: 'aliexpress.ds.text.search', params: { ...base, session: token, access_token: token } },
+      {
+        name: 'session+sortBy',
+        method: 'aliexpress.ds.text.search',
+        params: { ...base, session: token, sortBy: 'orders,desc' },
+      },
+      {
+        name: 'recommend.feed(session)',
+        method: 'aliexpress.ds.recommend.feed.get',
+        params: { feed_name: this.feedName, target_currency: this.currency, target_language: 'EN', country: 'FR', page_size: '5', page_no: '1', session: token },
+      },
+    ];
+    const out: Record<string, unknown>[] = [];
+    for (const v of variants) {
+      try {
+        const raw = await this.callOnce(v.method, v.params);
+        out.push({ variant: v.name, ok: true, products: findProducts(raw).length, raw: JSON.stringify(raw).slice(0, 600) });
+      } catch (e) {
+        out.push({ variant: v.name, ok: false, error: String(e).slice(0, 400) });
+      }
+    }
+    return out;
+  }
+
+  /** Un seul appel signé, sans réessai (diagnostic). */
+  private async callOnce(method: string, biz: Record<string, string>): Promise<unknown> {
+    const params: Record<string, string> = {
+      app_key: this.appKey,
+      timestamp: String(Date.now()),
+      sign_method: 'sha256',
+      method,
+      ...biz,
+    };
+    const concat = Object.keys(params)
+      .sort()
+      .map((k) => k + params[k])
+      .join('');
+    params.sign = createHmac('sha256', this.appSecret).update(concat, 'utf8').digest('hex').toUpperCase();
+    const res = await fetch(GATEWAY, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(params).toString(),
+    });
+    const body = await res.json().catch(() => ({}));
+    if ((body as any)?.error_response) {
+      const e = (body as any).error_response;
+      throw new Error(`${e.code ?? ''} ${e.msg ?? ''} ${e.sub_code ?? ''} ${e.sub_msg ?? ''}`.trim());
+    }
+    return body;
+  }
+
   /** Récupère les produits bruts du flux (plusieurs pages) — champs complets. */
   async fetchFeed(maxPages = 3): Promise<Record<string, any>[]> {
     const all: Record<string, any>[] = [];
