@@ -1019,26 +1019,30 @@ async function openCamera() {
   }
 
   $('#cam-capture').addEventListener('click', async (ev) => {
+    if (!camStream) { $('#cam-status').textContent = 'Caméra fermée. Rouvre la caméra.'; return; }
+    // Réduit la photo (max 800 px) : plus rapide et plus fiable pour l'IA.
+    const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
+    const scale = Math.min(1, 800 / Math.max(vw, vh));
     const canvas = $('#cam-canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    canvas.width = Math.round(vw * scale);
+    canvas.height = Math.round(vh * scale);
     canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
     const thumb = $('#cam-thumb'); thumb.src = dataUrl; thumb.hidden = false;
     const hint = $('#cam-hint').value.trim();
-    stopCamera(); // fige l'image : on a la photo, plus besoin du flux
+    // On garde le flux caméra ACTIF : si l'IA ne reconnaît pas, on peut recapturer.
     $('#cam-status').textContent = '🔎 Analyse de la photo par l’IA…';
     busy(ev.currentTarget, true, '…');
     try {
-      // Envoie la photo : l'IA reconnaît le produit puis cherche les fournisseurs.
       const res = await api('/api/discovery/search/photo', { method: 'POST', body: { image: dataUrl, hint } });
-      closeModal(); renderDiscoveryResults(res);
+      stopCamera(); closeModal(); renderDiscoveryResults(res);
       toast(res.mode === 'ai' && res.detectedLabels?.length
         ? '✅ Produit reconnu : ' + res.detectedLabels.slice(0, 3).join(', ')
         : 'Recherche par photo effectuée');
     } catch (e) {
-      $('#cam-status').textContent = e.message;
-      toast(e.message); busy(ev.currentTarget, false);
+      // Échec (produit non reconnu) : on laisse la caméra ouverte pour réessayer.
+      $('#cam-status').textContent = '⚠️ ' + e.message;
+      busy(ev.currentTarget, false);
     }
   });
 

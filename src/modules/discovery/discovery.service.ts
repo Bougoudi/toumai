@@ -2,6 +2,7 @@ import { getBarcodeConnector, getProductConnector, getVisionConnector } from '..
 import { env } from '../../config/env.js';
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
+import { logger } from '../../utils/logger.js';
 import { computeSalePrice } from '../../utils/pricing.js';
 import { parseList, scoreSupplier, type SearchCriteria } from '../../utils/scoring.js';
 import { channelService } from '../channels/channel.service.js';
@@ -91,8 +92,13 @@ export const discoveryService = {
     let mode: 'ai' | 'keyword' = 'keyword';
 
     if (input.image && vision) {
-      const labels = await vision.detectLabels(input.image);
-      detectedLabels = labels.slice(0, 5).map((l) => l.label);
+      try {
+        const labels = await vision.detectLabels(input.image);
+        detectedLabels = labels.slice(0, 5).map((l) => l.label);
+      } catch (e) {
+        // La reconnaissance a échoué : on retombe sur le mot-clé s'il y en a un.
+        logger.warn('Reconnaissance photo échouée', { err: String(e).slice(0, 160) });
+      }
       if (detectedLabels.length) {
         // Les 3 meilleures étiquettes forment la requête (complétée par le mot-clé).
         query = [detectedLabels.slice(0, 3).join(' '), query].filter(Boolean).join(' ').trim();
@@ -104,8 +110,10 @@ export const discoveryService = {
       throw new HttpError(
         400,
         input.image
-          ? 'Reconnaissance d’image non configurée : ajoutez un mot-clé, ou branchez VISION_API_URL.'
-          : 'Fournissez une photo (vision configurée) ou un indice (ex: "gourde", "lampe").',
+          ? vision
+            ? 'Produit non reconnu sur la photo. Réessaie avec une photo plus nette et rapprochée (bon éclairage), ou ajoute un mot-clé.'
+            : 'Reconnaissance d’image non activée : ajoute un mot-clé, ou active l’assistant IA (clé Gemini) dans les Réglages.'
+          : 'Fournissez une photo ou un indice (ex: "gourde", "lampe").',
       );
     }
     const results = await resolveProducts(query, mode === 'ai' ? 'search-photo-ai' : 'search-photo');

@@ -41,13 +41,21 @@ export class GeminiVisionConnector implements VisionConnector {
       logger.warn('GeminiVision: réponse non OK', { status: res.status });
       throw new Error(`Reconnaissance d’image (Gemini) : ${msg}`);
     }
-    const text: string = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') ?? '';
-    const labels = text
-      .split(/[,\n]/)
-      .map((s) => s.trim().replace(/^["'\-•*\d.]+\s*/, '').toLowerCase())
-      .filter((s) => s.length > 1 && s.length < 40)
-      .slice(0, 4)
-      .map((label, i): VisionLabel => ({ label, confidence: 1 - i * 0.1 }));
-    return labels;
+    const text: string = (data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') ?? '').trim();
+    // Gemini a explicitement dit qu'il ne reconnaît rien → aucune étiquette.
+    if (/\b(cannot|can't|unable|no product|not a product|ne peux pas|aucun produit)\b/i.test(text)) return [];
+
+    let parts = text
+      .split(/[,\n;]/)
+      .map((s) => s.trim().replace(/^["'`\-•*\d.)\]]+\s*/, '').replace(/["'`.]+$/, '').toLowerCase())
+      .filter((s) => s.length > 1 && s.length <= 40);
+
+    // Repli : réponse en un seul bloc (phrase courte) → on la garde comme mot-clé.
+    if (!parts.length && text && text.length <= 60) {
+      const cleaned = text.replace(/[.\n]+/g, ' ').trim().toLowerCase();
+      if (cleaned.length > 1) parts = [cleaned.split(/\s+/).slice(0, 5).join(' ')];
+    }
+
+    return parts.slice(0, 4).map((label, i): VisionLabel => ({ label, confidence: 1 - i * 0.1 }));
   }
 }
