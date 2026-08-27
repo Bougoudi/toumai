@@ -246,19 +246,6 @@ body {
   .chat-suggests { grid-template-columns: 1fr; }
 }
 
-/* Annuaire des fournisseurs grossistes / stock local */
-.dir-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 12px 0; }
-.dir-card {
-  display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: var(--text);
-  background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; padding: 14px;
-  transition: border-color .15s, transform .05s;
-}
-.dir-card:hover { border-color: var(--accent); }
-.dir-card:active { transform: scale(.99); }
-.dir-card b { font-size: 15px; }
-.dir-card .dir-region { font-size: 12px; color: var(--accent); }
-.dir-card .muted { font-size: 12.5px; line-height: 1.45; }
-
 /* Panels */
 main { padding: 22px; max-width: 1100px; margin: 0 auto; }
 .panel { display: none; animation: fade 0.2s ease; }
