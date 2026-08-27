@@ -48,7 +48,6 @@ export class AliExpressProductConnector implements ProductSearchConnector {
       try {
         const res = await this.call('aliexpress.ds.text.search', {
           session: this.accessToken,
-          access_token: this.accessToken,
           keyWord: q,
           local: 'en_US',
           countryCode: 'FR',
@@ -232,18 +231,32 @@ export class AliExpressProductConnector implements ProductSearchConnector {
   }
 
   private map(p: Record<string, any>): ProductSearchResult {
+    // `target*` = prix dans la devise demandée ; sinon prix d'origine.
+    // Les noms diffèrent entre le flux (snake_case) et la recherche (camelCase).
     const price = Number(
-      p.target_sale_price ?? p.app_sale_price ?? p.sale_price ?? p.target_original_price ?? p.original_price ?? 0,
+      p.target_sale_price ??
+        p.targetSalePrice ??
+        p.app_sale_price ??
+        p.sale_price ??
+        p.salePrice ??
+        p.target_original_price ??
+        p.targetOriginalPrice ??
+        p.original_price ??
+        p.originalPrice ??
+        0,
     );
-    const title = String(p.product_title ?? p.subject ?? 'Produit');
+    const title = String(p.product_title ?? p.title ?? p.subject ?? 'Produit');
+    const image = p.product_main_image_url ?? p.itemMainPic;
+    const itemId = p.product_id ?? p.itemId;
+    const url = p.product_detail_url ?? (itemId ? `https://www.aliexpress.com/item/${itemId}.html` : undefined);
     return {
       title,
       category: String(p.second_level_category_name ?? p.first_level_category_name ?? 'divers'),
       keywords: title.toLowerCase().split(/\s+/).slice(0, 5).join(','),
       estimatedPrice: Number.isFinite(price) ? price : 0,
       source: 'aliexpress',
-      imageUrl: p.product_main_image_url ? String(p.product_main_image_url) : undefined,
-      url: p.product_detail_url ? String(p.product_detail_url) : undefined,
+      imageUrl: image ? String(image) : undefined,
+      url: url ? String(url) : undefined,
     };
   }
 }
@@ -313,7 +326,10 @@ function expandTerms(query: string): string[] {
  */
 function findProducts(body: unknown): Record<string, any>[] {
   const seen = new Set<unknown>();
-  const isProduct = (o: any) => o && typeof o === 'object' && ('product_title' in o || 'product_id' in o);
+  // Deux formats de produit coexistent : le flux (`product_title`/`product_id`)
+  // et la recherche par mot-clé (`title`/`itemId`).
+  const isProduct = (o: any) =>
+    o && typeof o === 'object' && ('product_title' in o || 'product_id' in o || 'itemId' in o);
   const walk = (node: any): Record<string, any>[] | null => {
     if (!node || typeof node !== 'object' || seen.has(node)) return null;
     seen.add(node);
