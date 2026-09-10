@@ -1,6 +1,5 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
-import { sum } from '../lib/money.js';
 
 /**
  * Analytique Touma.
@@ -24,31 +23,38 @@ const PAID_STATUSES: Prisma.EnumToumaOrderStatusFilter['in'] = [
 export const analyticsService = {
   /** Vue d'ensemble de la place de marché. */
   async dashboard() {
-    const [users, sellers, stores, products, orders, paidOrders, pendingVerifications, openDisputes, failedPayments, shipments] = await Promise.all([
-      prisma.user.count(),
-      prisma.user.count({ where: { toumaRole: 'SELLER' } }),
-      prisma.toumaStore.count({ where: { status: 'ACTIVE' } }),
-      prisma.toumaProduct.count({ where: { status: 'ACTIVE' } }),
-      prisma.toumaOrder.count(),
-      prisma.toumaOrder.findMany({ where: { status: { in: PAID_STATUSES } }, select: { total: true, currency: true, crossBorder: true, createdAt: true } }),
-      prisma.toumaSellerVerification.count({ where: { status: 'PENDING' } }),
-      prisma.toumaDispute.count({ where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } }),
-      prisma.toumaPayment.count({ where: { status: 'FAILED' } }),
-      prisma.toumaShipment.count(),
-    ]);
+    // Les agrégats sont calculés par la base : aucune commande n'est chargée en
+    // mémoire, le tableau de bord reste constant quel que soit le volume.
+    const [users, sellers, stores, products, orders, gmv, paidCount, crossBorderOrders, cancelled, pendingVerifications, openDisputes, failedPayments, shipments] =
+      await Promise.all([
+        prisma.user.count(),
+        prisma.user.count({ where: { toumaRole: 'SELLER' } }),
+        prisma.toumaStore.count({ where: { status: 'ACTIVE' } }),
+        prisma.toumaProduct.count({ where: { status: 'ACTIVE' } }),
+        prisma.toumaOrder.count(),
+        // GMV par devise : aucune conversion approximative entre devises.
+        prisma.toumaOrder.groupBy({
+          by: ['currency'],
+          where: { status: { in: PAID_STATUSES } },
+          _sum: { total: true },
+          _count: { _all: true },
+        }),
+        prisma.toumaOrder.count({ where: { status: { in: PAID_STATUSES } } }),
+        prisma.toumaOrder.count({ where: { status: { in: PAID_STATUSES }, crossBorder: true } }),
+        prisma.toumaOrder.count({ where: { status: 'CANCELLED' } }),
+        prisma.toumaSellerVerification.count({ where: { status: 'PENDING' } }),
+        prisma.toumaDispute.count({ where: { status: { in: ['OPEN', 'UNDER_REVIEW'] } } }),
+        prisma.toumaPayment.count({ where: { status: 'FAILED' } }),
+        prisma.toumaShipment.count(),
+      ]);
 
-    // GMV par devise : aucune conversion approximative entre devises.
     const gmvByCurrency: Record<string, string> = {};
-    const grouped = new Map<string, Prisma.Decimal[]>();
-    for (const o of paidOrders) {
-      const list = grouped.get(o.currency) ?? [];
-      list.push(o.total);
-      grouped.set(o.currency, list);
+    const averageBasket: Record<string, string> = {};
+    for (const row of gmv) {
+      const total = row._sum.total ?? new Prisma.Decimal(0);
+      gmvByCurrency[row.currency] = total.toString();
+      averageBasket[row.currency] = total.dividedBy(row._count._all || 1).toFixed(2);
     }
-    for (const [currency, totals] of grouped) gmvByCurrency[currency] = sum(totals).toString();
-
-    const cancelled = await prisma.toumaOrder.count({ where: { status: 'CANCELLED' } });
-    const crossBorderOrders = paidOrders.filter((o) => o.crossBorder).length;
 
     return {
       users,
@@ -56,13 +62,11 @@ export const analyticsService = {
       stores,
       products,
       orders,
-      paidOrders: paidOrders.length,
+      paidOrders: paidCount,
       /** Métrique de validation Touma : les transactions transfrontalières. */
       crossBorderOrders,
       gmvByCurrency,
-      averageBasket: Object.fromEntries(
-        [...grouped.entries()].map(([currency, totals]) => [currency, sum(totals).dividedBy(totals.length || 1).toFixed(2)]),
-      ),
+      averageBasket,
       cancellationRate: orders ? Number((cancelled / orders).toFixed(4)) : 0,
       pendingVerifications,
       openDisputes,
@@ -113,28 +117,27 @@ export const analyticsService = {
     };
   },
 
-  /** Indicateurs d'une boutique (Seller Center). */
+  /** Indicateurs d'une boutique (Seller Center), agrégés côté base. */
   async storeStats(storeId: string) {
-    const [orders, products, lowStock, pendingShipments] = await Promise.all([
-      prisma.toumaOrder.findMany({ where: { storeId }, select: { total: true, currency: true, status: true, createdAt: true } }),
+    const [orders, paidOrders, revenueRows, products, lowStock, pendingShipments] = await Promise.all([
+      prisma.toumaOrder.count({ where: { storeId } }),
+      prisma.toumaOrder.count({ where: { storeId, status: { in: PAID_STATUSES } } }),
+      prisma.toumaOrder.groupBy({
+        by: ['currency'],
+        where: { storeId, status: { in: PAID_STATUSES } },
+        _sum: { total: true },
+      }),
       prisma.toumaProduct.count({ where: { storeId, status: 'ACTIVE' } }),
       prisma.toumaInventory.count({ where: { product: { storeId }, quantity: { lte: 5 } } }),
       prisma.toumaOrder.count({ where: { storeId, status: { in: ['PAID', 'CONFIRMED', 'PROCESSING'] } } }),
     ]);
 
-    const paid = orders.filter((o) => PAID_STATUSES?.includes(o.status));
     const revenue: Record<string, string> = {};
-    const grouped = new Map<string, Prisma.Decimal[]>();
-    for (const o of paid) {
-      const list = grouped.get(o.currency) ?? [];
-      list.push(o.total);
-      grouped.set(o.currency, list);
-    }
-    for (const [currency, totals] of grouped) revenue[currency] = sum(totals).toString();
+    for (const row of revenueRows) revenue[row.currency] = (row._sum.total ?? new Prisma.Decimal(0)).toString();
 
     return {
-      orders: orders.length,
-      paidOrders: paid.length,
+      orders,
+      paidOrders,
       revenue,
       activeProducts: products,
       lowStockItems: lowStock,
