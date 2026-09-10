@@ -1,9 +1,12 @@
-import type { StoreStatus } from '@prisma/client';
+import type { StoreStatus, ToumaOrderStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { uniqueSlug } from '../lib/slug.js';
 import { pageParams, paginated } from '../lib/pagination.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
+
+/** Statuts de commande comptés comme une vente réalisée. */
+const PAID_STATUSES: ToumaOrderStatus[] = ['PAID', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED'];
 
 /** Champs publics d'une boutique (aucune donnée privée du vendeur). */
 const publicSelect = {
@@ -46,14 +49,23 @@ export const storeService = {
     return paginated(items, total, page);
   },
 
-  /** Fiche publique par id ou slug. */
+  /** Fiche publique par id ou slug (avec ventes réalisées et produits actifs). */
   async get(idOrSlug: string) {
     const store = await prisma.toumaStore.findFirst({
       where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
-      select: { ...publicSelect, _count: { select: { products: { where: { status: 'ACTIVE' } } } } },
+      select: {
+        ...publicSelect,
+        _count: {
+          select: {
+            products: { where: { status: 'ACTIVE' } },
+            // Ventes = commandes réellement payées, jamais les paniers abandonnés.
+            orders: { where: { status: { in: PAID_STATUSES } } },
+          },
+        },
+      },
     });
     if (!store || store.status !== 'ACTIVE') throw notFound('Boutique introuvable.');
-    return { ...store, productCount: store._count.products, _count: undefined };
+    return { ...store, productCount: store._count.products, salesCount: store._count.orders, _count: undefined };
   },
 
   /** Boutiques du vendeur connecté (vue privée, tous statuts). */

@@ -58,8 +58,22 @@ reviewRouter.post(
       const created = await tx.toumaReview.create({
         data: { orderId: order.id, productId: input.productId, authorId: user.id, rating: input.rating, comment: input.comment ?? null },
       });
-      // Note moyenne de la boutique recalculée à partir des avis publiés.
-      const stats = await tx.toumaReview.aggregate({
+      // Notes moyennes recalculées à partir des avis publiés : au niveau du
+      // produit (affiché dans le catalogue) et de la boutique.
+      const productStats = await tx.toumaReview.aggregate({
+        where: { status: 'PUBLISHED', productId: input.productId },
+        _avg: { rating: true },
+        _count: { _all: true },
+      });
+      await tx.toumaProduct.update({
+        where: { id: input.productId },
+        data: {
+          ratingAverage: new Prisma.Decimal((productStats._avg.rating ?? 0).toFixed(2)),
+          ratingCount: productStats._count._all,
+        },
+      });
+
+      const storeStats = await tx.toumaReview.aggregate({
         where: { status: 'PUBLISHED', product: { storeId: order.storeId } },
         _avg: { rating: true },
         _count: { _all: true },
@@ -67,8 +81,8 @@ reviewRouter.post(
       await tx.toumaStore.update({
         where: { id: order.storeId },
         data: {
-          ratingAverage: new Prisma.Decimal((stats._avg.rating ?? 0).toFixed(2)),
-          ratingCount: stats._count._all,
+          ratingAverage: new Prisma.Decimal((storeStats._avg.rating ?? 0).toFixed(2)),
+          ratingCount: storeStats._count._all,
         },
       });
       return created;

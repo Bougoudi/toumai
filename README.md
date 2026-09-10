@@ -25,7 +25,7 @@ npm run seed                  # pays, catégories, comptes et catalogue de démo
 npm run dev
 ```
 
-- Place de marché : <http://localhost:3000/touma/>
+- Place de marché : <http://localhost:3000/touma/> (mobile d'abord, testée de 360 à 1440 px)
 - API v1 : <http://localhost:3000/api/v1> · OpenAPI : `/api/v1/openapi.json`
 - Sondes : `/health` et `/ready`
 
@@ -34,7 +34,7 @@ uniquement) : `admin@touma.dev`, `vendeur.td@touma.dev`, `vendeur.cm@touma.dev`,
 `acheteur@touma.dev`.
 
 ```bash
-npm test              # 85 tests : unitaires, intégration et parcours complet (Node ≥ 22)
+npm test              # 97 tests : unitaires, intégration et parcours complet (Node ≥ 22)
 npm run typecheck     # TypeScript strict
 ```
 

@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { apiLimiter, securityHeaders } from './middleware/security.js';
@@ -31,6 +32,7 @@ import { toumaV1Router } from './touma/touma.routes.js';
 import { paymentWebhookRouter } from './touma/payments/payment.routes.js';
 import { toumaOpenApiDocument } from './touma/openapi.js';
 import { readiness } from './touma/health.js';
+import { createMarketplaceHandler, robotsTxt, sitemapXml } from './touma/seo.js';
 
 /**
  * Dossier des fichiers statiques (PWA). En développement (tsx) le module est
@@ -75,9 +77,20 @@ export function createApp() {
   app.use('/api', apiLimiter);
 
   // Application web (PWA) : fichiers statiques servis à la racine.
-  // La place de marché Touma est servie sous /touma (public/touma/).
   app.use(express.static(publicDir));
+
+  // ── Place de marché Touma (/touma) ─────────────────────────────────────────
+  // Chaque page a une vraie URL (ex. /touma/produits/sesame-blanc), servie par
+  // le serveur avec ses propres métadonnées : titre, description, Open Graph et
+  // données structurées produit. Sans cela, un moteur de recherche ne verrait
+  // qu'une coquille vide et une seule adresse.
+  const marketplaceShell = createMarketplaceHandler(join(publicDir, 'touma', 'index.html'));
+  app.get('/robots.txt', robotsTxt);
+  app.get('/sitemap.xml', asyncHandler(sitemapXml));
   app.get('/touma', (_req, res) => res.redirect(301, '/touma/'));
+  // Toute route de l'application (hors fichiers statiques, déjà servis) renvoie
+  // la coquille : le routeur côté client prend ensuite la main.
+  app.get(/^\/touma(\/.*)?$/, asyncHandler(marketplaceShell));
 
   // Webhooks de paiement Touma : corps BRUT requis pour vérifier la signature
   // (monté AVANT express.json(), qui casserait la vérification).

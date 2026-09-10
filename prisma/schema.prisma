@@ -839,6 +839,10 @@ model ToumaProduct {
   /// Quantité minimale de commande (B2B : lots / gros).
   minOrderQty    Int           @default(1)
   status         ProductStatus @default(DRAFT)
+  /// Note moyenne et nombre d'avis publiés, recalculés à chaque avis : évite une
+  /// agrégation par produit à chaque affichage du catalogue.
+  ratingAverage  Decimal       @default(0) @db.Decimal(3, 2)
+  ratingCount    Int           @default(0)
   /// Pays d'origine / d'expédition de la marchandise.
   countryCode    String
   country        Country       @relation(fields: [countryCode], references: [code])

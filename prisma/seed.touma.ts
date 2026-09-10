@@ -48,12 +48,15 @@ interface SeedProduct {
   weightGrams?: number;
   keywords: string;
   brand?: string;
+  /** Visuel de démonstration servi par l'application (public/touma/img). */
+  image: string;
   variants?: Array<{ name: string; priceDelta: string; quantity: number }>;
 }
 
 const TD_PRODUCTS: SeedProduct[] = [
   {
     title: 'Sésame blanc du Tchad — sac de 25 kg',
+    image: '/touma/img/sesame.svg',
     description:
       "Sésame blanc trié, calibre export, récolte de la saison en cours. Conditionné en sacs de 25 kg. Certificat phytosanitaire fourni sur demande. Vendu au sac, tarif dégressif à partir de 20 sacs.",
     price: '38000',
@@ -65,6 +68,7 @@ const TD_PRODUCTS: SeedProduct[] = [
   },
   {
     title: 'Gomme arabique brute — carton de 10 kg',
+    image: '/touma/img/gomme.svg',
     description:
       "Gomme arabique (Acacia senegal) récoltée dans le Sahel tchadien, triée à la main. Carton de 10 kg. Idéale pour l'agroalimentaire et la cosmétique.",
     price: '52000',
@@ -76,6 +80,7 @@ const TD_PRODUCTS: SeedProduct[] = [
   },
   {
     title: 'Boubou brodé homme — coton teint à la main',
+    image: '/touma/img/boubou.svg',
     description:
       "Boubou traditionnel en coton épais, broderie réalisée à la main sur le col et les manches. Coupe ample. Lavage à la main recommandé.",
     price: '27500',
@@ -90,6 +95,7 @@ const TD_PRODUCTS: SeedProduct[] = [
   },
   {
     title: 'Beurre de karité brut — seau de 5 kg',
+    image: '/touma/img/karite.svg',
     description:
       "Beurre de karité non raffiné, pressé à froid, sans additif. Seau alimentaire de 5 kg refermable. Convient à la revente en cosmétique artisanale.",
     price: '19500',
@@ -104,6 +110,7 @@ const TD_PRODUCTS: SeedProduct[] = [
 const CM_PRODUCTS: SeedProduct[] = [
   {
     title: 'Cacao en fèves fermentées — sac de 50 kg',
+    image: '/touma/img/cacao.svg',
     description:
       "Fèves de cacao fermentées et séchées, région du Centre. Sac de jute de 50 kg. Taux d'humidité contrôlé, échantillon disponible avant commande.",
     price: '145000',
@@ -115,6 +122,7 @@ const CM_PRODUCTS: SeedProduct[] = [
   },
   {
     title: 'Cartons ondulés double cannelure — lot de 100',
+    image: '/touma/img/cartons.svg',
     description:
       "Cartons d'expédition double cannelure 40×30×30 cm, livrés à plat. Lot de 100 unités. Résistance testée pour le transport routier transfrontalier.",
     price: '68000',
@@ -126,6 +134,7 @@ const CM_PRODUCTS: SeedProduct[] = [
   },
   {
     title: 'Pagne wax 6 yards — impression Douala',
+    image: '/touma/img/pagne.svg',
     description:
       "Pagne wax 100 % coton, 6 yards, impression réalisée à Douala. Couleurs stables au lavage. Vendu à la pièce, remise à partir de 10 pièces.",
     price: '16500',
@@ -140,6 +149,7 @@ const CM_PRODUCTS: SeedProduct[] = [
   },
   {
     title: 'Chargeur solaire portatif 20 000 mAh',
+    image: '/touma/img/solaire.svg',
     description:
       "Batterie externe avec panneau solaire intégré, 20 000 mAh, double port USB, lampe LED. Adaptée aux zones à électricité intermittente. Garantie 12 mois.",
     price: '24000',
@@ -150,6 +160,7 @@ const CM_PRODUCTS: SeedProduct[] = [
   },
   {
     title: 'Savon noir africain — carton de 48 pains',
+    image: '/touma/img/savon.svg',
     description:
       "Savon noir traditionnel à base de cendres de cabosses et d'huile de palmiste. Carton de 48 pains de 150 g. Étiquetage personnalisable pour les revendeurs.",
     price: '32000',
@@ -200,6 +211,7 @@ async function seedProducts(storeId: string, countryCode: string, currency: stri
         keywords: p.keywords,
         status: 'ACTIVE',
         publishedAt: new Date(),
+        images: { create: [{ url: p.image, alt: p.title, position: 0 }] },
       },
     });
 

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
 import { auditRequest } from '../lib/audit.js';
-import { authenticate, currentUser, requireRole } from '../middleware/toumaAuth.js';
+import { authenticate, currentUser, optionalAuth, requireRole } from '../middleware/toumaAuth.js';
 import { logisticsService } from './logistics.service.js';
 
 export const shippingRouter = Router();
@@ -34,10 +34,15 @@ const statusSchema = z.object({
 
 shippingRouter.get('/providers', asyncHandler(async (_req, res) => res.json({ items: logisticsService.listProviders() })));
 
-/** Devis de transport : accessible à tout utilisateur connecté (avant achat). */
+/**
+ * Devis de transport — **public** : un acheteur doit pouvoir estimer le coût et
+ * le délai depuis la fiche produit avant même de créer un compte. Aucune donnée
+ * personnelle n'est requise (pays, ville, poids), et la limitation de débit
+ * globale de l'API s'applique.
+ */
 shippingRouter.post(
   '/quote',
-  authenticate,
+  optionalAuth,
   asyncHandler(async (req, res) => {
     const input = parseBody(quoteSchema, req);
     const quotes = await logisticsService.quote(

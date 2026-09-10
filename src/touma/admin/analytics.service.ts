@@ -75,9 +75,11 @@ export const analyticsService = {
     };
   },
 
-  /** Série temporelle (commandes et GMV par jour) sur `days` jours. */
+  /** Série temporelle (commandes et GMV par jour) sur `days` jours, jusqu'à aujourd'hui. */
   async timeseries(days: number) {
-    const since = new Date(Date.now() - days * 24 * 3600 * 1000);
+    const since = new Date();
+    since.setUTCHours(0, 0, 0, 0);
+    since.setUTCDate(since.getUTCDate() - (days - 1));
     const orders = await prisma.toumaOrder.findMany({
       where: { createdAt: { gte: since } },
       select: { createdAt: true, total: true, currency: true, status: true },
@@ -85,6 +87,11 @@ export const analyticsService = {
     });
 
     const byDay = new Map<string, { date: string; orders: number; paid: number; gmv: Record<string, Prisma.Decimal> }>();
+    // Un point par jour, même sans commande : une courbe trouée est illisible.
+    for (let i = 0; i < days; i += 1) {
+      const date = new Date(since.getTime() + i * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      byDay.set(date, { date, orders: 0, paid: 0, gmv: {} });
+    }
     for (const o of orders) {
       const date = o.createdAt.toISOString().slice(0, 10);
       const row = byDay.get(date) ?? { date, orders: 0, paid: 0, gmv: {} };
@@ -113,6 +120,58 @@ export const analyticsService = {
         paid: r.paid,
         gmv: Object.fromEntries(Object.entries(r.gmv).map(([c, v]) => [c, v.toString()])),
       })),
+      topProducts: topProducts.map((p) => ({ productId: p.productId, title: p.titleSnapshot, quantity: p._sum.quantity ?? 0 })),
+    };
+  },
+
+  /**
+   * Série temporelle des ventes d'une boutique (graphique du Seller Center).
+   * Renvoie un point par jour, y compris les jours sans vente, pour que la
+   * courbe reste lisible.
+   */
+  async storeTimeseries(storeId: string, days: number) {
+    // Fenêtre de `days` jours se terminant aujourd'hui (bornes incluses).
+    const since = new Date();
+    since.setUTCHours(0, 0, 0, 0);
+    since.setUTCDate(since.getUTCDate() - (days - 1));
+    const orders = await prisma.toumaOrder.findMany({
+      where: { storeId, createdAt: { gte: since }, status: { in: PAID_STATUSES } },
+      select: { createdAt: true, total: true, currency: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const byDay = new Map<string, { orders: number; revenue: Prisma.Decimal; currency: string | null }>();
+    for (let i = 0; i < days; i += 1) {
+      const day = new Date(since.getTime() + i * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      byDay.set(day, { orders: 0, revenue: new Prisma.Decimal(0), currency: null });
+    }
+    for (const o of orders) {
+      const day = o.createdAt.toISOString().slice(0, 10);
+      const row = byDay.get(day);
+      if (!row) continue;
+      row.orders += 1;
+      row.revenue = row.revenue.plus(o.total);
+      row.currency = row.currency ?? o.currency;
+    }
+
+    const series = [...byDay.entries()].map(([date, r]) => ({
+      date,
+      orders: r.orders,
+      revenue: r.revenue.toString(),
+      currency: r.currency,
+    }));
+
+    const topProducts = await prisma.toumaOrderItem.groupBy({
+      by: ['productId', 'titleSnapshot'],
+      where: { order: { storeId, status: { in: PAID_STATUSES } }, createdAt: { gte: since } },
+      _sum: { quantity: true },
+      orderBy: { _sum: { quantity: 'desc' } },
+      take: 5,
+    });
+
+    return {
+      days,
+      series,
       topProducts: topProducts.map((p) => ({ productId: p.productId, title: p.titleSnapshot, quantity: p._sum.quantity ?? 0 })),
     };
   },

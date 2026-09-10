@@ -65,6 +65,8 @@ function serializeItem(item: CartItemWithRelations) {
     variantName: item.variant?.name ?? null,
     quantity: item.quantity,
     minOrderQty: item.product.minOrderQty,
+    /// Poids unitaire : nécessaire pour demander un devis de transport exact.
+    weightGrams: item.product.weightGrams,
     unitPrice: unitPrice.toString(),
     /** Prix vu lors de l'ajout : sert à prévenir l'acheteur d'un changement. */
     unitPriceAtAdd: item.unitPrice.toString(),

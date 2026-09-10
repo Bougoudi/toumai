@@ -102,7 +102,7 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 
 ## 5. Ce qui est garanti par les tests
 
-85 tests automatisés s'exécutent contre une vraie base PostgreSQL
+97 tests automatisés s'exécutent contre une vraie base PostgreSQL
 (`npm test` — Node ≥ 22, dont le lanceur de tests accepte les motifs glob),
 dont le parcours complet de bout en bout :
 
@@ -136,8 +136,48 @@ Règles vérifiées, entre autres :
   erreur explicite plutôt que de retomber sur l'adaptateur de démonstration.
 
 Un test navigateur optionnel (`npm run test:browser`, nécessite Playwright)
-rejoue le même parcours dans Chromium et vérifie l'absence d'erreur console et
-de débordement horizontal en 390 px.
+rejoue **tout le parcours dans Chromium** — accueil, catalogue et filtres,
+recherche, fiche produit, estimation de livraison, inscription, panier, tunnel
+de commande en quatre étapes, paiement, suivi, espace vendeur (dont le
+graphique des ventes) et administration — puis vérifie, à **360, 390, 430, 768,
+1024, 1280 et 1440 px** : aucune erreur console, aucun débordement horizontal,
+navigation basse et menu latéral fonctionnels.
+
+---
+
+## 5 bis. Interface
+
+L'interface est servie sous `/touma/` par le même serveur. Elle est écrite en
+JavaScript standard (modules ES), **sans dépendance ni script en ligne**, ce qui
+la rend compatible avec la politique de sécurité du contenu déjà en place.
+
+**Système de design.** `public/touma/tokens.css` est la source unique des
+couleurs, espacements, typographies, rayons et ombres — palette TOUMA
+(`#0B5D5E`, `#E07A3F`, `#F3EBDD`, `#FAF8F2`, `#172121`). Aucun composant ne code
+une valeur en dur. `public/touma/touma.css` construit dessus les composants :
+boutons, champs, cartes, badges, statuts, étoiles, tableaux, onglets, étapes,
+chronologies, modales, notifications éphémères, squelettes de chargement.
+
+**Mobile d'abord.** En dessous de 900 px : en-tête compact, recherche pleine
+largeur, menu latéral, et navigation basse à cinq entrées (Accueil, Catalogue,
+Panier, Commandes, Compte). Les cibles tactiles font au moins 44 px.
+
+**Chargement à la demande.** Les espaces vendeur et administration sont chargés
+par import dynamique : la visite d'un acheteur ne télécharge pas leur code.
+
+**États.** Chaque page gère chargement (squelettes), vide, erreur et succès, via
+des composants partagés (`loadingState`, `emptyState`, `errorState`, toasts,
+`confirmDialog`).
+
+**Visuels produit.** Le catalogue de démonstration est illustré par des visuels
+SVG servis par l'application (`public/touma/img/`). Un produit sans visuel
+affiche un repli graphique, jamais un texte d'attente.
+
+**Référencement.** Chaque page a une URL réelle (`/touma/produits/<slug>`)
+servie par le serveur, qui injecte titre, description, Open Graph, URL canonique
+et données structurées `schema.org/Product` — voir `src/touma/seo.ts`. Les
+espaces privés sont en `noindex`. `sitemap.xml` est généré depuis le catalogue
+réel et `robots.txt` exclut les espaces privés.
 
 ---
 
@@ -213,6 +253,13 @@ humain valide.
 1. **Recherche** : la recherche s'appuie sur PostgreSQL (`ILIKE` multi-champs +
    pagination serveur). OpenSearch est provisionné en profil Docker optionnel ;
    l'adaptateur reste à écrire quand le volume du catalogue le justifiera.
+0. **Monorepo `apps/` + `packages/` (Next.js / NestJS)** : non réalisé. Le
+   domaine est déjà découpé en modules autonomes (`src/touma/<module>` avec son
+   routeur, son service et ses adaptateurs), ce qui rend l'extraction mécanique ;
+   mais migrer un produit en service vers un monorepo Next.js/NestJS est un
+   chantier à part entière, qui aurait produit des écrans vides plutôt qu'un
+   parcours d'achat fonctionnel. À traiter comme une phase dédiée, module par
+   module, en conservant la base de données et les contrats actuels.
 2. **Téléversement de fichiers** : les images et documents sont référencés par
    URL. Le stockage S3 est configuré (`S3_*`) mais l'envoi direct depuis
    l'interface reste à implémenter (avec validation de type et de taille).

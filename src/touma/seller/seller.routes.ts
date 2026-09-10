@@ -59,6 +59,19 @@ sellerRouter.get(
   }),
 );
 
+/** Courbe des ventes d'une boutique (graphique du tableau de bord vendeur). */
+sellerRouter.get(
+  '/stores/:id/analytics',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const store = await prisma.toumaStore.findUnique({ where: { id: req.params.id } });
+    if (!store) throw notFound('Boutique introuvable.');
+    if (store.ownerId !== user.id && user.role !== 'ADMIN') throw forbidden('Boutique d’un autre vendeur.');
+    const days = Math.min(180, Math.max(7, Number(req.query.days ?? 30)));
+    res.json(await analyticsService.storeTimeseries(store.id, days));
+  }),
+);
+
 /** Articles dont le stock est bas (réapprovisionnement). */
 sellerRouter.get(
   '/inventory/low-stock',
