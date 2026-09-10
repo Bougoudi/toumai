@@ -28,7 +28,8 @@
     "test": "node --import tsx --import ./tests/env.ts --test \"tests/**/*.test.ts\"",
     "test:unit": "node --import tsx --import ./tests/env.ts --test \"tests/unit/*.test.ts\"",
     "test:integration": "node --import tsx --import ./tests/env.ts --test \"tests/integration/*.test.ts\"",
-    "test:e2e": "node --import tsx --import ./tests/env.ts --test \"tests/e2e/*.test.ts\""
+    "test:e2e": "node --import tsx --import ./tests/env.ts --test \"tests/e2e/*.test.ts\"",
+    "test:browser": "node tests/browser/journey.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -1,3 +1,50 @@
+# TOUMA
+
+> **« Connecter le commerce africain. »**
+
+Ce dépôt héberge **deux produits** qui partagent un même socle technique
+(TypeScript, Express, Prisma, PostgreSQL) :
+
+| Produit | Ce que c'est | Interface | API |
+| --- | --- | --- | --- |
+| **Touma — place de marché** | Commerce B2B/B2C entre pays africains : catalogue, paiements, logistique, confiance, litiges, IA. Corridor pilote **Tchad ↔ Cameroun**. | `/touma/` | `/api/v1` |
+| **Toumai — automatisation e-commerce** | Le logiciel d'automatisation dropshipping historique (analyse marché, génération de produits, sourcing, canaux de vente). | `/` | `/api` |
+
+Les deux cohabitent sans interférence : la place de marché vit dans
+`src/touma/`, avec ses propres modèles (tables `touma_*`), sa propre
+authentification et ses propres tests.
+
+## Démarrer la place de marché Touma
+
+```bash
+cp .env.example .env          # renseigner JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, ENCRYPTION_KEY
+docker compose up -d          # PostgreSQL + Redis
+npm install
+npx prisma migrate deploy
+npm run seed                  # pays, catégories, comptes et catalogue de démonstration
+npm run dev
+```
+
+- Place de marché : <http://localhost:3000/touma/>
+- API v1 : <http://localhost:3000/api/v1> · OpenAPI : `/api/v1/openapi.json`
+- Sondes : `/health` et `/ready`
+
+Comptes de démonstration (mot de passe `touma-dev-1234`, développement
+uniquement) : `admin@touma.dev`, `vendeur.td@touma.dev`, `vendeur.cm@touma.dev`,
+`acheteur@touma.dev`.
+
+```bash
+npm test              # 76 tests : unitaires, intégration et parcours complet
+npm run typecheck     # TypeScript strict
+```
+
+📘 **Documentation complète de la place de marché :
+[`docs/touma-marketplace.md`](docs/touma-marketplace.md)** — architecture,
+modèle de données, garanties vérifiées par les tests, adaptateurs de paiement et
+de logistique, sécurité, et ce qui reste à construire.
+
+---
+
 # Toumai — Plateforme d'automatisation e-commerce (dropshipping)
 
 Toumai automatise l'ensemble du cycle du dropshipping, autour de **4 piliers** :
@@ -17,7 +64,7 @@ Chaque pilier est disponible **à la demande** (API) **et en automatique** (tâc
 | --------------- | ---------------------------------------------- |
 | Langage         | TypeScript (Node.js ≥ 18)                      |
 | API             | Express                                        |
-| Base de données | Prisma ORM + SQLite (migrable vers PostgreSQL) |
+| Base de données | Prisma ORM + PostgreSQL (migrations versionnées)  |
 | Validation      | Zod                                            |
 | Automatisation  | node-cron + connecteurs de sources             |
 

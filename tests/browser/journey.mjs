@@ -1,9 +1,31 @@
+/**
+ * Test de bout en bout dans un vrai navigateur (Chromium via Playwright).
+ *
+ * Vérifie le parcours complet de l'interface : accueil → catalogue → recherche
+ * → fiche produit → inscription → panier → checkout → paiement → espace vendeur
+ * → administration, plus l'absence d'erreur console et de débordement en 390 px.
+ *
+ * Playwright n'est PAS une dépendance du projet (l'API et ses tests n'en ont pas
+ * besoin). Pour lancer ce test :
+ *
+ *   npm i -D playwright && npx playwright install chromium
+ *   npm run seed
+ *   npm run dev                      # dans un autre terminal
+ *   TOUMA_URL=http://127.0.0.1:3000/touma/ npm run test:browser
+ *
+ * Les captures d'écran sont écrites dans le dossier indiqué par SCR (défaut :
+ * ./.captures).
+ */
+
+import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
-const BASE = 'http://127.0.0.1:3010/touma/';
-const OUT = process.env.SCR;
+const BASE = process.env.TOUMA_URL ?? 'http://127.0.0.1:3000/touma/';
+const OUT = process.env.SCR ?? '.captures';
 const errors = [];
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' }).catch(() => chromium.launch());
+const executablePath = process.env.CHROMIUM_PATH;
+const browser = await chromium.launch(executablePath ? { executablePath } : {});
+await mkdir(OUT, { recursive: true });
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));

@@ -35,6 +35,17 @@ services:
         generateValue: true
       - key: ENCRYPTION_KEY
         generateValue: true
+      # Place de marché Touma : secrets distincts pour les jetons d'accès et de
+      # rafraîchissement, et pour la signature des webhooks de paiement.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: TOUMA_PAYMENT_WEBHOOK_SECRET
+        generateValue: true
+      # Commission de la place de marché (0.05 = 5 %), ajustable sans redéploiement.
+      - key: TOUMA_COMMISSION_RATE
+        value: "0.05"
       # À renseigner dans le tableau de bord Render :
       - key: PUBLIC_URL # ex. https://toumai.onrender.com (puis ton domaine)
         sync: false

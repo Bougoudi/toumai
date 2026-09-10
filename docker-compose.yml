@@ -1,0 +1,120 @@
+# Environnement de développement complet de TOUMA.
+#
+#   cp .env.example .env
+#   docker compose up -d
+#   docker compose exec api npx prisma migrate deploy
+#   docker compose exec api npm run seed
+#
+# L'application est alors disponible sur http://localhost:3000/touma/
+# (API : http://localhost:3000/api/v1).
+#
+# La recherche s'appuie aujourd'hui sur PostgreSQL. OpenSearch est fourni en
+# profil optionnel (`docker compose --profile search up -d`) pour préparer le
+# passage à un moteur dédié quand le volume du catalogue le justifiera.
+
+name: touma
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-touma}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-touma}
+      POSTGRES_DB: ${POSTGRES_DB:-touma}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-touma} -d ${POSTGRES_DB:-touma}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [touma]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [touma]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-touma}:${POSTGRES_PASSWORD:-touma}@postgres:5432/${POSTGRES_DB:-touma}?schema=public
+      REDIS_URL: redis://redis:6379
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:?définissez JWT_SECRET dans .env}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?définissez ENCRYPTION_KEY dans .env}
+      TOUMA_COMMISSION_RATE: ${TOUMA_COMMISSION_RATE:-0.05}
+      TOUMA_PAYMENT_WEBHOOK_SECRET: ${TOUMA_PAYMENT_WEBHOOK_SECRET:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      # Le pilote automatique du logiciel d'automatisation reste éteint par défaut.
+      ENABLE_SCHEDULER: ${ENABLE_SCHEDULER:-false}
+      AUTOPILOT_RUN_ON_START: ${AUTOPILOT_RUN_ON_START:-false}
+      DEMO_MODE: ${DEMO_MODE:-false}
+    ports:
+      - '${PORT:-3000}:3000'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3000/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [touma]
+
+  # Optionnel : moteur de recherche dédié (profil « search »).
+  opensearch:
+    image: opensearchproject/opensearch:2.17.1
+    profiles: [search]
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: 'true'
+      OPENSEARCH_JAVA_OPTS: '-Xms512m -Xmx512m'
+      DISABLE_INSTALL_DEMO_CONFIG: 'true'
+      DISABLE_SECURITY_PLUGIN: 'true'
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile: { soft: 65536, hard: 65536 }
+    ports:
+      - '${OPENSEARCH_PORT:-9200}:9200'
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fs http://localhost:9200/_cluster/health || exit 1']
+      interval: 20s
+      timeout: 5s
+      retries: 10
+    networks: [touma]
+
+volumes:
+  postgres-data:
+  redis-data:
+  opensearch-data:
+
+networks:
+  touma:
+    driver: bridge

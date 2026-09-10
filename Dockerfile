@@ -13,9 +13,7 @@ RUN npm ci
 
 COPY . .
 
-# Base de production : PostgreSQL (le dépôt utilise SQLite pour le dev local).
-RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
-
+# Le schéma cible PostgreSQL (développement comme production).
 RUN npx prisma generate
 RUN npm run build
 
@@ -40,4 +38,9 @@ COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
 EXPOSE 3000
+
+# Sonde de disponibilité : l'API n'est déclarée saine que si PostgreSQL répond.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 CMD ["./docker-entrypoint.sh"]
