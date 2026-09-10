@@ -28,6 +28,7 @@ Produits prévus, tous représentés dans l'architecture :
 | Touma Logistics | Fonctionnel avec adaptateur de démonstration | `src/touma/logistics` |
 | Touma Verified | Fonctionnel | `src/touma/verification` |
 | Touma AI | Fonctionnel (fournisseur heuristique local) | `src/touma/ai` |
+| Touma Business (B2B) | Fonctionnel | `src/touma/b2b` |
 | Touma Intelligence | Amorcé (analytique) | `src/touma/admin/analytics.service.ts` |
 
 ---
@@ -102,7 +103,7 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 
 ## 5. Ce qui est garanti par les tests
 
-97 tests automatisés s'exécutent contre une vraie base PostgreSQL
+126 tests automatisés s'exécutent contre une vraie base PostgreSQL
 (`npm test` — Node ≥ 22, dont le lanceur de tests accepte les motifs glob),
 dont le parcours complet de bout en bout :
 
@@ -128,6 +129,15 @@ Règles vérifiées, entre autres :
 - un vendeur ne peut ni modifier la boutique ni les produits d'un autre ; une
   commande tierce répond « introuvable » plutôt que « interdit » (aucune fuite) ;
 - le journal d'audit ne contient jamais de secret, de jeton ni de mot de passe ;
+- un panier multi-vendeurs est payé **une seule fois** et bascule toutes ses
+  sous-commandes, avec une commission par commande et sans doublon ;
+- un checkout rejoué après succès retrouve sa commande au lieu de répondre
+  « panier vide » ;
+- un point relais d'un autre pays que la livraison est refusé ;
+- un fournisseur ne voit pas les offres concurrentes, ne répond pas deux fois,
+  et une offre acceptée ou expirée ne peut plus être négociée ;
+- une conversation n'est lisible que par ses participants, et les pièces jointes
+  hors format ou trop lourdes sont rejetées ;
 - un acheteur ne peut pas présenter un devis de transport national (moins cher)
   pour une expédition transfrontalière, ni un devis établi pour un colis plus
   léger que sa commande ;
@@ -142,6 +152,60 @@ de commande en quatre étapes, paiement, suivi, espace vendeur (dont le
 graphique des ventes) et administration — puis vérifie, à **360, 390, 430, 768,
 1024, 1280 et 1440 px** : aucune erreur console, aucun débordement horizontal,
 navigation basse et menu latéral fonctionnels.
+
+---
+
+## 4 bis. TOUMA Business — appels d'offres (B2B)
+
+Le commerce B2B africain ne commence pas par une fiche produit, mais par un
+besoin : « je recherche 500 kg de cacao au Cameroun ». Le module `src/touma/b2b`
+implémente ce parcours de bout en bout :
+
+```
+profil entreprise → appel d'offres (RFQ) → offres des fournisseurs →
+comparaison → négociation → acceptation → commande → paiement
+```
+
+Règles appliquées :
+
+- **une offre par boutique** et par appel d'offres ;
+- un fournisseur **ne voit jamais les offres de ses concurrents** — l'acheteur
+  seul compare, du moins-disant au plus cher ;
+- chaque offre porte un **délai** et une **date de validité** : une offre
+  expirée ne peut plus être acceptée ;
+- la négociation conserve tout l'historique (messages et contre-propositions) —
+  il fait foi en cas de litige. Une contre-proposition **du vendeur** ajuste son
+  prix ; celle de l'acheteur reste une demande ;
+- l'acceptation crée une **vraie commande** (groupe + sous-commande vendeur)
+  payable comme n'importe quelle autre, écarte automatiquement les offres
+  concurrentes et attribue l'appel d'offres ;
+- les lignes de la commande sont figées depuis l'offre : un accord B2B porte
+  souvent sur un lot sur mesure, absent du catalogue.
+
+## 4 ter. Commande multi-vendeurs, adresses africaines et points relais
+
+**Un panier, un paiement, plusieurs vendeurs.** Un `ToumaOrderGroup` porte le
+paiement unique de l'acheteur ; chaque boutique reçoit sa sous-commande, avec sa
+préparation, son expédition et sa commission. Le succès du paiement bascule
+toutes les sous-commandes et enregistre une commission par commande, de façon
+idempotente.
+
+**Adresses telles qu'elles existent réellement.** Beaucoup de lieux d'Afrique
+centrale n'ont ni rue nommée ni code postal : l'adresse porte donc un
+**quartier**, un **point de repère** et des **instructions pour le livreur**.
+Les coordonnées GPS sont facultatives et ne sont jamais exposées publiquement.
+
+**Points relais.** Là où la livraison à domicile est peu fiable, le retrait en
+point relais est souvent le mode le plus sûr : `ToumaPickupPoint` porte le
+quartier, le point de repère et les horaires. Le checkout vérifie que le point
+choisi dessert bien le pays de livraison.
+
+## 4 quater. Messagerie
+
+Fils acheteur ↔ vendeur, rattachables à une commande. L'accès repose
+entièrement sur la **participation** au fil : aucun identifiant deviné ne donne
+accès à quoi que ce soit. Les pièces jointes sont limitées en type (JPEG, PNG,
+WebP, PDF), en taille (5 Mo) et en nombre (5 par message).
 
 ---
 
@@ -253,6 +317,11 @@ humain valide.
 1. **Recherche** : la recherche s'appuie sur PostgreSQL (`ILIKE` multi-champs +
    pagination serveur). OpenSearch est provisionné en profil Docker optionnel ;
    l'adaptateur reste à écrire quand le volume du catalogue le justifiera.
+0. **Retours et remboursements, tickets de support, coupons et fidélité,
+   documents commerciaux (facture, bon de commande), sourcing avancé et
+   réputation calculée sur les délais réels** : non réalisés. Le remboursement
+   existe côté paiement (administration et litiges) mais sans parcours de retour
+   dédié.
 0. **Monorepo `apps/` + `packages/` (Next.js / NestJS)** : non réalisé. Le
    domaine est déjà découpé en modules autonomes (`src/touma/<module>` avec son
    routeur, son service et ses adaptateurs), ce qui rend l'extraction mécanique ;

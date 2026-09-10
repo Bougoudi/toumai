@@ -37,15 +37,29 @@ function toPaymentStatus(status: ProviderPaymentStatus): PaymentStatus {
 }
 
 /**
- * Applique le succès d'un paiement : commande payée, commission enregistrée,
- * notifications. Idempotent : rejouer l'opération ne double ni la commande ni
- * la commission (contrôle du statut courant dans la transaction).
+ * Applique le succès d'un paiement : commandes payées, commissions
+ * enregistrées, notifications envoyées.
+ *
+ * Un paiement couvre soit une commande unique, soit un **groupe** de commandes
+ * (panier multi-vendeurs, payé en une fois). Dans les deux cas l'opération est
+ * idempotente : rejouer un webhook ne double ni les commandes ni les commissions.
  */
 async function applySuccess(paymentId: string, providerRef: string | null, metadata: Record<string, unknown> = {}) {
   const result = await prisma.$transaction(async (tx) => {
-    const payment = await tx.toumaPayment.findUnique({ where: { id: paymentId }, include: { order: { include: { store: true } } } });
+    const payment = await tx.toumaPayment.findUnique({
+      where: { id: paymentId },
+      include: {
+        order: { include: { store: true } },
+        orderGroup: { include: { orders: { include: { store: true } } } },
+      },
+    });
     if (!payment) throw notFound('Paiement introuvable.');
-    if (payment.status === 'SUCCEEDED') return { payment, order: payment.order, alreadyApplied: true };
+
+    // Commandes couvertes par ce paiement.
+    const orders = payment.orderGroup ? payment.orderGroup.orders : payment.order ? [payment.order] : [];
+    if (orders.length === 0) throw notFound('Paiement sans commande rattachée.');
+
+    if (payment.status === 'SUCCEEDED') return { payment, orders, alreadyApplied: true };
 
     const updated = await tx.toumaPayment.update({
       where: { id: payment.id },
@@ -57,49 +71,65 @@ async function applySuccess(paymentId: string, providerRef: string | null, metad
       },
     });
 
-    // La commande passe à PAID uniquement depuis PENDING (jamais en arrière).
-    if (payment.order.status === 'PENDING') {
-      await tx.toumaOrder.update({ where: { id: payment.orderId }, data: { status: 'PAID', paidAt: new Date() } });
+    for (const order of orders) {
+      // La commande passe à PAID uniquement depuis PENDING (jamais en arrière).
+      if (order.status === 'PENDING') {
+        await tx.toumaOrder.update({ where: { id: order.id }, data: { status: 'PAID', paidAt: new Date() } });
+      }
+      // Commission plateforme : enregistrée une seule fois par commande.
+      const existingCommission = await tx.toumaCommission.count({ where: { orderId: order.id } });
+      if (existingCommission === 0) {
+        await tx.toumaCommission.create({
+          data: {
+            orderId: order.id,
+            storeId: order.storeId,
+            rate: new Prisma.Decimal(env.touma.commissionRate.toString()),
+            amount: order.commissionTotal,
+            currency: order.currency,
+          },
+        });
+      }
     }
 
-    // Commission plateforme : enregistrée une seule fois par commande.
-    const existingCommission = await tx.toumaCommission.count({ where: { orderId: payment.orderId } });
-    if (existingCommission === 0) {
-      await tx.toumaCommission.create({
-        data: {
-          orderId: payment.orderId,
-          storeId: payment.order.storeId,
-          rate: new Prisma.Decimal(env.touma.commissionRate.toString()),
-          amount: payment.order.commissionTotal,
-          currency: payment.order.currency,
-        },
+    if (payment.orderGroup) {
+      await tx.toumaOrderGroup.update({
+        where: { id: payment.orderGroup.id },
+        data: { status: 'PAID', paidAt: new Date() },
       });
     }
-    return { payment: updated, order: payment.order, alreadyApplied: false };
+
+    return { payment: updated, orders, alreadyApplied: false };
   });
 
   if (!result.alreadyApplied) {
-    await Promise.all([
+    const notifications = result.orders.flatMap((order) => [
       notify({
-        userId: result.order.buyerId,
-        type: 'PAYMENT_SUCCEEDED',
+        userId: order.buyerId,
+        type: 'PAYMENT_SUCCEEDED' as const,
         title: 'Paiement confirmé',
-        body: `Le paiement de la commande ${result.order.orderNumber} a été confirmé.`,
-        data: { orderId: result.order.id, paymentId: result.payment.id },
+        body: `Le paiement de la commande ${order.orderNumber} a été confirmé.`,
+        data: { orderId: order.id, paymentId: result.payment.id },
       }),
       notify({
-        userId: result.order.store.ownerId,
-        type: 'NEW_ORDER_FOR_SELLER',
+        userId: order.store.ownerId,
+        type: 'NEW_ORDER_FOR_SELLER' as const,
         title: 'Nouvelle commande payée',
-        body: `Commande ${result.order.orderNumber} payée : préparez l'expédition.`,
-        data: { orderId: result.order.id },
+        body: `Commande ${order.orderNumber} payée : préparez l'expédition.`,
+        data: { orderId: order.id },
       }),
+    ]);
+    await Promise.all([
+      ...notifications,
       audit({
         actorId: null,
         action: 'payment.succeeded',
         entity: 'ToumaPayment',
         entityId: result.payment.id,
-        metadata: { orderId: result.order.id, amount: result.payment.amount.toString(), currency: result.payment.currency },
+        metadata: {
+          orders: result.orders.map((o) => o.id),
+          amount: result.payment.amount.toString(),
+          currency: result.payment.currency,
+        },
       }),
     ]);
   }
@@ -115,11 +145,38 @@ export const paymentService = {
    * Crée l'intention de paiement d'une commande.
    * `idempotencyKey` garantit qu'un double clic ne crée pas deux paiements.
    */
-  async create(user: ToumaRequestUser, input: { orderId: string; method: PaymentMethod; idempotencyKey?: string; returnUrl?: string }) {
-    const order = await prisma.toumaOrder.findUnique({ where: { id: input.orderId }, include: { payments: true } });
-    if (!order) throw notFound('Commande introuvable.');
-    if (order.buyerId !== user.id && user.role !== 'ADMIN') throw notFound('Commande introuvable.');
-    if (order.status !== 'PENDING') throw conflict(`La commande ${order.orderNumber} n'attend pas de paiement (statut ${order.status}).`);
+  async create(
+    user: ToumaRequestUser,
+    input: { orderId?: string; orderGroupId?: string; method: PaymentMethod; idempotencyKey?: string; returnUrl?: string },
+  ) {
+    if (!input.orderId && !input.orderGroupId) throw badRequest('Indiquez la commande ou le groupe à régler.');
+
+    // Cible du paiement : un groupe (panier multi-vendeurs) ou une commande seule.
+    const group = input.orderGroupId
+      ? await prisma.toumaOrderGroup.findUnique({ where: { id: input.orderGroupId }, include: { orders: true, payments: true } })
+      : null;
+    const order = !group && input.orderId
+      ? await prisma.toumaOrder.findUnique({ where: { id: input.orderId }, include: { payments: true, group: { include: { orders: true, payments: true } } } })
+      : null;
+
+    if (!group && !order) throw notFound('Commande introuvable.');
+
+    // Une commande appartenant à un groupe se règle au niveau du groupe :
+    // l'acheteur paie une seule fois pour tout son panier.
+    const target = group ?? order?.group ?? null;
+    const buyerId = target?.buyerId ?? order!.buyerId;
+    if (buyerId !== user.id && user.role !== 'ADMIN') throw notFound('Commande introuvable.');
+
+    const coveredOrders = target ? target.orders : [order!];
+    const pending = coveredOrders.filter((o) => o.status !== 'PENDING');
+    if (pending.length > 0) {
+      throw conflict(`La commande ${pending[0].orderNumber} n'attend pas de paiement (statut ${pending[0].status}).`);
+    }
+
+    const currency = coveredOrders[0].currency;
+    const amount = target
+      ? new Prisma.Decimal(target.total)
+      : new Prisma.Decimal(order!.total);
 
     const key = input.idempotencyKey ? `${user.id}:${input.idempotencyKey}` : null;
     if (key) {
@@ -128,9 +185,10 @@ export const paymentService = {
         return { payment: existing, checkoutUrl: (existing.metadata as { checkoutUrl?: string }).checkoutUrl ?? null, idempotent: true as const };
       }
     }
-    const pending = order.payments.find((p) => p.status === 'PENDING' || p.status === 'PROCESSING');
-    if (pending) {
-      return { payment: pending, checkoutUrl: (pending.metadata as { checkoutUrl?: string }).checkoutUrl ?? null, idempotent: true as const };
+    const existingPayments = target ? target.payments : order!.payments;
+    const inFlight = existingPayments.find((p) => p.status === 'PENDING' || p.status === 'PROCESSING');
+    if (inFlight) {
+      return { payment: inFlight, checkoutUrl: (inFlight.metadata as { checkoutUrl?: string }).checkoutUrl ?? null, idempotent: true as const };
     }
 
     // Le prestataire vient de la configuration du serveur, jamais de la requête :
@@ -140,27 +198,32 @@ export const paymentService = {
     if (!provider.methods.includes(input.method)) {
       throw badRequest(`Le prestataire ${provider.code} ne propose pas la méthode ${input.method}.`);
     }
-    const buyer = await prisma.user.findUniqueOrThrow({ where: { id: order.buyerId }, select: { id: true, email: true, name: true, phone: true, countryCode: true } });
+    const buyer = await prisma.user.findUniqueOrThrow({
+      where: { id: buyerId },
+      select: { id: true, email: true, name: true, phone: true, countryCode: true },
+    });
+    const reference = target ? target.reference : order!.orderNumber;
 
     const created = await provider.createPayment({
-      reference: order.orderNumber,
-      amount: order.total.toString(),
-      currency: order.currency,
+      reference,
+      amount: amount.toString(),
+      currency,
       method: input.method,
       customer: buyer,
       returnUrl: input.returnUrl,
-      metadata: { orderId: order.id },
+      metadata: { orderGroupId: target?.id ?? null, orderId: target ? null : order!.id },
     });
 
     const payment = await prisma.toumaPayment.create({
       data: {
-        orderId: order.id,
+        orderId: target ? null : order!.id,
+        orderGroupId: target?.id ?? null,
         provider: provider.code,
         providerRef: created.providerRef,
         method: input.method,
         status: toPaymentStatus(created.status),
-        amount: order.total,
-        currency: order.currency,
+        amount,
+        currency,
         idempotencyKey: key,
         // Aucune donnée bancaire : uniquement des références et instructions publiques.
         metadata: { checkoutUrl: created.checkoutUrl ?? null, instructions: created.instructions ?? {} } as object,
@@ -169,7 +232,13 @@ export const paymentService = {
     await prisma.toumaPaymentEvent.create({
       data: { paymentId: payment.id, type: 'payment.created', payload: { providerRef: created.providerRef, status: created.status } as object },
     });
-    await audit({ actorId: user.id, action: 'payment.create', entity: 'ToumaPayment', entityId: payment.id, metadata: { orderId: order.id } });
+    await audit({
+      actorId: user.id,
+      action: 'payment.create',
+      entity: 'ToumaPayment',
+      entityId: payment.id,
+      metadata: { orderGroupId: target?.id ?? null, orders: coveredOrders.map((o) => o.id) },
+    });
 
     return { payment, checkoutUrl: created.checkoutUrl ?? null, idempotent: false as const };
   },
@@ -179,9 +248,14 @@ export const paymentService = {
    * paiement a réussi : Touma interroge le prestataire et applique son verdict.
    */
   async confirm(user: ToumaRequestUser, input: { paymentId: string; payload?: Record<string, unknown> }) {
-    const payment = await prisma.toumaPayment.findUnique({ where: { id: input.paymentId }, include: { order: true } });
+    const payment = await prisma.toumaPayment.findUnique({
+      where: { id: input.paymentId },
+      include: { order: true, orderGroup: { include: { orders: true } } },
+    });
     if (!payment) throw notFound('Paiement introuvable.');
-    if (payment.order.buyerId !== user.id && user.role !== 'ADMIN') throw notFound('Paiement introuvable.');
+    const coveredOrders = payment.orderGroup ? payment.orderGroup.orders : payment.order ? [payment.order] : [];
+    const buyerId = payment.orderGroup?.buyerId ?? payment.order?.buyerId;
+    if (buyerId !== user.id && user.role !== 'ADMIN') throw notFound('Paiement introuvable.');
     if (payment.status === 'SUCCEEDED') return payment;
     if (['FAILED', 'CANCELLED', 'REFUNDED'].includes(payment.status)) {
       throw conflict(`Ce paiement est déjà au statut ${payment.status}.`);
@@ -199,18 +273,19 @@ export const paymentService = {
       where: { id: payment.id },
       data: { status: toPaymentStatus(result.status), failureReason: result.failureReason ?? null },
     });
-    if (result.status === 'FAILED') {
+    if (result.status === 'FAILED' && buyerId) {
+      const references = coveredOrders.map((o) => o.orderNumber).join(', ');
       await Promise.all([
         notify({
-          userId: payment.order.buyerId,
+          userId: buyerId,
           type: 'PAYMENT_FAILED',
           title: 'Paiement refusé',
-          body: `Le paiement de la commande ${payment.order.orderNumber} a échoué : ${result.failureReason ?? 'raison inconnue'}.`,
-          data: { orderId: payment.orderId },
+          body: `Le paiement de la commande ${references} a échoué : ${result.failureReason ?? 'raison inconnue'}.`,
+          data: { orderGroupId: payment.orderGroupId, orderId: payment.orderId },
         }),
         // Signal de risque : les échecs répétés nourrissent le score (Touma Risk).
         prisma.toumaFraudEvent.create({
-          data: { userId: payment.order.buyerId, code: 'PAYMENT_FAILED', weight: 3, detail: { orderId: payment.orderId } as object },
+          data: { userId: buyerId, code: 'PAYMENT_FAILED', weight: 3, detail: { orderGroupId: payment.orderGroupId } as object },
         }),
       ]);
     }
@@ -259,15 +334,23 @@ export const paymentService = {
   async get(user: ToumaRequestUser, paymentId: string) {
     const payment = await prisma.toumaPayment.findUnique({
       where: { id: paymentId },
-      include: { order: { include: { store: { select: { ownerId: true, name: true } } } }, events: { orderBy: { createdAt: 'desc' } } },
+      include: {
+        order: { include: { store: { select: { ownerId: true, name: true } } } },
+        orderGroup: { include: { orders: { include: { store: { select: { ownerId: true } } } } } },
+        events: { orderBy: { createdAt: 'desc' } },
+      },
     });
     if (!payment) throw notFound('Paiement introuvable.');
-    const allowed = payment.order.buyerId === user.id || payment.order.store.ownerId === user.id || user.role === 'ADMIN';
+    const orders = payment.orderGroup ? payment.orderGroup.orders : payment.order ? [payment.order] : [];
+    const buyerId = payment.orderGroup?.buyerId ?? payment.order?.buyerId;
+    const allowed = buyerId === user.id || orders.some((o) => o.store.ownerId === user.id) || user.role === 'ADMIN';
     if (!allowed) throw notFound('Paiement introuvable.');
     return {
       id: payment.id,
       orderId: payment.orderId,
-      orderNumber: payment.order.orderNumber,
+      orderGroupId: payment.orderGroupId,
+      reference: payment.orderGroup?.reference ?? payment.order?.orderNumber ?? null,
+      orderNumbers: orders.map((o) => o.orderNumber),
       provider: payment.provider,
       providerRef: payment.providerRef,
       method: payment.method,
@@ -284,7 +367,10 @@ export const paymentService = {
   /** Remboursement (administration ou résolution de litige). */
   async refund(actor: ToumaRequestUser, paymentId: string, amount?: string) {
     if (actor.role !== 'ADMIN') throw forbidden('Le remboursement est réservé à l’administration Touma.');
-    const payment = await prisma.toumaPayment.findUnique({ where: { id: paymentId }, include: { order: true } });
+    const payment = await prisma.toumaPayment.findUnique({
+      where: { id: paymentId },
+      include: { order: true, orderGroup: { include: { orders: true } } },
+    });
     if (!payment) throw notFound('Paiement introuvable.');
     if (payment.status !== 'SUCCEEDED' && payment.status !== 'PARTIALLY_REFUNDED') {
       throw conflict('Seul un paiement abouti peut être remboursé.');
@@ -307,7 +393,12 @@ export const paymentService = {
       });
       await tx.toumaPaymentEvent.create({ data: { paymentId: payment.id, type: 'payment.refunded', payload: { ...result } as object } });
       if (fullyRefunded) {
-        await tx.toumaOrder.update({ where: { id: payment.orderId }, data: { status: 'REFUNDED' } });
+        // Un remboursement intégral concerne toutes les commandes couvertes.
+        const orderIds = payment.orderGroup ? payment.orderGroup.orders.map((o) => o.id) : payment.orderId ? [payment.orderId] : [];
+        await tx.toumaOrder.updateMany({ where: { id: { in: orderIds } }, data: { status: 'REFUNDED' } });
+        if (payment.orderGroupId) {
+          await tx.toumaOrderGroup.update({ where: { id: payment.orderGroupId }, data: { status: 'REFUNDED' } });
+        }
       }
       return p;
     });
@@ -316,7 +407,7 @@ export const paymentService = {
       action: 'payment.refund',
       entity: 'ToumaPayment',
       entityId: payment.id,
-      metadata: { amount: refundAmount.toString(), currency: payment.currency, orderId: payment.orderId },
+      metadata: { amount: refundAmount.toString(), currency: payment.currency, orderId: payment.orderId, orderGroupId: payment.orderGroupId },
     });
     return updated;
   },

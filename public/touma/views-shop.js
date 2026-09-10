@@ -276,6 +276,10 @@ export async function product(params) {
             <button class="btn btn-accent btn-block" data-buy-now="${esc(p.id)}" ${p.inStock ? '' : 'disabled'}>Acheter maintenant</button>
             <button class="btn btn-secondary btn-block" data-add-to-cart="${esc(p.id)}" ${p.inStock ? '' : 'disabled'}>Ajouter au panier</button>
           </div>
+          <button class="btn btn-ghost btn-block btn-sm" data-contact-store="${esc(p.store.id)}">Contacter le vendeur</button>
+          <p class="xs muted" style="margin:var(--space-2) 0 0">
+            Besoin d'un volume important ? <a href="/touma/business/appels-offres/nouveau" data-link>Publiez une demande d'achat</a>.
+          </p>
         </div>
 
         <div class="card mt-6">
@@ -480,7 +484,7 @@ export async function cart() {
 const CHECKOUT_STEPS = ['Adresse', 'Livraison', 'Paiement', 'Confirmation'];
 
 /** État du tunnel, conservé le temps de la session de navigation. */
-export const checkoutState = { step: 0, addressId: null, quotes: {}, orders: [] };
+export const checkoutState = { step: 0, addressId: null, quotes: {}, orders: [], group: null, deliveryMethod: 'HOME', pickupPointId: null };
 
 export async function checkout(_params, query) {
   const step = Number(query.get('etape') ?? checkoutState.step ?? 0);
@@ -498,8 +502,10 @@ export async function checkout(_params, query) {
 
   const header = `<h1>Commande</h1>${stepper(CHECKOUT_STEPS, step)}`;
 
-  // Étape 1 — adresse de livraison
+  // Étape 1 — adresse et mode de remise
   if (step === 0) {
+    const buyerCountry = me.addresses[0]?.countryCode ?? me.countryCode ?? '';
+    const pickupPoints = buyerCountry ? await api(`/pickup-points?country=${buyerCountry}`) : { items: [] };
     return `${header}
       <div class="grid grid-2">
         <section class="card">
@@ -527,22 +533,57 @@ export async function checkout(_params, query) {
             <form id="address-form" style="margin-top:var(--space-4)">
               <div class="field"><label for="a-name">Nom complet</label><input id="a-name" name="fullName" required autocomplete="name" /></div>
               <div class="field"><label for="a-phone">Téléphone</label><input id="a-phone" name="phone" required inputmode="tel" placeholder="+235…" autocomplete="tel" /></div>
-              <div class="field"><label for="a-line1">Adresse</label><input id="a-line1" name="line1" required autocomplete="address-line1" /></div>
+              <div class="field"><label for="a-line1">Adresse ou rue</label><input id="a-line1" name="line1" required autocomplete="address-line1" /></div>
+              <div class="field">
+                <label for="a-district">Quartier</label>
+                <input id="a-district" name="district" placeholder="Klemat, Akwa, Moursal…" />
+                <span class="field-hint">Souvent plus utile que le nom de rue pour trouver l'adresse.</span>
+              </div>
+              <div class="field">
+                <label for="a-landmark">Point de repère</label>
+                <input id="a-landmark" name="landmark" placeholder="Face à la station Total, près du marché…" />
+              </div>
               <div class="field"><label for="a-city">Ville</label><input id="a-city" name="city" required autocomplete="address-level2" /></div>
               <div class="field"><label for="a-country">Pays</label>
                 <select id="a-country" name="countryCode">${countries.items.map((c) => `<option value="${esc(c.code)}"${c.code === me.countryCode ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
               </div>
+              <div class="field"><label for="a-instructions">Instructions pour le livreur</label><input id="a-instructions" name="instructions" placeholder="Appeler avant de passer…" /></div>
               <button class="btn btn-secondary" type="submit">Enregistrer l'adresse</button>
             </form>
           </details>
         </section>
 
-        <aside>
-          <div class="card buybox">
-            ${summaryBlock(data)}
-            <button class="btn btn-accent btn-block btn-lg mt-6" data-checkout-next="1" ${me.addresses.length ? '' : 'disabled'}>Continuer vers la livraison</button>
+        <section class="card">
+          <h2 style="font-size:var(--text-md)">Mode de remise</h2>
+          <div class="stack">
+            <label class="check" data-selected="true">
+              <input type="radio" name="delivery" value="HOME" checked />
+              <span><strong>Livraison à mon adresse</strong><br /><span class="small muted">Le transporteur vient au lieu indiqué.</span></span>
+            </label>
+            <label class="check" ${pickupPoints.items.length ? '' : 'aria-disabled="true"'}>
+              <input type="radio" name="delivery" value="PICKUP_POINT" ${pickupPoints.items.length ? '' : 'disabled'} />
+              <span><strong>Retrait en point relais</strong><br /><span class="small muted">
+                ${pickupPoints.items.length ? 'Souvent plus fiable et moins cher.' : 'Aucun point relais dans votre pays pour l’instant.'}
+              </span></span>
+            </label>
           </div>
-        </aside>
+          <div class="field mt-6" id="pickup-choice" hidden>
+            <label for="pickup-point">Point relais</label>
+            <select id="pickup-point">
+              ${pickupPoints.items
+                .map(
+                  (p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${esc(p.city)}${p.district ? ` (${esc(p.district)})` : ''}${p.openingHours ? ` · ${esc(p.openingHours)}` : ''}</option>`,
+                )
+                .join('')}
+            </select>
+            <span class="field-hint">Vous serez prévenu dès que le colis y sera déposé.</span>
+          </div>
+        </section>
+
+      </div>
+      <div class="card buybox mt-6">
+        ${summaryBlock(data)}
+        <button class="btn btn-accent btn-block btn-lg mt-6" data-checkout-next="1" ${me.addresses.length ? '' : 'disabled'}>Continuer vers la livraison</button>
       </div>`;
   }
 
@@ -653,6 +694,7 @@ export async function checkout(_params, query) {
 
   // Étape 4 — confirmation
   const orders = checkoutState.orders;
+  const group = checkoutState.group;
   return `${header}
     <div class="card center">
       <div class="state-icon" style="background:var(--success-soft);color:var(--success)">${svg('shield')}</div>
@@ -670,8 +712,9 @@ export async function checkout(_params, query) {
           .join('')}
       </div>
       <div class="row" style="justify-content:center;margin-top:var(--space-6)">
-        <a class="btn" href="/touma/commandes" data-link>Mes commandes</a>
-        <a class="btn btn-secondary" href="/touma/produits" data-link>Continuer mes achats</a>
+        ${group ? `<a class="btn" href="/touma/commandes/groupe/${esc(group.id)}" data-link>Récapitulatif du panier</a>` : ''}
+        <a class="btn btn-secondary" href="/touma/commandes" data-link>Mes commandes</a>
+        <a class="btn btn-ghost" href="/touma/produits" data-link>Continuer mes achats</a>
       </div>
     </div>`;
 }
@@ -702,6 +745,79 @@ function summaryBlock(data, groups = null) {
         <span>${shipping === null ? '<span class="muted small">à l\'étape suivante</span>' : money(shipping, data.currency)}</span>
       </div>
       <div class="summary-line summary-total"><span>Total</span><span>${money(total, data.currency)}</span></div>
+    </div>`;
+}
+
+/** Récapitulatif d'un panier payé en une fois : le groupe et ses sous-commandes. */
+export async function orderGroup(params) {
+  const g = await api(`/orders/groups/${params.id}`);
+  return `
+    ${breadcrumb([{ label: 'Mes commandes', href: '/touma/commandes' }, { label: g.reference }])}
+    <div class="row-between" style="margin-bottom:var(--space-5)">
+      <div>
+        <h1 style="font-size:var(--text-xl);margin-bottom:2px">Panier ${esc(g.reference)}</h1>
+        <p class="small muted" style="margin:0">
+          ${formatDate(g.createdAt, true)} · ${g.orders.length} vendeur(s)${g.crossBorder ? ' · transfrontalier' : ''}
+        </p>
+      </div>
+      ${statusPill(g.status)}
+    </div>
+
+    <div class="grid grid-2">
+      <div class="stack">
+        <section class="card">
+          <h2 style="font-size:var(--text-md)">Commandes par vendeur</h2>
+          <p class="small muted">Vous avez payé une seule fois ; chaque vendeur prépare et expédie sa part.</p>
+          <div class="stack" style="gap:var(--space-3)">
+            ${g.orders
+              .map(
+                (o) => `<div class="row-between card" style="box-shadow:none">
+                  <div>
+                    <strong>${esc(o.store.name)}</strong>
+                    <div class="small muted">${esc(o.orderNumber)} · ${o.itemCount} article(s) · ${esc(o.store.countryCode)}</div>
+                    ${o.shipment ? `<div class="xs muted">Suivi ${esc(o.shipment.trackingNumber)}</div>` : ''}
+                  </div>
+                  <div class="row" style="gap:var(--space-3)">
+                    ${statusPill(o.status)}
+                    <strong>${money(o.total, o.currency)}</strong>
+                    <a class="btn btn-secondary btn-sm" href="/touma/commandes/${esc(o.id)}" data-link>Suivre</a>
+                  </div>
+                </div>`,
+              )
+              .join('')}
+          </div>
+        </section>
+      </div>
+
+      <aside class="stack">
+        <section class="card">
+          <h2 style="font-size:var(--text-md)">Paiement</h2>
+          <div class="summary">
+            <div class="summary-line"><span>Marchandise</span><span>${money(g.itemsTotal, g.currency)}</span></div>
+            <div class="summary-line"><span>Livraison</span><span>${money(g.shippingTotal, g.currency)}</span></div>
+            ${Number(g.discountTotal) > 0 ? `<div class="summary-line"><span>Remise</span><span>− ${money(g.discountTotal, g.currency)}</span></div>` : ''}
+            <div class="summary-line summary-total"><span>Total payé</span><span>${money(g.total, g.currency)}</span></div>
+          </div>
+          ${g.payment
+            ? `<p class="row mt-6" style="gap:var(--space-2)">${statusPill(g.payment.status)}<span class="small muted">${esc(label(g.payment.method))}</span></p>`
+            : `<button class="btn btn-accent btn-block mt-6" data-pay-group="${esc(g.id)}">Payer ${money(g.total, g.currency)}</button>`}
+        </section>
+
+        <section class="card">
+          <h2 style="font-size:var(--text-md)">Livraison</h2>
+          <p class="small" style="margin:0">
+            ${esc(g.shippingSnapshot?.fullName ?? '')}<br />
+            ${esc(g.shippingSnapshot?.line1 ?? '')}<br />
+            ${g.shippingSnapshot?.district ? `${esc(g.shippingSnapshot.district)}<br />` : ''}
+            ${g.shippingSnapshot?.landmark ? `<span class="muted">Repère : ${esc(g.shippingSnapshot.landmark)}</span><br />` : ''}
+            ${esc(g.shippingSnapshot?.city ?? '')} — ${esc(g.shippingSnapshot?.countryCode ?? '')}
+          </p>
+          ${g.shippingSnapshot?.pickupPoint
+            ? `<p class="small mt-6" style="margin-bottom:0"><span class="badge badge-country">Point relais</span>
+                <strong>${esc(g.shippingSnapshot.pickupPoint.name)}</strong> — ${esc(g.shippingSnapshot.pickupPoint.addressLine)}</p>`
+            : ''}
+        </section>
+      </aside>
     </div>`;
 }
 

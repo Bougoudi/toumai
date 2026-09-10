@@ -53,6 +53,18 @@ export const addressSchema = z.object({
   postalCode: z.string().trim().max(20).optional(),
   countryCode: z.string().trim().toUpperCase().length(2),
   isDefault: z.boolean().default(false),
+
+  /**
+   * Réalité des adresses d'Afrique centrale : beaucoup de lieux n'ont ni rue
+   * nommée ni code postal. Le quartier et le point de repère sont souvent ce
+   * qui permet réellement au livreur de trouver le destinataire.
+   */
+  district: z.string().trim().max(120).optional(),
+  landmark: z.string().trim().max(200).optional(),
+  instructions: z.string().trim().max(500).optional(),
+  /** Coordonnées facultatives, jamais exposées publiquement. */
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

@@ -3,6 +3,10 @@ import { z } from 'zod';
 export const checkoutSchema = z.object({
   /** Adresse de livraison de l'acheteur (doit lui appartenir). */
   addressId: z.string().cuid(),
+  /** Mode de remise : domicile, point relais ou retrait chez le vendeur. */
+  deliveryMethod: z.enum(['HOME', 'PICKUP_POINT', 'SELLER_PICKUP']).default('HOME'),
+  /** Point relais choisi (obligatoire si `deliveryMethod` vaut PICKUP_POINT). */
+  pickupPointId: z.string().cuid().optional(),
   /** Devis de transport choisis, par boutique : { storeId: quoteId }. */
   shippingQuotes: z.record(z.string().cuid()).optional(),
   note: z.string().trim().max(1000).optional(),

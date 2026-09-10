@@ -11,9 +11,18 @@ import type { CheckoutInput } from './order.schema.js';
 
 /** Numéro de commande lisible et non devinable. */
 function orderNumber(): string {
+  return reference('TM');
+}
+
+/** Référence de groupe de commande (un panier validé = un groupe). */
+function groupReference(): string {
+  return reference('TMG');
+}
+
+function reference(prefix: string): string {
   const d = new Date();
   const day = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
-  return `TM-${day}-${randomBytes(3).toString('hex').toUpperCase()}`;
+  return `${prefix}-${day}-${randomBytes(3).toString('hex').toUpperCase()}`;
 }
 
 /**
@@ -32,6 +41,17 @@ function orderNumber(): string {
  */
 export const checkoutService = {
   async checkout(user: ToumaRequestUser, input: CheckoutInput) {
+    // 0. Idempotence — AVANT toute autre vérification : après un checkout
+    //    réussi le panier est vide, et une reprise réseau doit retrouver la
+    //    commande déjà créée plutôt que se voir répondre « panier vide ».
+    if (input.idempotencyKey) {
+      const existing = await prisma.toumaOrderGroup.findFirst({
+        where: { buyerId: user.id, checkoutKey: input.idempotencyKey },
+        include: { orders: { include: { items: true, store: { select: { id: true, name: true, slug: true } } } } },
+      });
+      if (existing) return { group: existing, orders: existing.orders, idempotent: true as const };
+    }
+
     // 1. Panier
     const cart = await prisma.toumaCart.findUnique({
       where: { userId: user.id },
@@ -54,14 +74,16 @@ export const checkoutService = {
       throw badRequest(`Livraison non disponible vers « ${address.countryCode} » pour l'instant.`);
     }
 
-    // Idempotence : rejouer la même clé renvoie les commandes déjà créées
-    // (un double clic, une reprise réseau, un retry mobile ne facturent pas deux fois).
-    if (input.idempotencyKey) {
-      const existing = await prisma.toumaOrder.findMany({
-        where: { buyerId: user.id, checkoutKey: input.idempotencyKey },
-        include: { items: true, store: { select: { id: true, name: true, slug: true } } },
-      });
-      if (existing.length > 0) return { orders: existing, idempotent: true as const };
+    // 5 bis. Mode de remise : le point relais est contrôlé (existant, actif, et
+    // desservant bien le pays de livraison).
+    let pickupPoint: Awaited<ReturnType<typeof prisma.toumaPickupPoint.findUnique>> = null;
+    if (input.deliveryMethod === 'PICKUP_POINT') {
+      if (!input.pickupPointId) throw badRequest('Choisissez un point relais.');
+      pickupPoint = await prisma.toumaPickupPoint.findUnique({ where: { id: input.pickupPointId } });
+      if (!pickupPoint || !pickupPoint.active) throw badRequest('Point relais indisponible.');
+      if (pickupPoint.countryCode !== address.countryCode) {
+        throw badRequest('Ce point relais ne dessert pas le pays de livraison choisi.');
+      }
     }
 
     // 2/3/4. Contrôles produit, prix et stock, boutique par boutique.
@@ -111,7 +133,7 @@ export const checkoutService = {
       }
       const quotes = await logisticsService.quote({
         origin: { countryCode: store.countryCode, city: store.city },
-        destination: { countryCode: address.countryCode, city: address.city },
+        destination: { countryCode: address.countryCode, city: pickupPoint?.city ?? address.city },
         parcel: { weightGrams },
         currency,
       });
@@ -119,9 +141,43 @@ export const checkoutService = {
       shippingByStore.set(storeId, { quoteId: cheapest.id, amount: new Prisma.Decimal(cheapest.amount) });
     }
 
-    // 7/8/9. Création des commandes + décrément du stock, dans UNE transaction.
-    const orderIds = await prisma.$transaction(async (tx) => {
-      const created: string[] = [];
+    // Copie figée de l'adresse : modifier l'adresse plus tard ne change rien.
+    const shippingSnapshot = {
+      fullName: address.fullName,
+      phone: address.phone,
+      line1: address.line1,
+      line2: address.line2,
+      district: address.district,
+      landmark: address.landmark,
+      instructions: address.instructions,
+      city: address.city,
+      region: address.region,
+      postalCode: address.postalCode,
+      countryCode: address.countryCode,
+      deliveryMethod: input.deliveryMethod,
+      pickupPoint: pickupPoint
+        ? { id: pickupPoint.id, code: pickupPoint.code, name: pickupPoint.name, addressLine: pickupPoint.addressLine, city: pickupPoint.city, landmark: pickupPoint.landmark }
+        : null,
+    };
+
+    // 7/8/9. Création du groupe, des sous-commandes et décrément du stock,
+    //        dans UNE transaction : tout réussit ou rien n'est écrit.
+    const groupId = await prisma.$transaction(async (tx) => {
+      const orderGroup = await tx.toumaOrderGroup.create({
+        data: {
+          reference: groupReference(),
+          buyerId: user.id,
+          currency: cart.items[0].currency,
+          itemsTotal: new Prisma.Decimal(0),
+          shippingTotal: new Prisma.Decimal(0),
+          total: new Prisma.Decimal(0),
+          shippingSnapshot: shippingSnapshot as object,
+          checkoutKey: input.idempotencyKey ?? null,
+        },
+      });
+      let groupItems = new Prisma.Decimal(0);
+      let groupShipping = new Prisma.Decimal(0);
+      let groupCrossBorder = false;
 
       for (const [storeId, items] of groups) {
         const currency = items[0].currency;
@@ -143,9 +199,15 @@ export const checkoutService = {
         const commission = applyRate(subtotal, env.touma.commissionRate, currency);
         const total = subtotal.plus(shipping.amount);
 
+        const crossBorder = address.countryCode !== store.countryCode;
+        groupItems = groupItems.plus(subtotal);
+        groupShipping = groupShipping.plus(shipping.amount);
+        groupCrossBorder = groupCrossBorder || crossBorder;
+
         const order = await tx.toumaOrder.create({
           data: {
             orderNumber: orderNumber(),
+            groupId: orderGroup.id,
             buyerId: user.id,
             storeId,
             currency,
@@ -154,18 +216,10 @@ export const checkoutService = {
             commissionTotal: commission,
             total,
             shippingAddressId: address.id,
-            // Copie figée : modifier l'adresse plus tard ne change pas la commande.
-            shippingSnapshot: {
-              fullName: address.fullName,
-              phone: address.phone,
-              line1: address.line1,
-              line2: address.line2,
-              city: address.city,
-              region: address.region,
-              postalCode: address.postalCode,
-              countryCode: address.countryCode,
-            } as object,
-            crossBorder: address.countryCode !== store.countryCode,
+            shippingSnapshot: shippingSnapshot as object,
+            deliveryMethod: input.deliveryMethod,
+            pickupPointId: pickupPoint?.id ?? null,
+            crossBorder,
             buyerCountry: address.countryCode,
             sellerCountry: store.countryCode,
             note: input.note ?? null,
@@ -205,15 +259,28 @@ export const checkoutService = {
         if (shipping.quoteId) {
           await tx.toumaShippingQuote.update({ where: { id: shipping.quoteId }, data: { orderId: order.id } });
         }
-        created.push(order.id);
       }
+
+      await tx.toumaOrderGroup.update({
+        where: { id: orderGroup.id },
+        data: {
+          itemsTotal: groupItems,
+          shippingTotal: groupShipping,
+          total: groupItems.plus(groupShipping),
+          crossBorder: groupCrossBorder,
+        },
+      });
 
       // Le panier est vidé : les articles sont désormais des commandes.
       await tx.toumaCartItem.deleteMany({ where: { cartId: cart.id } });
-      return created;
+      return orderGroup.id;
     });
 
-    const orders = await prisma.toumaOrder.findMany({ where: { id: { in: orderIds } }, include: { items: true, store: { select: { id: true, name: true, slug: true } } } });
+    const group = await prisma.toumaOrderGroup.findUniqueOrThrow({
+      where: { id: groupId },
+      include: { orders: { include: { items: true, store: { select: { id: true, name: true, slug: true } } } } },
+    });
+    const orders = group.orders;
 
     // 10. Notifications (acheteur + vendeurs). Le paiement se prépare ensuite
     //     via POST /api/v1/payments/create : la commande reste PENDING.
@@ -229,6 +296,6 @@ export const checkoutService = {
       ),
     ]);
 
-    return { orders, idempotent: false as const };
+    return { group, orders, idempotent: false as const };
   },
 };

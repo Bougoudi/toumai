@@ -38,6 +38,20 @@ const ROUTES = [
   { path: '/touma/inscription', view: account.register },
   { path: '/touma/compte', view: account.account, auth: true },
 
+  { path: '/touma/commandes/groupe/:id', view: shop.orderGroup, auth: true },
+
+  // TOUMA Business (chargé à la demande).
+  { path: '/touma/business', module: 'business', name: 'dashboard', auth: true },
+  { path: '/touma/business/appels-offres', module: 'business', name: 'rfqs', auth: true },
+  { path: '/touma/business/appels-offres/nouveau', module: 'business', name: 'newRfq', auth: true },
+  { path: '/touma/business/appels-offres/:id', module: 'business', name: 'rfq', auth: true },
+  { path: '/touma/business/profil', module: 'business', name: 'profile', auth: true },
+  { path: '/touma/vendeur/offres', module: 'business', name: 'myQuotes', auth: true, role: 'SELLER' },
+
+  // Messagerie.
+  { path: '/touma/messages', module: 'messages', name: 'inbox', auth: true },
+  { path: '/touma/messages/:id', module: 'messages', name: 'thread', auth: true },
+
   // Espace vendeur (chargé à la demande).
   { path: '/touma/vendeur', module: 'seller', name: 'dashboard', auth: true, role: 'SELLER' },
   { path: '/touma/vendeur/boutique', module: 'seller', name: 'storeSettings', auth: true },
@@ -57,8 +71,15 @@ const ROUTES = [
 ];
 
 const modules = {};
+const LOADERS = {
+  seller: () => import('./views-seller.js'),
+  admin: () => import('./views-admin.js'),
+  business: () => import('./views-business.js'),
+  messages: () => import('./views-messages.js'),
+};
+
 async function loadModule(name) {
-  modules[name] = modules[name] ?? (name === 'seller' ? import('./views-seller.js') : import('./views-admin.js'));
+  modules[name] = modules[name] ?? LOADERS[name]();
   return modules[name];
 }
 
@@ -91,6 +112,7 @@ function navLinks() {
     ['/touma/produits', 'Catalogue'],
     ['/touma/boutiques', 'Boutiques'],
   ];
+  links.push(['/touma/business', 'Business']);
   if (user) {
     links.push(['/touma/commandes', 'Mes commandes']);
     if (session.isSeller) links.push(['/touma/vendeur', 'Espace vendeur']);
@@ -113,6 +135,7 @@ function renderChrome() {
   const drawerLinks = [...navLinks()];
   if (user) {
     drawerLinks.splice(2, 0, ['/touma/panier', 'Panier']);
+    drawerLinks.push(['/touma/messages', 'Messages']);
     drawerLinks.push(['/touma/compte', 'Mon compte']);
   }
   document.getElementById('drawer-nav').innerHTML = [
@@ -154,6 +177,8 @@ function drawerIcon(href) {
   if (href.includes('boutiques')) return svg('store');
   if (href.includes('panier')) return svg('cart');
   if (href.includes('commandes')) return svg('box');
+  if (href.includes('business')) return svg('chart');
+  if (href.includes('messages')) return svg('inbox');
   if (href.includes('vendeur')) return svg('chart');
   if (href.includes('admin')) return svg('shield');
   return svg('user');
@@ -388,6 +413,19 @@ document.addEventListener('click', (event) => {
       { button: el },
     );
   }
+  if (d.contactStore) {
+    if (!requireLogin()) return;
+    return run(
+      async () => {
+        const conversation = await api('/conversations', {
+          method: 'POST',
+          body: { storeId: d.contactStore, orderId: d.order || undefined },
+        });
+        navigate(`/touma/messages/${conversation.id}`);
+      },
+      { button: el },
+    );
+  }
   if (d.gallery !== undefined) {
     const main = document.getElementById('gallery-main');
     if (main) main.innerHTML = `<img src="${d.gallery || '/touma/img/placeholder.svg'}" alt="" />`;
@@ -455,6 +493,13 @@ document.addEventListener('click', (event) => {
       const selected = document.querySelector('input[name="address"]:checked');
       if (!selected) return toast('Choisissez une adresse de livraison.', 'error');
       shop.checkoutState.addressId = selected.value;
+      const delivery = document.querySelector('input[name="delivery"]:checked')?.value ?? 'HOME';
+      shop.checkoutState.deliveryMethod = delivery;
+      if (delivery === 'PICKUP_POINT') {
+        const point = document.getElementById('pickup-point');
+        if (!point?.value) return toast('Choisissez un point relais.', 'error');
+        shop.checkoutState.pickupPointId = point.value;
+      }
     }
     shop.checkoutState.step = step;
     return navigate(`/touma/checkout?etape=${step}`);
@@ -466,19 +511,27 @@ document.addEventListener('click', (event) => {
         const key = `web-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
         const result = await api('/checkout', {
           method: 'POST',
-          body: { addressId: shop.checkoutState.addressId, shippingQuotes: shop.checkoutState.quotes, idempotencyKey: key },
+          body: {
+            addressId: shop.checkoutState.addressId,
+            shippingQuotes: shop.checkoutState.quotes,
+            deliveryMethod: shop.checkoutState.deliveryMethod,
+            pickupPointId: shop.checkoutState.pickupPointId ?? undefined,
+            idempotencyKey: key,
+          },
         });
-        // Paiement immédiat de chaque commande créée ; le serveur confirme.
-        const paid = [];
-        for (const order of result.orders) {
-          const created = await api('/payments/create', { method: 'POST', body: { orderId: order.id, method, idempotencyKey: `pay-${order.id}` } });
-          const confirmed = await api('/payments/confirm', { method: 'POST', body: { paymentId: created.payment.id } });
-          paid.push({ ...order, status: confirmed.status === 'SUCCEEDED' ? 'PAID' : order.status });
-        }
-        shop.checkoutState.orders = paid;
+        // UN seul paiement pour tout le panier, même multi-vendeurs ; le serveur
+        // confirme auprès du prestataire et répartit ensuite par commande.
+        const created = await api('/payments/create', {
+          method: 'POST',
+          body: { orderGroupId: result.group.id, method, idempotencyKey: `pay-${result.group.id}` },
+        });
+        const confirmed = await api('/payments/confirm', { method: 'POST', body: { paymentId: created.payment.id } });
+        const paid = confirmed.status === 'SUCCEEDED';
+        shop.checkoutState.group = result.group;
+        shop.checkoutState.orders = result.orders.map((o) => ({ ...o, status: paid ? 'PAID' : o.status }));
         shop.checkoutState.step = 3;
         await refreshCounters();
-        toast('Commande confirmée. Merci !', 'success');
+        toast(paid ? 'Commande confirmée. Merci !' : 'Commande créée : le paiement reste à confirmer.', paid ? 'success' : 'warning');
         navigate('/touma/checkout?etape=3');
       },
       { button: el },
@@ -486,6 +539,20 @@ document.addEventListener('click', (event) => {
   }
 
   // Commandes acheteur
+  if (d.payGroup) {
+    return run(
+      async () => {
+        const created = await api('/payments/create', {
+          method: 'POST',
+          body: { orderGroupId: d.payGroup, method: 'MOBILE_MONEY', idempotencyKey: `pay-${d.payGroup}` },
+        });
+        const confirmed = await api('/payments/confirm', { method: 'POST', body: { paymentId: created.payment.id } });
+        toast(confirmed.status === 'SUCCEEDED' ? 'Paiement confirmé.' : `Paiement ${confirmed.status}.`, confirmed.status === 'SUCCEEDED' ? 'success' : 'error');
+        await render();
+      },
+      { button: el },
+    );
+  }
   if (d.payOrder) {
     const method = document.getElementById('method')?.value ?? 'MOBILE_MONEY';
     return run(
@@ -580,6 +647,66 @@ document.addEventListener('click', (event) => {
       },
       { button: el },
     );
+  }
+
+  // TOUMA Business
+  if (el.id === 'add-rfq-item') {
+    event.preventDefault();
+    const container = document.getElementById('rfq-items');
+    const template = container.firstElementChild.cloneNode(true);
+    template.querySelectorAll('input').forEach((input) => {
+      if (input.classList.contains('i-qty')) input.value = '100';
+      else if (input.classList.contains('i-unit')) input.value = 'kg';
+      else input.value = '';
+    });
+    // Les identifiants doivent rester uniques (libellés accessibles).
+    const index = container.children.length;
+    template.querySelectorAll('input, select').forEach((field) => {
+      const oldId = field.id;
+      field.id = `${oldId.replace(/-\d+$/, '')}-${index}`;
+      const labelFor = template.querySelector(`label[for="${oldId}"]`);
+      if (labelFor) labelFor.setAttribute('for', field.id);
+    });
+    container.appendChild(template);
+    return;
+  }
+  if (d.closeRfq) {
+    return run(async () => {
+      const ok = await confirmDialog({
+        title: 'Clore cette demande ?',
+        body: 'Les fournisseurs ne pourront plus y répondre. Les offres déjà reçues restent consultables.',
+        confirmLabel: 'Clore',
+      });
+      if (!ok) return;
+      await api(`/rfqs/${d.closeRfq}/close`, { method: 'POST' });
+      toast('Demande close.');
+      await render();
+    });
+  }
+  if (d.acceptQuote) {
+    const select = el.parentElement.querySelector('.accept-address');
+    return run(
+      async () => {
+        const ok = await confirmDialog({
+          title: 'Accepter cette offre ?',
+          body: 'Une commande sera créée au prix négocié et les autres offres seront écartées.',
+          confirmLabel: 'Accepter et commander',
+        });
+        if (!ok) return;
+        const result = await api(`/quotes/${d.acceptQuote}/accept`, { method: 'POST', body: { addressId: select.value } });
+        toast(`Commande ${result.orderNumber} créée.`, 'success');
+        navigate(`/touma/commandes/groupe/${result.orderGroupId}`);
+      },
+      { button: el },
+    );
+  }
+  if (d.rejectQuote) {
+    return run(async () => {
+      const reason = prompt('Motif du refus (communiqué au fournisseur, facultatif) :');
+      await api(`/quotes/${d.rejectQuote}/reject`, { method: 'POST', body: reason ? { reason } : {} });
+      toast('Offre écartée.');
+      await render();
+    });
   }
 
   // Administration
@@ -826,6 +953,130 @@ document.addEventListener('submit', (event) => {
     );
   }
 
+  if (form.id === 'business-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const optional = (id) => document.getElementById(id).value.trim() || undefined;
+        await api('/business/profile', {
+          method: 'PUT',
+          body: {
+            legalName: document.getElementById('b-legal').value,
+            registrationNo: optional('b-reg'),
+            taxId: optional('b-tax'),
+            sector: optional('b-sector'),
+            countryCode: document.getElementById('b-country').value,
+            city: optional('b-city'),
+            phone: optional('b-phone'),
+            website: optional('b-website'),
+            annualVolume: optional('b-volume'),
+          },
+        });
+        toast('Profil entreprise enregistré.', 'success');
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'rfq-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const items = [...document.querySelectorAll('#rfq-items .rfq-item')].map((row) => {
+          const target = row.querySelector('.i-target').value.trim().replace(',', '.');
+          const categoryId = row.querySelector('.i-category').value;
+          return {
+            name: row.querySelector('.i-name').value,
+            description: row.querySelector('.i-desc').value.trim() || undefined,
+            quantity: Number(row.querySelector('.i-qty').value),
+            unit: row.querySelector('.i-unit').value || 'pièce',
+            targetUnitPrice: target || undefined,
+            categoryId: categoryId || undefined,
+          };
+        });
+        const deadline = document.getElementById('q-deadline').value;
+        const source = document.getElementById('q-source').value;
+        const rfq = await api('/rfqs', {
+          method: 'POST',
+          body: {
+            title: document.getElementById('q-title').value,
+            description: document.getElementById('q-description').value,
+            countryCode: document.getElementById('q-country').value,
+            city: document.getElementById('q-city').value.trim() || undefined,
+            sourceCountry: source || undefined,
+            currency: document.getElementById('q-currency').value,
+            deadline: deadline ? new Date(`${deadline}T12:00:00Z`).toISOString() : undefined,
+            items,
+          },
+        });
+        toast('Demande publiée : les fournisseurs peuvent répondre.', 'success');
+        navigate(`/touma/business/appels-offres/${rfq.id}`);
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'quote-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const items = [...document.querySelectorAll('#quote-lines .quote-line')].map((row) => ({
+          rfqItemId: row.dataset.rfqItem,
+          name: row.querySelector('.ql-name').value,
+          quantity: Number(row.querySelector('.ql-qty').value),
+          unit: row.querySelector('.ql-unit').value,
+          unitPrice: row.querySelector('.ql-price').value.replace(',', '.'),
+        }));
+        await api(`/rfqs/${form.dataset.rfq}/quotes`, {
+          method: 'POST',
+          body: {
+            storeId: document.getElementById('qf-store').value,
+            shippingTotal: document.getElementById('qf-shipping').value.replace(',', '.') || '0',
+            leadTimeDays: Number(document.getElementById('qf-lead').value),
+            validityDays: Number(document.getElementById('qf-validity').value),
+            message: document.getElementById('qf-message').value.trim() || undefined,
+            items,
+          },
+        });
+        toast('Offre envoyée à l’acheteur.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.classList.contains('negotiate-form')) {
+    event.preventDefault();
+    return run(
+      async () => {
+        const body = form.querySelector('.neg-body').value.trim();
+        if (!body) return toast('Écrivez votre message.', 'error');
+        const proposed = form.querySelector('.neg-total').value.trim().replace(',', '.');
+        await api(`/quotes/${form.dataset.quote}/messages`, {
+          method: 'POST',
+          body: { kind: proposed ? 'COUNTER_OFFER' : 'MESSAGE', body, proposedTotal: proposed || undefined },
+        });
+        toast(proposed ? 'Contre-proposition envoyée.' : 'Message envoyé.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'message-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/conversations/${form.dataset.conversation}/messages`, {
+          method: 'POST',
+          body: { body: document.getElementById('m-body').value },
+        });
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
   if (form.id === 'dispute-form') {
     event.preventDefault();
     return run(
@@ -862,6 +1113,15 @@ document.addEventListener('change', (event) => {
       await refreshCounters();
       await render();
     });
+  }
+  if (input.name === 'delivery') {
+    const picker = document.getElementById('pickup-choice');
+    if (picker) picker.hidden = input.value !== 'PICKUP_POINT';
+    shop.checkoutState.deliveryMethod = input.value;
+    if (input.value !== 'PICKUP_POINT') shop.checkoutState.pickupPointId = null;
+  }
+  if (input.id === 'pickup-point') {
+    shop.checkoutState.pickupPointId = input.value;
   }
   if (input.type === 'radio') {
     // Retour visuel sur les choix (adresse, transport, paiement).

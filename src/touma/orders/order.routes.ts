@@ -12,34 +12,56 @@ export const checkoutRouter = Router();
 orderRouter.use(authenticate);
 checkoutRouter.use(authenticate);
 
-/** Aperçu du checkout (frais, totaux) — ne crée rien. */
-checkoutRouter.post(
-  '/',
-  asyncHandler(async (req, res) => {
-    const input = parseBody(checkoutSchema, req);
-    const result = await checkoutService.checkout(currentUser(req), input);
-    await auditRequest(req, 'checkout.complete', 'ToumaOrder', result.orders[0]?.id, {
-      orders: result.orders.length,
-      idempotent: result.idempotent,
-    });
-    res.status(result.idempotent ? 200 : 201).json({
-      orders: result.orders.map((o) => ({ ...o, subtotal: o.subtotal.toString(), shippingTotal: o.shippingTotal.toString(), total: o.total.toString(), commissionTotal: o.commissionTotal.toString() })),
-      idempotent: result.idempotent,
-    });
-  }),
-);
+/** Sérialise un groupe et ses sous-commandes (montants en chaînes décimales). */
+function serializeCheckout(result: Awaited<ReturnType<typeof checkoutService.checkout>>) {
+  return {
+    group: {
+      id: result.group.id,
+      reference: result.group.reference,
+      status: result.group.status,
+      currency: result.group.currency,
+      itemsTotal: result.group.itemsTotal.toString(),
+      shippingTotal: result.group.shippingTotal.toString(),
+      discountTotal: result.group.discountTotal.toString(),
+      total: result.group.total.toString(),
+      crossBorder: result.group.crossBorder,
+      orderCount: result.orders.length,
+    },
+    orders: result.orders.map((o) => ({
+      ...o,
+      subtotal: o.subtotal.toString(),
+      shippingTotal: o.shippingTotal.toString(),
+      total: o.total.toString(),
+      commissionTotal: o.commissionTotal.toString(),
+    })),
+    idempotent: result.idempotent,
+  };
+}
+
+/**
+ * Validation du panier. Un panier multi-vendeurs crée UN groupe (payé en une
+ * fois) et une sous-commande par boutique.
+ */
+async function handleCheckout(req: Parameters<typeof currentUser>[0], res: { status: (code: number) => { json: (body: unknown) => void } }, action: string) {
+  const input = parseBody(checkoutSchema, req);
+  const result = await checkoutService.checkout(currentUser(req), input);
+  await auditRequest(req, action, 'ToumaOrderGroup', result.group.id, {
+    orders: result.orders.length,
+    idempotent: result.idempotent,
+  });
+  res.status(result.idempotent ? 200 : 201).json(serializeCheckout(result));
+}
+
+checkoutRouter.post('/', asyncHandler(async (req, res) => handleCheckout(req, res, 'checkout.complete')));
 
 /** POST /orders = checkout (alias explicite demandé par l'API v1). */
-orderRouter.post(
-  '/',
+orderRouter.post('/', asyncHandler(async (req, res) => handleCheckout(req, res, 'order.create')));
+
+/** Détail d'un groupe de commande (paiement unique, plusieurs vendeurs). */
+orderRouter.get(
+  '/groups/:id',
   asyncHandler(async (req, res) => {
-    const input = parseBody(checkoutSchema, req);
-    const result = await checkoutService.checkout(currentUser(req), input);
-    await auditRequest(req, 'order.create', 'ToumaOrder', result.orders[0]?.id, { orders: result.orders.length });
-    res.status(result.idempotent ? 200 : 201).json({
-      orders: result.orders.map((o) => ({ ...o, subtotal: o.subtotal.toString(), shippingTotal: o.shippingTotal.toString(), total: o.total.toString(), commissionTotal: o.commissionTotal.toString() })),
-      idempotent: result.idempotent,
-    });
+    res.json(await orderService.getGroup(currentUser(req), req.params.id));
   }),
 );
 

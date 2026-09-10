@@ -8,7 +8,10 @@ import { paymentService } from './payment.service.js';
 export const paymentRouter = Router();
 
 const createSchema = z.object({
-  orderId: z.string().cuid(),
+  /** Régler une commande seule… */
+  orderId: z.string().cuid().optional(),
+  /** …ou tout un panier multi-vendeurs en une fois. */
+  orderGroupId: z.string().cuid().optional(),
   method: z.enum(['MOBILE_MONEY', 'CARD', 'BANK_TRANSFER', 'CASH_ON_DELIVERY', 'MOCK']).default('MOBILE_MONEY'),
   idempotencyKey: z.string().trim().min(8).max(120).optional(),
   returnUrl: z.string().trim().url().max(500).optional(),

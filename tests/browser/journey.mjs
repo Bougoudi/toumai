@@ -33,6 +33,29 @@ page.on('console', (m) => {
 });
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 
+/**
+ * Sessions par rôle. Se déconnecter et se reconnecter à chaque étape
+ * déclencherait la limitation anti-force-brute — qui doit rester active.
+ * Chaque rôle ouvre donc son propre contexte et se connecte une seule fois.
+ */
+const sessions = new Map();
+
+async function sessionFor(email, password = 'touma-dev-1234') {
+  if (sessions.has(email)) return sessions.get(email);
+  const context = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  context.on('console', (m) => {
+    if (m.type() === 'error') errors.push(`console (${email}): ${m.text()}`);
+  });
+  context.on('pageerror', (e) => errors.push(`pageerror (${email}): ${e.message}`));
+  await context.goto(`${BASE}/connexion`, { waitUntil: 'networkidle' });
+  await context.fill('#l-email', email);
+  await context.fill('#l-password', password);
+  await context.click('#login-form button[type="submit"]');
+  await context.waitForTimeout(1600);
+  sessions.set(email, context);
+  return context;
+}
+
 const step = async (name, fn) => {
   try {
     await fn();
@@ -44,6 +67,7 @@ const step = async (name, fn) => {
 };
 
 const email = `nav-${Date.now()}@touma.test`;
+let rfqUrl = '';
 const PASSWORD = 'motdepasse-nav-123';
 
 await step('accueil', async () => {
@@ -126,6 +150,17 @@ await step('tunnel de commande : adresse', async () => {
   await page.screenshot({ path: `${OUT}/05-checkout-adresse.png` });
 });
 
+await step('choix du mode de remise (point relais)', async () => {
+  const modes = await page.locator('input[name="delivery"]').count();
+  if (modes !== 2) throw new Error('les modes de remise ne sont pas proposés');
+  await page.check('input[name="delivery"][value="PICKUP_POINT"]');
+  await page.waitForTimeout(300);
+  const hidden = await page.getAttribute('#pickup-choice', 'hidden');
+  if (hidden !== null) throw new Error('le choix du point relais ne s’affiche pas');
+  // On revient à la livraison à domicile pour la suite du parcours.
+  await page.check('input[name="delivery"][value="HOME"]');
+});
+
 await step('tunnel de commande : livraison', async () => {
   await page.click('[data-checkout-next="1"]');
   await page.waitForSelector('input[name^="quote-"]', { timeout: 20000 });
@@ -156,48 +191,105 @@ await step('suivi de commande (chronologie)', async () => {
 });
 
 await step('espace vendeur', async () => {
-  await page.goto(`${BASE}/deconnexion`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(800);
-  await page.goto(`${BASE}/connexion`, { waitUntil: 'networkidle' });
-  await page.fill('#l-email', 'vendeur.cm@touma.dev');
-  await page.fill('#l-password', 'touma-dev-1234');
-  await page.click('#login-form button[type="submit"]');
-  await page.waitForTimeout(1500);
-  await page.goto(`${BASE}/vendeur`, { waitUntil: 'networkidle' });
-  await page.waitForSelector('.grid-stats');
-  await page.screenshot({ path: `${OUT}/10-vendeur.png` });
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('.grid-stats');
+  await seller.screenshot({ path: `${OUT}/10-vendeur.png` });
 });
 
 await step('vendeur : analyses (graphique)', async () => {
-  await page.goto(`${BASE}/vendeur/analyses`, { waitUntil: 'networkidle' });
-  await page.waitForSelector('svg.chart', { timeout: 15000 });
-  await page.screenshot({ path: `${OUT}/11-vendeur-analyses.png` });
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur/analyses`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('svg.chart', { timeout: 15000 });
+  await seller.screenshot({ path: `${OUT}/11-vendeur-analyses.png` });
 });
 
 await step('vendeur : formulaire produit', async () => {
-  await page.goto(`${BASE}/vendeur/produits/nouveau`, { waitUntil: 'networkidle' });
-  await page.waitForSelector('#product-form');
-  await page.fill('#p-title', `Produit navigateur ${Date.now()}`);
-  await page.click('#ai-description');
-  await page.waitForTimeout(1200);
-  const description = await page.inputValue('#p-description');
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur/produits/nouveau`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('#product-form');
+  await seller.fill('#p-title', `Produit navigateur ${Date.now()}`);
+  await seller.click('#ai-description');
+  await seller.waitForTimeout(1200);
+  const description = await seller.inputValue('#p-description');
   if (!description) throw new Error('Touma AI n’a rien proposé');
 });
 
 await step('administration (barre latérale)', async () => {
-  await page.goto(`${BASE}/deconnexion`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(800);
-  await page.goto(`${BASE}/connexion`, { waitUntil: 'networkidle' });
-  await page.fill('#l-email', 'admin@touma.dev');
-  await page.fill('#l-password', 'touma-dev-1234');
-  await page.click('#login-form button[type="submit"]');
-  await page.waitForTimeout(1500);
-  await page.goto(`${BASE}/admin`, { waitUntil: 'networkidle' });
-  await page.waitForSelector('.admin-sidebar a[aria-current="page"]');
-  await page.screenshot({ path: `${OUT}/12-admin.png` });
-  await page.goto(`${BASE}/admin/verifications`, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(900);
-  await page.screenshot({ path: `${OUT}/13-admin-verifications.png` });
+  const admin = await sessionFor('admin@touma.dev');
+  await admin.goto(`${BASE}/admin`, { waitUntil: 'networkidle' });
+  await admin.waitForSelector('.admin-sidebar a[aria-current="page"]');
+  await admin.screenshot({ path: `${OUT}/12-admin.png` });
+  await admin.goto(`${BASE}/admin/verifications`, { waitUntil: 'networkidle' });
+  await admin.waitForTimeout(900);
+  await admin.screenshot({ path: `${OUT}/13-admin-verifications.png` });
+});
+
+await step('TOUMA Business : publier un appel d’offres', async () => {
+  const pro = await sessionFor('acheteur@touma.dev');
+  await pro.goto(`${BASE}/business/appels-offres/nouveau`, { waitUntil: 'networkidle' });
+  await pro.waitForSelector('#rfq-form');
+  await pro.fill('#q-title', `Recherche navigateur ${Date.now()}`);
+  await pro.fill('#q-description', 'Test du parcours B2B.');
+  await pro.selectOption('#q-country', 'TD');
+  await pro.fill('.i-name', 'Cacao en fèves');
+  await pro.fill('.i-qty', '500');
+  await pro.fill('.i-unit', 'kg');
+  await pro.click('#rfq-form button[type="submit"]');
+  await pro.waitForURL(/\/touma\/business\/appels-offres\/[a-z0-9]+$/, { timeout: 20000 });
+  await pro.waitForSelector('.spec-list', { timeout: 20000 });
+  rfqUrl = pro.url();
+  await pro.screenshot({ path: `${OUT}/14-rfq.png` });
+});
+
+await step('TOUMA Business : un fournisseur répond', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(rfqUrl, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('#quote-form', { timeout: 20000 });
+  await seller.fill('.ql-price', '2750');
+  await seller.fill('#qf-shipping', '85000');
+  await seller.fill('#qf-message', 'Échantillon offert.');
+  await seller.click('#quote-form button[type="submit"]');
+  await seller.waitForTimeout(2200);
+  const body = await seller.textContent('#view');
+  if (!body.includes('Mon offre')) throw new Error('l’offre n’apparaît pas au fournisseur');
+  await seller.screenshot({ path: `${OUT}/15-offre.png` });
+});
+
+await step('TOUMA Business : négociation et acceptation', async () => {
+  const pro = await sessionFor('acheteur@touma.dev');
+  await pro.goto(rfqUrl, { waitUntil: 'networkidle' });
+  await pro.waitForSelector('.negotiate-form', { timeout: 20000 });
+  await pro.fill('.neg-body', 'Pouvez-vous faire un geste sur le transport ?');
+  await pro.fill('.neg-total', '1400000');
+  await pro.click('.negotiate-form button[type="submit"]');
+  await pro.waitForTimeout(2200);
+
+  await pro.waitForSelector('[data-accept-quote]', { timeout: 20000 });
+  await pro.click('[data-accept-quote]');
+  await pro.waitForSelector('[data-action="confirm"]', { timeout: 10000 });
+  await pro.click('[data-action="confirm"]');
+  // On attend la navigation elle-même : le récapitulatif de l'offre contient
+  // déjà un total, un simple sélecteur matcherait trop tôt.
+  await pro.waitForURL(/\/touma\/commandes\/groupe\//, { timeout: 25000 });
+  await pro.waitForSelector('.summary-total', { timeout: 15000 });
+  await pro.screenshot({ path: `${OUT}/16-commande-b2b.png` });
+});
+
+await step('messagerie acheteur ↔ vendeur', async () => {
+  const pro = await sessionFor('acheteur@touma.dev');
+  await pro.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+  await pro.waitForSelector('.product-card a');
+  await pro.click('.product-card a');
+  await pro.waitForSelector('[data-contact-store]');
+  await pro.click('[data-contact-store]');
+  await pro.waitForSelector('#message-form', { timeout: 20000 });
+  await pro.fill('#m-body', 'Bonjour, quel est le délai pour 200 kg ?');
+  await pro.click('#message-form button[type="submit"]');
+  await pro.waitForTimeout(2000);
+  const body = await pro.textContent('#view');
+  if (!body.includes('200 kg')) throw new Error('le message n’apparaît pas dans le fil');
+  await pro.screenshot({ path: `${OUT}/17-messagerie.png` });
 });
 
 // ── Largeurs cibles : aucun débordement horizontal, menu mobile fonctionnel ──

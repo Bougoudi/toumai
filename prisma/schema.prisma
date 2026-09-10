@@ -216,6 +216,14 @@ model User {
   auditLogs             ToumaAuditLog[]
   reviewedVerifications ToumaSellerVerification[] @relation("VerificationReviewer")
 
+  orderGroups         ToumaOrderGroup[]
+  businessProfile     ToumaBusinessProfile?
+  rfqs                ToumaRfq[]
+  quotes              ToumaQuote[]                   @relation("QuoteSeller")
+  negotiationMessages ToumaNegotiationMessage[]
+  conversations       ToumaConversationParticipant[]
+  messages            ToumaMessage[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -718,6 +726,17 @@ model ToumaAddress {
   country     Country     @relation(fields: [countryCode], references: [code])
   isDefault   Boolean     @default(false)
 
+  /// Réalité des adresses d'Afrique centrale : beaucoup de lieux n'ont ni rue
+  /// nommée ni code postal. Le quartier et le point de repère sont ce qui
+  /// permet réellement au livreur de trouver le destinataire.
+  district     String?
+  landmark     String?
+  instructions String?
+  /// Coordonnées facultatives. Donnée sensible : jamais exposée publiquement,
+  /// transmise au seul transporteur de la commande concernée.
+  latitude     Decimal? @db.Decimal(9, 6)
+  longitude    Decimal? @db.Decimal(9, 6)
+
   orders ToumaOrder[]
 
   createdAt DateTime @default(now())
@@ -752,6 +771,8 @@ model ToumaStore {
 
   products      ToumaProduct[]
   orders        ToumaOrder[]
+  quotes        ToumaQuote[]
+  conversations ToumaConversation[]
   verifications ToumaSellerVerification[]
   payouts       ToumaSellerPayout[]
   commissions   ToumaCommission[]
@@ -804,6 +825,7 @@ model ToumaCategory {
   parentId String?
   parent   ToumaCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children ToumaCategory[] @relation("CategoryTree")
+  rfqItems ToumaRfqItem[]
   /// B2B | B2C | BOTH — segment principal visé.
   segment  String          @default("BOTH")
   position Int             @default(0)
@@ -978,6 +1000,16 @@ model ToumaOrder {
   store       ToumaStore       @relation(fields: [storeId], references: [id])
   status      ToumaOrderStatus @default(PENDING)
 
+  /// Groupe de commande : un panier multi-vendeurs produit un paiement unique
+  /// et autant de sous-commandes que de boutiques.
+  groupId String?
+  group   ToumaOrderGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  /// Mode de remise : domicile, point relais ou retrait chez le vendeur.
+  deliveryMethod DeliveryMethod    @default(HOME)
+  pickupPointId  String?
+  pickupPoint    ToumaPickupPoint? @relation(fields: [pickupPointId], references: [id], onDelete: SetNull)
+
   currency        String
   /// Somme des lignes (hors livraison).
   subtotal        Decimal @db.Decimal(18, 4)
@@ -1007,18 +1039,20 @@ model ToumaOrder {
   completedAt  DateTime?
   cancelledAt  DateTime?
 
-  items       ToumaOrderItem[]
-  payments    ToumaPayment[]
-  shipments   ToumaShipment[]
-  quotes      ToumaShippingQuote[]
-  reviews     ToumaReview[]
-  disputes    ToumaDispute[]
-  commissions ToumaCommission[]
+  items         ToumaOrderItem[]
+  payments      ToumaPayment[]
+  conversations ToumaConversation[]
+  shipments     ToumaShipment[]
+  quotes        ToumaShippingQuote[]
+  reviews       ToumaReview[]
+  disputes      ToumaDispute[]
+  commissions   ToumaCommission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([buyerId, storeId, checkoutKey])
+  @@index([groupId])
   @@index([buyerId])
   @@index([storeId])
   @@index([status])
@@ -1056,23 +1090,27 @@ model ToumaOrderItem {
 
 /// Paiement d'une commande, orchestré via un adaptateur (mock, PSP réel…).
 model ToumaPayment {
-  id             String        @id @default(cuid())
-  orderId        String
-  order          ToumaOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id             String           @id @default(cuid())
+  /// Un paiement porte SOIT une commande unique, SOIT un groupe multi-vendeurs
+  /// (l'acheteur paie une fois ; la somme est répartie par commande).
+  orderId        String?
+  order          ToumaOrder?      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderGroupId   String?
+  orderGroup     ToumaOrderGroup? @relation(fields: [orderGroupId], references: [id], onDelete: Cascade)
   /// Code de l'adaptateur : mock | (PSP réel plus tard).
   provider       String
   /// Identifiant du paiement chez le prestataire.
   providerRef    String?
   /// Méthode retenue : MOBILE_MONEY | CARD | BANK_TRANSFER | CASH_ON_DELIVERY…
   method         String
-  status         PaymentStatus @default(PENDING)
-  amount         Decimal       @db.Decimal(18, 4)
+  status         PaymentStatus    @default(PENDING)
+  amount         Decimal          @db.Decimal(18, 4)
   currency       String
-  refundedAmount Decimal       @default(0) @db.Decimal(18, 4)
+  refundedAmount Decimal          @default(0) @db.Decimal(18, 4)
   /// Clé d'idempotence fournie par le client (un seul paiement par clé).
-  idempotencyKey String?       @unique
+  idempotencyKey String?          @unique
   /// Données NON sensibles renvoyées par le prestataire (jamais de données bancaires).
-  metadata       Json          @default("{}")
+  metadata       Json             @default("{}")
   failureReason  String?
 
   events ToumaPaymentEvent[]
@@ -1082,6 +1120,7 @@ model ToumaPayment {
   succeededAt DateTime?
 
   @@index([orderId])
+  @@index([orderGroupId])
   @@index([status])
   @@map("touma_payments")
 }
@@ -1487,4 +1526,371 @@ model ToumaAuditLog {
   @@index([entity, entityId])
   @@index([action])
   @@map("touma_audit_logs")
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TOUMA — COMMANDE MULTI-VENDEURS, POINTS RELAIS, B2B (RFQ) ET MESSAGERIE
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum DeliveryMethod {
+  /// Livraison à l'adresse de l'acheteur.
+  HOME
+  /// Retrait dans un point relais partenaire.
+  PICKUP_POINT
+  /// Retrait chez le vendeur.
+  SELLER_PICKUP
+}
+
+enum OrderGroupStatus {
+  PENDING
+  PAID
+  PARTIALLY_FULFILLED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+/// Groupe de commande : le panier validé en une fois. Il porte le paiement
+/// unique de l'acheteur ; chaque boutique reçoit sa propre sous-commande, avec
+/// sa préparation, son expédition et sa commission.
+model ToumaOrderGroup {
+  id        String           @id @default(cuid())
+  reference String           @unique
+  buyerId   String
+  buyer     User             @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  status    OrderGroupStatus @default(PENDING)
+
+  currency      String
+  itemsTotal    Decimal @db.Decimal(18, 4)
+  shippingTotal Decimal @default(0) @db.Decimal(18, 4)
+  discountTotal Decimal @default(0) @db.Decimal(18, 4)
+  total         Decimal @db.Decimal(18, 4)
+
+  /// Copie figée de l'adresse de livraison au moment de la validation.
+  shippingSnapshot Json
+  /// Clé d'idempotence du checkout (rejouer la requête ne crée pas de doublon).
+  checkoutKey      String?
+  /// Vrai dès qu'au moins une sous-commande franchit une frontière.
+  crossBorder      Boolean @default(false)
+
+  orders   ToumaOrder[]
+  payments ToumaPayment[]
+  quotes   ToumaQuote[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  paidAt    DateTime?
+
+  @@unique([buyerId, checkoutKey])
+  @@index([buyerId])
+  @@index([status])
+  @@map("touma_order_groups")
+}
+
+/// Point relais partenaire : essentiel là où la livraison à domicile est peu
+/// fiable. Les horaires et le point de repère comptent autant que l'adresse.
+model ToumaPickupPoint {
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  countryCode  String
+  city         String
+  district     String?
+  landmark     String?
+  addressLine  String
+  phone        String?
+  /// Horaires d'ouverture en clair (ex. « Lun–Sam 8h–18h »).
+  openingHours String?
+  latitude     Decimal? @db.Decimal(9, 6)
+  longitude    Decimal? @db.Decimal(9, 6)
+  active       Boolean  @default(true)
+
+  orders ToumaOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countryCode, city])
+  @@map("touma_pickup_points")
+}
+
+// ── TOUMA Business & appels d'offres (RFQ) ───────────────────────────────────
+
+enum RfqStatus {
+  /// Publié : les fournisseurs peuvent répondre.
+  OPEN
+  /// Au moins une offre reçue.
+  QUOTED
+  /// Une offre a été retenue.
+  AWARDED
+  CLOSED
+  EXPIRED
+  CANCELLED
+}
+
+enum QuoteStatus {
+  SUBMITTED
+  /// Contre-proposition en cours de négociation.
+  COUNTERED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  WITHDRAWN
+}
+
+enum NegotiationKind {
+  MESSAGE
+  COUNTER_OFFER
+  ACCEPT
+  REJECT
+}
+
+/// Profil entreprise d'un acheteur professionnel (TOUMA Business).
+model ToumaBusinessProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  legalName      String
+  registrationNo String?
+  taxId          String?
+  /// Secteur d'activité déclaré (agroalimentaire, distribution, BTP…).
+  sector         String?
+  countryCode    String
+  city           String?
+  phone          String?
+  website        String?
+  /// Volume d'achat annuel déclaré, à titre indicatif (jamais présenté comme vérifié).
+  annualVolume   String?
+
+  rfqs ToumaRfq[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("touma_business_profiles")
+}
+
+/// Appel d'offres : « je recherche 500 kg de cacao au Cameroun ».
+model ToumaRfq {
+  id                String                @id @default(cuid())
+  reference         String                @unique
+  buyerId           String
+  buyer             User                  @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  businessProfileId String?
+  business          ToumaBusinessProfile? @relation(fields: [businessProfileId], references: [id], onDelete: SetNull)
+
+  title         String
+  description   String    @default("")
+  /// Pays de livraison souhaité.
+  countryCode   String
+  city          String?
+  currency      String
+  /// Pays d'origine souhaité pour la marchandise (facultatif).
+  sourceCountry String?
+  status        RfqStatus @default(OPEN)
+  /// Date limite de réception des offres.
+  deadline      DateTime?
+
+  items  ToumaRfqItem[]
+  quotes ToumaQuote[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  closedAt  DateTime?
+
+  @@index([buyerId])
+  @@index([status])
+  @@index([countryCode])
+  @@map("touma_rfqs")
+}
+
+/// Ligne d'un appel d'offres (produit recherché et quantité).
+model ToumaRfqItem {
+  id    String   @id @default(cuid())
+  rfqId String
+  rfq   ToumaRfq @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+
+  name            String
+  description     String?
+  quantity        Int
+  /// Unité : kg, tonne, sac, carton, pièce…
+  unit            String         @default("pièce")
+  /// Prix unitaire cible indiqué par l'acheteur (facultatif).
+  targetUnitPrice Decimal?       @db.Decimal(18, 4)
+  categoryId      String?
+  category        ToumaCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  quoteItems ToumaQuoteItem[]
+
+  createdAt DateTime @default(now())
+
+  @@index([rfqId])
+  @@map("touma_rfq_items")
+}
+
+/// Offre d'un fournisseur en réponse à un appel d'offres.
+model ToumaQuote {
+  id        String     @id @default(cuid())
+  reference String     @unique
+  rfqId     String
+  rfq       ToumaRfq   @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  storeId   String
+  store     ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  sellerId  String
+  seller    User       @relation("QuoteSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  currency      String
+  itemsTotal    Decimal     @db.Decimal(18, 4)
+  shippingTotal Decimal     @default(0) @db.Decimal(18, 4)
+  total         Decimal     @db.Decimal(18, 4)
+  /// Délai de mise à disposition annoncé, en jours.
+  leadTimeDays  Int         @default(7)
+  /// Une offre expirée ne peut plus être acceptée.
+  validUntil    DateTime
+  status        QuoteStatus @default(SUBMITTED)
+  message       String?
+
+  /// Commande créée lorsque l'acheteur accepte l'offre.
+  orderGroupId String?
+  orderGroup   ToumaOrderGroup? @relation(fields: [orderGroupId], references: [id], onDelete: SetNull)
+
+  items        ToumaQuoteItem[]
+  negotiations ToumaNegotiationMessage[]
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  acceptedAt DateTime?
+
+  @@unique([rfqId, storeId])
+  @@index([rfqId])
+  @@index([storeId])
+  @@index([status])
+  @@map("touma_quotes")
+}
+
+/// Ligne d'une offre fournisseur.
+model ToumaQuoteItem {
+  id        String        @id @default(cuid())
+  quoteId   String
+  quote     ToumaQuote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  rfqItemId String?
+  rfqItem   ToumaRfqItem? @relation(fields: [rfqItemId], references: [id], onDelete: SetNull)
+
+  name      String
+  quantity  Int
+  unit      String  @default("pièce")
+  unitPrice Decimal @db.Decimal(18, 4)
+  lineTotal Decimal @db.Decimal(18, 4)
+
+  createdAt DateTime @default(now())
+
+  @@index([quoteId])
+  @@map("touma_quote_items")
+}
+
+/// Échange de négociation sur une offre : message, contre-proposition, décision.
+/// L'historique complet est conservé — il fait foi en cas de litige.
+model ToumaNegotiationMessage {
+  id            String          @id @default(cuid())
+  quoteId       String
+  quote         ToumaQuote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  kind          NegotiationKind @default(MESSAGE)
+  body          String
+  /// Total proposé par l'auteur lors d'une contre-proposition.
+  proposedTotal Decimal?        @db.Decimal(18, 4)
+
+  createdAt DateTime @default(now())
+
+  @@index([quoteId])
+  @@map("touma_negotiation_messages")
+}
+
+// ── Messagerie ───────────────────────────────────────────────────────────────
+
+enum ConversationKind {
+  /// Acheteur ↔ vendeur, éventuellement rattachée à une commande.
+  BUYER_SELLER
+  /// Négociation d'un appel d'offres.
+  RFQ
+  /// Assistance TOUMA.
+  SUPPORT
+}
+
+/// Fil de discussion entre participants identifiés.
+model ToumaConversation {
+  id      String           @id @default(cuid())
+  kind    ConversationKind @default(BUYER_SELLER)
+  subject String?
+
+  /// Rattachements facultatifs, qui donnent son contexte à la conversation.
+  storeId String?
+  store   ToumaStore? @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  orderId String?
+  order   ToumaOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  rfqId   String?
+
+  lastMessageAt DateTime @default(now())
+
+  participants ToumaConversationParticipant[]
+  messages     ToumaMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+  @@index([lastMessageAt])
+  @@map("touma_conversations")
+}
+
+/// Participation à une conversation : c'est elle qui autorise l'accès au fil.
+model ToumaConversationParticipant {
+  id             String            @id @default(cuid())
+  conversationId String
+  conversation   ToumaConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Rôle tenu dans ce fil : BUYER | SELLER | ADMIN.
+  role           String            @default("BUYER")
+  lastReadAt     DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("touma_conversation_participants")
+}
+
+model ToumaMessage {
+  id             String            @id @default(cuid())
+  conversationId String
+  conversation   ToumaConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body           String
+
+  attachments ToumaMessageAttachment[]
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId])
+  @@map("touma_messages")
+}
+
+/// Pièce jointe d'un message. Le type et la taille sont contrôlés au dépôt.
+model ToumaMessageAttachment {
+  id        String       @id @default(cuid())
+  messageId String
+  message   ToumaMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  url       String
+  name      String
+  mimeType  String
+  sizeBytes Int          @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([messageId])
+  @@map("touma_message_attachments")
 }

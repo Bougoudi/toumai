@@ -114,6 +114,65 @@ export const orderService = {
   },
 
   /**
+   * Détail d'un groupe de commande : ce que l'acheteur a payé en une fois, et
+   * l'état de chaque sous-commande vendeur.
+   */
+  async getGroup(user: ToumaRequestUser, groupId: string) {
+    const group = await prisma.toumaOrderGroup.findFirst({
+      where: { OR: [{ id: groupId }, { reference: groupId }] },
+      include: {
+        orders: {
+          include: {
+            items: true,
+            store: { select: { id: true, name: true, slug: true, countryCode: true, ownerId: true } },
+            shipments: { select: { id: true, status: true, trackingNumber: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        payments: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+    if (!group) throw notFound('Groupe de commande introuvable.');
+    const allowed = group.buyerId === user.id || group.orders.some((o) => o.store.ownerId === user.id) || user.role === 'ADMIN';
+    if (!allowed) throw notFound('Groupe de commande introuvable.');
+
+    return {
+      id: group.id,
+      reference: group.reference,
+      status: group.status,
+      currency: group.currency,
+      itemsTotal: group.itemsTotal.toString(),
+      shippingTotal: group.shippingTotal.toString(),
+      discountTotal: group.discountTotal.toString(),
+      total: group.total.toString(),
+      crossBorder: group.crossBorder,
+      shippingSnapshot: group.shippingSnapshot,
+      createdAt: group.createdAt,
+      paidAt: group.paidAt,
+      payment: group.payments[0]
+        ? {
+            id: group.payments[0].id,
+            status: group.payments[0].status,
+            method: group.payments[0].method,
+            amount: group.payments[0].amount.toString(),
+            currency: group.payments[0].currency,
+          }
+        : null,
+      orders: group.orders.map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber,
+        status: o.status,
+        total: o.total.toString(),
+        currency: o.currency,
+        crossBorder: o.crossBorder,
+        store: { id: o.store.id, name: o.store.name, slug: o.store.slug, countryCode: o.store.countryCode },
+        itemCount: o.items.reduce((acc, i) => acc + i.quantity, 0),
+        shipment: o.shipments[0] ?? null,
+      })),
+    };
+  },
+
+  /**
    * Change le statut d'une commande en respectant les transitions autorisées et
    * le rôle du demandeur. Une annulation restitue le stock réservé.
    */

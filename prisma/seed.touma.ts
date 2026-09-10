@@ -314,6 +314,17 @@ async function main() {
     });
   }
 
+  console.log('→ [Touma] Points relais du corridor…');
+  const PICKUP_POINTS = [
+    { code: 'TD-NDJ-01', name: 'Relais Marché de Dembé', countryCode: 'TD', city: "N'Djamena", district: 'Dembé', landmark: 'Face à la grande mosquée', addressLine: 'Avenue Mobutu, Dembé', openingHours: 'Lun–Sam 8h–18h' },
+    { code: 'TD-NDJ-02', name: 'Relais Moursal', countryCode: 'TD', city: "N'Djamena", district: 'Moursal', landmark: 'À côté de la pharmacie du rond-point', addressLine: 'Rue 3040, Moursal', openingHours: 'Lun–Ven 9h–17h' },
+    { code: 'CM-DLA-01', name: 'Relais Akwa', countryCode: 'CM', city: 'Douala', district: 'Akwa', landmark: 'Immeuble face à la station-service', addressLine: 'Boulevard de la Liberté, Akwa', openingHours: 'Lun–Sam 8h–19h' },
+    { code: 'CM-YDE-01', name: 'Relais Mvog-Mbi', countryCode: 'CM', city: 'Yaoundé', district: 'Mvog-Mbi', landmark: 'Près du carrefour Mvog-Mbi', addressLine: 'Avenue Kennedy, Mvog-Mbi', openingHours: 'Lun–Sam 8h–18h' },
+  ];
+  for (const point of PICKUP_POINTS) {
+    await prisma.toumaPickupPoint.upsert({ where: { code: point.code }, update: point, create: point });
+  }
+
   console.log('→ [Touma] Adresse de livraison de l’acheteur…');
   const address = await prisma.toumaAddress.findFirst({ where: { userId: buyer.id } });
   if (!address) {
@@ -326,6 +337,46 @@ async function main() {
         city: "N'Djamena",
         countryCode: 'TD',
         isDefault: true,
+      },
+    });
+  }
+
+  console.log('→ [Touma] TOUMA Business : profil entreprise et appel d’offres de démonstration…');
+  const business = await prisma.toumaBusinessProfile.upsert({
+    where: { userId: buyer.id },
+    update: {},
+    create: {
+      userId: buyer.id,
+      legalName: 'Sahel Distribution SARL',
+      registrationNo: 'RCCM/TD/NDJ/2021/B/0421',
+      sector: 'Distribution agroalimentaire',
+      countryCode: 'TD',
+      city: "N'Djamena",
+      phone: '+23590000004',
+      annualVolume: '50–100 M XAF',
+    },
+  });
+
+  const existingRfq = await prisma.toumaRfq.findFirst({ where: { buyerId: buyer.id } });
+  if (!existingRfq) {
+    await prisma.toumaRfq.create({
+      data: {
+        reference: 'RFQ-DEMO-0001',
+        buyerId: buyer.id,
+        businessProfileId: business.id,
+        title: 'Recherche 500 kg de cacao en fèves — livraison N’Djamena',
+        description:
+          "Nous recherchons du cacao en fèves fermentées, qualité export, pour une première commande de 500 kg livrée à N'Djamena. Échantillon souhaité avant commande. Paiement à la commande via Touma Pay.",
+        countryCode: 'TD',
+        city: "N'Djamena",
+        sourceCountry: 'CM',
+        currency: 'XAF',
+        deadline: new Date(Date.now() + 14 * 24 * 3600 * 1000),
+        items: {
+          create: [
+            { name: 'Cacao en fèves fermentées', description: 'Qualité export, humidité contrôlée', quantity: 500, unit: 'kg', targetUnitPrice: '2800' },
+          ],
+        },
       },
     });
   }
