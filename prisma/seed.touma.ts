@@ -48,7 +48,6 @@ interface SeedProduct {
   weightGrams?: number;
   keywords: string;
   brand?: string;
-  image: string;
   variants?: Array<{ name: string; priceDelta: string; quantity: number }>;
 }
 
@@ -63,7 +62,6 @@ const TD_PRODUCTS: SeedProduct[] = [
     minOrderQty: 5,
     weightGrams: 25000,
     keywords: 'sesame graines export agro tchad gros',
-    image: 'https://images.touma.example/seed/sesame.jpg',
   },
   {
     title: 'Gomme arabique brute — carton de 10 kg',
@@ -75,7 +73,6 @@ const TD_PRODUCTS: SeedProduct[] = [
     minOrderQty: 2,
     weightGrams: 10000,
     keywords: 'gomme arabique acacia sahel export',
-    image: 'https://images.touma.example/seed/gomme-arabique.jpg',
   },
   {
     title: 'Boubou brodé homme — coton teint à la main',
@@ -85,7 +82,6 @@ const TD_PRODUCTS: SeedProduct[] = [
     category: 'Mode & textile',
     quantity: 60,
     keywords: 'boubou broderie coton mode homme tchad',
-    image: 'https://images.touma.example/seed/boubou.jpg',
     variants: [
       { name: 'Taille M', priceDelta: '0', quantity: 20 },
       { name: 'Taille L', priceDelta: '1500', quantity: 25 },
@@ -102,7 +98,6 @@ const TD_PRODUCTS: SeedProduct[] = [
     minOrderQty: 2,
     weightGrams: 5200,
     keywords: 'karite beurre cosmetique brut naturel',
-    image: 'https://images.touma.example/seed/karite.jpg',
   },
 ];
 
@@ -117,7 +112,6 @@ const CM_PRODUCTS: SeedProduct[] = [
     minOrderQty: 1,
     weightGrams: 50000,
     keywords: 'cacao feves fermentation export cameroun',
-    image: 'https://images.touma.example/seed/cacao.jpg',
   },
   {
     title: 'Cartons ondulés double cannelure — lot de 100',
@@ -129,7 +123,6 @@ const CM_PRODUCTS: SeedProduct[] = [
     minOrderQty: 1,
     weightGrams: 32000,
     keywords: 'carton emballage expedition logistique lot',
-    image: 'https://images.touma.example/seed/cartons.jpg',
   },
   {
     title: 'Pagne wax 6 yards — impression Douala',
@@ -139,7 +132,6 @@ const CM_PRODUCTS: SeedProduct[] = [
     category: 'Mode & textile',
     quantity: 300,
     keywords: 'pagne wax tissu coton mode douala',
-    image: 'https://images.touma.example/seed/pagne.jpg',
     variants: [
       { name: 'Motif bleu', priceDelta: '0', quantity: 120 },
       { name: 'Motif ocre', priceDelta: '0', quantity: 100 },
@@ -155,7 +147,6 @@ const CM_PRODUCTS: SeedProduct[] = [
     quantity: 120,
     keywords: 'solaire chargeur batterie telephone energie',
     brand: 'Sahel Power',
-    image: 'https://images.touma.example/seed/solaire.jpg',
   },
   {
     title: 'Savon noir africain — carton de 48 pains',
@@ -167,7 +158,6 @@ const CM_PRODUCTS: SeedProduct[] = [
     minOrderQty: 1,
     weightGrams: 7500,
     keywords: 'savon noir beaute soin revente carton',
-    image: 'https://images.touma.example/seed/savon-noir.jpg',
   },
 ];
 
@@ -210,7 +200,6 @@ async function seedProducts(storeId: string, countryCode: string, currency: stri
         keywords: p.keywords,
         status: 'ACTIVE',
         publishedAt: new Date(),
-        images: { create: [{ url: p.image, alt: p.title, position: 0 }] },
       },
     });
 

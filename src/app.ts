@@ -75,7 +75,9 @@ export function createApp() {
   app.use('/api', apiLimiter);
 
   // Application web (PWA) : fichiers statiques servis à la racine.
+  // La place de marché Touma est servie sous /touma (public/touma/).
   app.use(express.static(publicDir));
+  app.get('/touma', (_req, res) => res.redirect(301, '/touma/'));
 
   // Webhooks de paiement Touma : corps BRUT requis pour vérifier la signature
   // (monté AVANT express.json(), qui casserait la vérification).

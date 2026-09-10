@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Touma — Connecter le commerce africain</title>
+    <meta
+      name="description"
+      content="Touma est l'infrastructure numérique du commerce africain : acheter et vendre entre pays africains, payer, faire livrer et suivre ses marchandises. Corridor pilote Tchad ↔ Cameroun."
+    />
+    <meta name="theme-color" content="#0f3d3e" />
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="stylesheet" href="./touma.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#contenu">Aller au contenu</a>
+
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href="#/" aria-label="Touma, accueil">
+          <span class="brand-mark" aria-hidden="true">T</span>
+          <span class="brand-text">
+            <strong>TOUMA</strong>
+            <small>Connecter le commerce africain</small>
+          </span>
+        </a>
+
+        <form class="search" role="search" id="search-form">
+          <label class="sr-only" for="search-input">Rechercher un produit, une boutique</label>
+          <input id="search-input" type="search" placeholder="Sésame, pagne wax, cartons d'expédition…" autocomplete="off" />
+          <button type="submit">Rechercher</button>
+        </form>
+
+        <nav class="header-nav" id="header-nav" aria-label="Navigation principale"></nav>
+      </div>
+      <div class="corridor-bar" id="corridor-bar"></div>
+    </header>
+
+    <main id="contenu" class="wrap" tabindex="-1">
+      <div id="view" aria-live="polite"></div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap footer-inner">
+        <div>
+          <strong>TOUMA</strong>
+          <p>
+            L'infrastructure numérique du commerce africain : place de marché, paiements, logistique, confiance et
+            données. Corridor pilote : Tchad ↔ Cameroun.
+          </p>
+        </div>
+        <div>
+          <strong>Produits</strong>
+          <ul>
+            <li>Touma Marketplace</li>
+            <li>Touma Pay</li>
+            <li>Touma Logistics</li>
+            <li>Touma Verified</li>
+            <li>Touma AI</li>
+          </ul>
+        </div>
+        <div>
+          <strong>Ressources</strong>
+          <ul>
+            <li><a href="/api/v1/openapi.json">Documentation API</a></li>
+            <li><a href="/api/v1">Index de l'API</a></li>
+            <li><a href="/privacy.html">Confidentialité</a></li>
+          </ul>
+        </div>
+      </div>
+    </footer>
+
+    <div class="toast-stack" id="toasts" aria-live="assertive"></div>
+    <script type="module" src="./touma.js"></script>
+  </body>
+</html>
