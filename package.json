@@ -4,7 +4,7 @@
   "description": "Toumai — logiciel d'automatisation e-commerce (analyse marché, génération produits, sourcing, achat & expédition).",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "scripts": {
     "start": "tsx src/index.ts",

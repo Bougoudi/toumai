@@ -16,7 +16,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '20'
+  # Node 22 : le lanceur de tests intégré n'accepte les motifs glob
+  # (« tests/**/*.test.ts ») qu'à partir de cette version.
+  NODE_VERSION: '22'
 
 jobs:
   qualite:

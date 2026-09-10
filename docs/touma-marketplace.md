@@ -103,7 +103,8 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 ## 5. Ce qui est garanti par les tests
 
 85 tests automatisés s'exécutent contre une vraie base PostgreSQL
-(`npm test`), dont le parcours complet de bout en bout :
+(`npm test` — Node ≥ 22, dont le lanceur de tests accepte les motifs glob),
+dont le parcours complet de bout en bout :
 
 ```
 inscription → connexion → boutique → produit → catalogue → panier →
