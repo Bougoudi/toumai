@@ -243,6 +243,14 @@ export const productService = {
 
   async update(productId: string, user: ToumaRequestUser, input: UpdateProductInput) {
     const existing = await this.requireOwned(productId, user);
+    if (input.categoryId) {
+      const category = await prisma.toumaCategory.findUnique({ where: { id: input.categoryId } });
+      if (!category) throw badRequest('Catégorie inconnue.');
+    }
+    if (input.countryCode) {
+      const country = await prisma.country.findUnique({ where: { code: input.countryCode } });
+      if (!country || !country.active) throw badRequest(`Pays « ${input.countryCode} » non desservi.`);
+    }
     const data: Prisma.ToumaProductUpdateInput = {};
     if (input.title !== undefined) data.title = input.title;
     if (input.description !== undefined) data.description = input.description;

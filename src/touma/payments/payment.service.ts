@@ -18,9 +18,16 @@ export function registerPaymentProvider(provider: PaymentProvider): void {
 
 registerPaymentProvider(new MockPaymentProvider());
 
+/**
+ * Prestataire enregistré sous ce code, ou celui configuré par le serveur.
+ * Aucun repli silencieux : un code inconnu lève une erreur explicite. Retomber
+ * en douce sur l'adaptateur de démonstration en production reviendrait à
+ * encaisser des commandes sans jamais les faire payer.
+ */
 export function getPaymentProvider(code?: string): PaymentProvider {
-  const provider = providers.get(code ?? env.touma.paymentProvider) ?? providers.get('mock');
-  if (!provider) throw new Error('Aucun prestataire de paiement enregistré.');
+  const wanted = code ?? env.touma.paymentProvider;
+  const provider = providers.get(wanted);
+  if (!provider) throw new Error(`Prestataire de paiement inconnu : « ${wanted} ».`);
   return provider;
 }
 
@@ -108,7 +115,7 @@ export const paymentService = {
    * Crée l'intention de paiement d'une commande.
    * `idempotencyKey` garantit qu'un double clic ne crée pas deux paiements.
    */
-  async create(user: ToumaRequestUser, input: { orderId: string; method: PaymentMethod; provider?: string; idempotencyKey?: string; returnUrl?: string }) {
+  async create(user: ToumaRequestUser, input: { orderId: string; method: PaymentMethod; idempotencyKey?: string; returnUrl?: string }) {
     const order = await prisma.toumaOrder.findUnique({ where: { id: input.orderId }, include: { payments: true } });
     if (!order) throw notFound('Commande introuvable.');
     if (order.buyerId !== user.id && user.role !== 'ADMIN') throw notFound('Commande introuvable.');
@@ -126,7 +133,10 @@ export const paymentService = {
       return { payment: pending, checkoutUrl: (pending.metadata as { checkoutUrl?: string }).checkoutUrl ?? null, idempotent: true as const };
     }
 
-    const provider = getPaymentProvider(input.provider);
+    // Le prestataire vient de la configuration du serveur, jamais de la requête :
+    // laisser le client le choisir lui permettrait de désigner un adaptateur de
+    // démonstration et de valider lui-même son paiement.
+    const provider = getPaymentProvider();
     if (!provider.methods.includes(input.method)) {
       throw badRequest(`Le prestataire ${provider.code} ne propose pas la méthode ${input.method}.`);
     }

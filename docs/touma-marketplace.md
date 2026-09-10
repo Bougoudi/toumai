@@ -102,7 +102,7 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 
 ## 5. Ce qui est garanti par les tests
 
-76 tests automatisés s'exécutent contre une vraie base PostgreSQL
+85 tests automatisés s'exécutent contre une vraie base PostgreSQL
 (`npm test`), dont le parcours complet de bout en bout :
 
 ```
@@ -126,7 +126,13 @@ Règles vérifiées, entre autres :
   jetons (vol détecté) ;
 - un vendeur ne peut ni modifier la boutique ni les produits d'un autre ; une
   commande tierce répond « introuvable » plutôt que « interdit » (aucune fuite) ;
-- le journal d'audit ne contient jamais de secret, de jeton ni de mot de passe.
+- le journal d'audit ne contient jamais de secret, de jeton ni de mot de passe ;
+- un acheteur ne peut pas présenter un devis de transport national (moins cher)
+  pour une expédition transfrontalière, ni un devis établi pour un colis plus
+  léger que sa commande ;
+- le prestataire de paiement vient de la configuration du serveur : un
+  prestataire imposé dans la requête est ignoré, et un code inconnu lève une
+  erreur explicite plutôt que de retomber sur l'adaptateur de démonstration.
 
 Un test navigateur optionnel (`npm run test:browser`, nécessite Playwright)
 rejoue le même parcours dans Chromium et vérifie l'absence d'erreur console et

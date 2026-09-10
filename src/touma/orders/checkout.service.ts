@@ -88,16 +88,27 @@ export const checkoutService = {
     for (const [storeId, items] of groups) {
       const store = items[0].product.store;
       const currency = items[0].currency;
+      const weightGrams = items.reduce((acc, i) => acc + i.product.weightGrams * i.quantity, 0);
       const chosenId = input.shippingQuotes?.[storeId];
       if (chosenId) {
         const quote = await prisma.toumaShippingQuote.findUnique({ where: { id: chosenId } });
         if (!quote) throw badRequest('Devis de transport introuvable.');
         if (quote.expiresAt.getTime() < Date.now()) throw conflict('Devis de transport expiré : demandez un nouveau tarif.');
         assertSameCurrency(quote.currency, currency);
+        // Le devis doit correspondre au trajet et au poids RÉELS de la commande :
+        // sans ce contrôle, un acheteur pourrait présenter un tarif national
+        // (moins cher) pour une expédition transfrontalière et sous-payer le
+        // transport.
+        if (
+          quote.originCountry !== store.countryCode ||
+          quote.destinationCountry !== address.countryCode ||
+          quote.weightGrams < weightGrams
+        ) {
+          throw badRequest('Ce devis de transport ne correspond pas à votre commande : demandez un nouveau tarif.');
+        }
         shippingByStore.set(storeId, { quoteId: quote.id, amount: quote.amount });
         continue;
       }
-      const weightGrams = items.reduce((acc, i) => acc + i.product.weightGrams * i.quantity, 0);
       const quotes = await logisticsService.quote({
         origin: { countryCode: store.countryCode, city: store.city },
         destination: { countryCode: address.countryCode, city: address.city },

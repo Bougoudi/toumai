@@ -20,10 +20,13 @@ export function registerLogisticsProvider(provider: LogisticsProvider): void {
 
 registerLogisticsProvider(new MockLogisticsProvider());
 
-/** Transporteur actif par défaut (configurable). */
+/**
+ * Transporteur configuré. Aucun repli silencieux : un code inconnu lève une
+ * erreur explicite plutôt que d'expédier via un adaptateur inattendu.
+ */
 function defaultProvider(): LogisticsProvider {
-  const provider = providers.get(env.touma.logisticsProvider) ?? providers.get('mock');
-  if (!provider) throw new Error('Aucun transporteur enregistré.');
+  const provider = providers.get(env.touma.logisticsProvider);
+  if (!provider) throw new Error(`Transporteur inconnu : « ${env.touma.logisticsProvider} ».`);
   return provider;
 }
 

@@ -80,11 +80,21 @@ export function format(amount: Prisma.Decimal | string | number, currency: strin
  * fournisseur de taux officiel n'est raccordé, une opération multi-devises est
  * refusée explicitement plutôt que produite avec un taux inventé.
  */
-export function assertSameCurrency(a: string, b: string): void {
-  if (a.toUpperCase() !== b.toUpperCase()) {
-    throw new Error(
+export class CurrencyMismatchError extends Error {
+  /** Traduit en 400 par le gestionnaire d'erreurs : c'est une entrée invalide. */
+  readonly statusCode = 400;
+
+  constructor(a: string, b: string) {
+    super(
       `Devises incompatibles (${a} / ${b}) : Touma refuse toute conversion approximative. ` +
         'Raccordez un fournisseur de taux de change officiel avant de mélanger les devises.',
     );
+    this.name = 'CurrencyMismatchError';
+  }
+}
+
+export function assertSameCurrency(a: string, b: string): void {
+  if (a.toUpperCase() !== b.toUpperCase()) {
+    throw new CurrencyMismatchError(a, b);
   }
 }

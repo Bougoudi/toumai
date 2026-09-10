@@ -10,7 +10,6 @@ export const paymentRouter = Router();
 const createSchema = z.object({
   orderId: z.string().cuid(),
   method: z.enum(['MOBILE_MONEY', 'CARD', 'BANK_TRANSFER', 'CASH_ON_DELIVERY', 'MOCK']).default('MOBILE_MONEY'),
-  provider: z.string().trim().max(40).optional(),
   idempotencyKey: z.string().trim().min(8).max(120).optional(),
   returnUrl: z.string().trim().url().max(500).optional(),
 });
