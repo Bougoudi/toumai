@@ -67,14 +67,14 @@ model CompetitorProduct {
 
 /// Produit mis en favori (issu d'une recherche ou d'un concurrent) à sourcer/publier.
 model Favorite {
-  id        String   @id @default(cuid())
+  id        String  @id @default(cuid())
   /// competitor | search-text | search-photo | search-barcode | manual
-  source    String   @default("manual")
+  source    String  @default("manual")
   title     String
-  category  String   @default("divers")
-  keywords  String   @default("")
+  category  String  @default("divers")
+  keywords  String  @default("")
   price     Float?
-  currency  String   @default("EUR")
+  currency  String  @default("EUR")
   imageUrl  String?
   url       String?
   /// Renseigné une fois le favori transformé en produit du catalogue.
@@ -103,21 +103,21 @@ model Ad {
 
 /// Demande de retrait des bénéfices (payout).
 model Withdrawal {
-  id          String    @id @default(cuid())
+  id          String  @id @default(cuid())
   amount      Float
-  currency    String    @default("EUR")
+  currency    String  @default("EUR")
   /// bank | paypal | card | stripe
   method      String
   /// Destination masquée (IBAN partiel / email PayPal / carte / compte Stripe).
   destination String
   /// PENDING | APPROVED | PAID | REJECTED
-  status      String    @default("PENDING")
+  status      String  @default("PENDING")
   note        String?
 
   /// manual (traité à la main) | stripe (virement automatique Stripe Payouts).
-  provider    String    @default("manual")
+  provider   String  @default("manual")
   /// Identifiant du transfert/versement chez le prestataire (ex. Stripe tr_...).
-  externalId  String?
+  externalId String?
 
   createdAt   DateTime  @default(now())
   processedAt DateTime?
@@ -127,14 +127,14 @@ model Withdrawal {
 
 /// Canal de vente connecté (Etsy, eBay, Amazon...).
 model SalesChannel {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   /// etsy | ebay | amazon
   type       String
   name       String
   /// CONNECTED | DISCONNECTED | ERROR
-  status     String   @default("DISCONNECTED")
+  status     String    @default("DISCONNECTED")
   /// Identifiants / jetons OAuth (JSON sérialisé). Jamais renvoyé tel quel par l'API.
-  config     String   @default("{}")
+  config     String    @default("{}")
   error      String?
   lastSyncAt DateTime?
 
@@ -170,24 +170,51 @@ model ChannelListing {
 
 /// Utilisateur de l'application (authentification).
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String @id @default(cuid())
+  email        String @unique
   name         String
   passwordHash String
   /// admin | user
-  role         String   @default("user")
+  role         String @default("user")
 
   /// Double authentification (TOTP — application d'authentification).
-  totpSecret   String? // chiffré ; secret partagé de l'application d'authentification
-  totpEnabled  Boolean @default(false)
+  totpSecret    String? // chiffré ; secret partagé de l'application d'authentification
+  totpEnabled   Boolean @default(false)
   /// Codes de récupération (JSON de hachages, chiffré). Usage unique.
   recoveryCodes String?
 
   /// Version des jetons : incrémentée pour révoquer toutes les sessions.
   tokenVersion Int @default(0)
 
+  // ── Place de marché Touma ────────────────────────────────────────────────
+  /// Rôle sur la place de marché (indépendant du rôle historique du logiciel
+  /// d'automatisation ci-dessus, conservé pour ne rien casser).
+  toumaRole   ToumaRole  @default(BUYER)
+  status      UserStatus @default(ACTIVE)
+  phone       String?    @unique
+  /// Pays de résidence (ISO-3166-1 alpha-2) — voir Country.
+  countryCode String?
+  country     Country?   @relation(fields: [countryCode], references: [code], onDelete: SetNull)
+  locale      String     @default("fr")
+
   credentials WebAuthnCredential[]
   loginEvents LoginEvent[]
+
+  refreshTokens         ToumaRefreshToken[]
+  addresses             ToumaAddress[]
+  stores                ToumaStore[]
+  carts                 ToumaCart[]
+  toumaOrders           ToumaOrder[]
+  reviews               ToumaReview[]
+  favorites             ToumaFavorite[]
+  notifications         ToumaNotification[]
+  disputes              ToumaDispute[]
+  disputeMessages       ToumaDisputeMessage[]
+  riskScore             ToumaRiskScore?
+  fraudEvents           ToumaFraudEvent[]
+  aiRequests            ToumaAiRequest[]
+  auditLogs             ToumaAuditLog[]
+  reviewedVerifications ToumaSellerVerification[] @relation("VerificationReviewer")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -213,15 +240,15 @@ model LoginEvent {
 
 /// Clé de sécurité / passkey (WebAuthn) d'un utilisateur.
 model WebAuthnCredential {
-  id           String   @id @default(cuid())
+  id           String @id @default(cuid())
   userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Identifiant de la clé (base64url), unique.
-  credentialId String   @unique
+  credentialId String @unique
   publicKey    String // clé publique (base64url)
-  counter      Int      @default(0)
-  transports   String   @default("")
-  name         String   @default("Clé de sécurité")
+  counter      Int    @default(0)
+  transports   String @default("")
+  name         String @default("Clé de sécurité")
 
   createdAt DateTime @default(now())
 
@@ -234,31 +261,31 @@ model WebAuthnCredential {
 
 /// Opportunité produit détectée par l'analyse de marché (produit gagnant potentiel).
 model MarketOpportunity {
-  id                 String  @id @default(cuid())
-  source             String // connecteur d'origine (trends, marketplace...)
-  externalId         String // identifiant stable côté source (déduplication)
-  title              String
-  category           String
-  keywords           String  @default("")
-  niche              String?
-  region             String?
-  currency           String  @default("EUR")
+  id         String  @id @default(cuid())
+  source     String // connecteur d'origine (trends, marketplace...)
+  externalId String // identifiant stable côté source (déduplication)
+  title      String
+  category   String
+  keywords   String  @default("")
+  niche      String?
+  region     String?
+  currency   String  @default("EUR")
 
   /// Scores 0..100 issus de l'analyse.
-  demandScore        Float   @default(0)
-  competitionScore   Float   @default(0)
-  trendScore         Float   @default(0)
+  demandScore      Float @default(0)
+  competitionScore Float @default(0)
+  trendScore       Float @default(0)
   /// Score global de recommandation (0..100).
-  opportunityScore   Float   @default(0)
+  opportunityScore Float @default(0)
 
   estimatedCostPrice Float?
   estimatedSalePrice Float?
   estimatedMargin    Float?
 
   /// NEW | EVALUATED | IMPORTED | REJECTED
-  status             String  @default("NEW")
+  status     String @default("NEW")
   /// Métriques brutes de la source (JSON sérialisé).
-  rawMetrics         String  @default("{}")
+  rawMetrics String @default("{}")
 
   products Product[]
 
@@ -276,30 +303,30 @@ model MarketOpportunity {
 
 /// Produit du catalogue (créé manuellement ou généré en masse depuis une opportunité).
 model Product {
-  id                     String             @id @default(cuid())
-  sku                    String?            @unique
-  name                   String
-  description            String?
-  category               String
-  keywords               String             @default("")
-  currency               String             @default("EUR")
+  id          String  @id @default(cuid())
+  sku         String? @unique
+  name        String
+  description String?
+  category    String
+  keywords    String  @default("")
+  currency    String  @default("EUR")
 
   /// Économie du produit (dropshipping).
-  costPrice              Float? // prix d'achat fournisseur
-  salePrice              Float? // prix de vente client
-  margin                 Float? // marge = salePrice - costPrice
+  costPrice Float? // prix d'achat fournisseur
+  salePrice Float? // prix de vente client
+  margin    Float? // marge = salePrice - costPrice
 
   /// DRAFT | ACTIVE | ARCHIVED
-  status                 String             @default("DRAFT")
+  status String @default("DRAFT")
   /// Origine : manual | generated | import
-  source                 String             @default("manual")
-  images                 String             @default("") // URLs séparées par des virgules
+  source String @default("manual")
+  images String @default("") // URLs séparées par des virgules
 
   // Critères de sourcing (pilier 4)
   targetUnitPrice        Float?
   targetQuantity         Int?
   region                 String?
-  requiredCertifications String             @default("")
+  requiredCertifications String  @default("")
 
   opportunityId String?
   opportunity   MarketOpportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
@@ -319,15 +346,15 @@ model Product {
 
 /// Lot de génération de produits (traçabilité de la fonctionnalité "centaines/jour").
 model GenerationRun {
-  id        String   @id @default(cuid())
-  source    String   @default("opportunities")
-  requested Int      @default(0)
-  generated Int      @default(0)
-  skipped   Int      @default(0)
-  failed    Int      @default(0)
+  id        String  @id @default(cuid())
+  source    String  @default("opportunities")
+  requested Int     @default(0)
+  generated Int     @default(0)
+  skipped   Int     @default(0)
+  failed    Int     @default(0)
   /// RUNNING | COMPLETED | FAILED
-  status    String   @default("RUNNING")
-  params    String   @default("{}")
+  status    String  @default("RUNNING")
+  params    String  @default("{}")
   error     String?
 
   startedAt  DateTime  @default(now())
@@ -342,16 +369,16 @@ model GenerationRun {
 
 /// Client final.
 model Customer {
-  id        String   @id @default(cuid())
-  name      String
-  email     String
-  phone     String?
-  address   String?
-  city      String?
-  country   String?
-  zip       String?
+  id      String  @id @default(cuid())
+  name    String
+  email   String
+  phone   String?
+  address String?
+  city    String?
+  country String?
+  zip     String?
 
-  orders Order[]
+  orders          Order[]
   supportMessages SupportMessage[]
 
   createdAt DateTime @default(now())
@@ -362,15 +389,15 @@ model Customer {
 
 /// Commande client.
 model Order {
-  id          String  @id @default(cuid())
-  orderNumber String  @unique
+  id          String   @id @default(cuid())
+  orderNumber String   @unique
   customerId  String
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   /// PENDING | PAID | FULFILLING | SHIPPED | DELIVERED | CANCELLED
-  status   String  @default("PENDING")
-  currency String  @default("EUR")
-  total    Float   @default(0)
+  status   String @default("PENDING")
+  currency String @default("EUR")
+  total    Float  @default(0)
 
   /// Origine de la commande : manual | etsy | ebay | amazon
   channel    String  @default("manual")
@@ -380,7 +407,7 @@ model Order {
   /// En attente de vérification manuelle (ex. adresse à confirmer avant l'envoi
   /// au fournisseur). Les commandes « en attente » sont ignorées par le pilote
   /// automatique tant qu'elles ne sont pas confirmées.
-  onHold     Boolean @default(false)
+  onHold Boolean @default(false)
 
   items          OrderItem[]
   purchaseOrders PurchaseOrder[]
@@ -408,7 +435,7 @@ model SupportMessage {
 
 /// Ligne de commande.
 model OrderItem {
-  id            String @id @default(cuid())
+  id            String  @id @default(cuid())
   orderId       String
   order         Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId     String
@@ -543,4 +570,917 @@ model SupplierMatch {
 
   @@index([searchRequestId])
   @@index([score])
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TOUMA — PLACE DE MARCHÉ AFRICAINE (marketplace B2B / B2C)
+//
+// Domaine ajouté au logiciel existant, isolé par le préfixe `Touma` (modèles)
+// et `touma_` (tables) afin de ne rien casser du produit d'automatisation.
+// Corridor pilote : Tchad (TD) ↔ Cameroun (CM). Aucun pays n'est codé en dur :
+// tout passe par la table `Country`.
+//
+// Règle absolue : tout montant financier est un `Decimal`, jamais un `Float`.
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum ToumaRole {
+  BUYER
+  SELLER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum StoreStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+  SUSPENDED
+}
+
+enum ToumaOrderStatus {
+  PENDING
+  PAID
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  IN_TRANSIT
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+  DISPUTED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum ShipmentStatus {
+  PENDING
+  LABEL_CREATED
+  SHIPPED
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+  RETURNED
+  CANCELLED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED_BUYER
+  RESOLVED_SELLER
+  REJECTED
+  CLOSED
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+}
+
+enum AddressKind {
+  SHIPPING
+  BILLING
+  PICKUP
+}
+
+// ── Référentiels ─────────────────────────────────────────────────────────────
+
+/// Pays desservi par Touma. Le corridor pilote (TD, CM) est une simple donnée :
+/// ouvrir un nouveau marché = insérer une ligne, sans toucher au code.
+model Country {
+  /// ISO-3166-1 alpha-2 (TD, CM, NG, CI…).
+  code           String  @id
+  name           String
+  /// Devise par défaut du pays (ISO-4217, ex. XAF).
+  currency       String
+  /// Indicatif téléphonique international (ex. +235).
+  dialCode       String  @default("")
+  /// Le pays accepte-t-il les commandes / les vendeurs ?
+  buyingEnabled  Boolean @default(true)
+  sellingEnabled Boolean @default(true)
+  active         Boolean @default(true)
+
+  users     User[]
+  stores    ToumaStore[]
+  addresses ToumaAddress[]
+  products  ToumaProduct[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("touma_countries")
+}
+
+/// Adresse d'un utilisateur (livraison, facturation, enlèvement).
+model ToumaAddress {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind        AddressKind @default(SHIPPING)
+  fullName    String
+  phone       String
+  line1       String
+  line2       String?
+  city        String
+  region      String?
+  postalCode  String?
+  countryCode String
+  country     Country     @relation(fields: [countryCode], references: [code])
+  isDefault   Boolean     @default(false)
+
+  orders ToumaOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("touma_addresses")
+}
+
+// ── Vendeurs & boutiques ─────────────────────────────────────────────────────
+
+/// Boutique d'un vendeur.
+model ToumaStore {
+  id                 String             @id @default(cuid())
+  ownerId            String
+  owner              User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name               String
+  slug               String             @unique
+  description        String?
+  logoUrl            String?
+  bannerUrl          String?
+  countryCode        String
+  country            Country            @relation(fields: [countryCode], references: [code])
+  city               String?
+  phone              String?
+  status             StoreStatus        @default(DRAFT)
+  /// Confiance Touma Verified (dénormalisé depuis la dernière vérification).
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  /// Note moyenne (0–5) et nombre d'avis, recalculés à chaque avis publié.
+  ratingAverage      Decimal            @default(0) @db.Decimal(3, 2)
+  ratingCount        Int                @default(0)
+
+  products      ToumaProduct[]
+  orders        ToumaOrder[]
+  verifications ToumaSellerVerification[]
+  payouts       ToumaSellerPayout[]
+  commissions   ToumaCommission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([countryCode])
+  @@map("touma_stores")
+}
+
+/// Dossier « Touma Verified » : vérification d'identité / d'entreprise d'un vendeur.
+model ToumaSellerVerification {
+  id      String     @id @default(cuid())
+  storeId String
+  store   ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  /// INDIVIDUAL | COMPANY
+  businessType    String
+  legalName       String
+  registrationNo  String?
+  taxId           String?
+  contactPhone    String
+  contactEmail    String
+  /// Documents (privés) : [{ kind, url, uploadedAt }] — jamais exposés publiquement.
+  documents       Json               @default("[]")
+  status          VerificationStatus @default(PENDING)
+  reviewerId      String?
+  reviewer        User?              @relation("VerificationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewerComment String?
+  reviewedAt      DateTime?
+
+  submittedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([storeId])
+  @@index([status])
+  @@map("touma_seller_verifications")
+}
+
+// ── Catalogue ────────────────────────────────────────────────────────────────
+
+/// Catégorie du catalogue (arborescence simple parent → enfants).
+model ToumaCategory {
+  id       String          @id @default(cuid())
+  name     String
+  slug     String          @unique
+  parentId String?
+  parent   ToumaCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children ToumaCategory[] @relation("CategoryTree")
+  /// B2B | B2C | BOTH — segment principal visé.
+  segment  String          @default("BOTH")
+  position Int             @default(0)
+  active   Boolean         @default(true)
+
+  products ToumaProduct[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentId])
+  @@map("touma_categories")
+}
+
+/// Produit publié par une boutique.
+model ToumaProduct {
+  id         String         @id @default(cuid())
+  storeId    String
+  store      ToumaStore     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  categoryId String?
+  category   ToumaCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  title          String
+  slug           String        @unique
+  description    String        @default("")
+  brand          String?
+  sku            String?
+  /// Prix unitaire TTC exprimé dans `currency` (jamais un Float).
+  price          Decimal       @db.Decimal(18, 4)
+  /// Prix barré (avant remise), facultatif.
+  compareAtPrice Decimal?      @db.Decimal(18, 4)
+  currency       String
+  /// Quantité minimale de commande (B2B : lots / gros).
+  minOrderQty    Int           @default(1)
+  status         ProductStatus @default(DRAFT)
+  /// Pays d'origine / d'expédition de la marchandise.
+  countryCode    String
+  country        Country       @relation(fields: [countryCode], references: [code])
+  /// Poids unitaire en grammes (devis de transport).
+  weightGrams    Int           @default(500)
+  keywords       String        @default("")
+
+  images     ToumaProductImage[]
+  variants   ToumaProductVariant[]
+  inventory  ToumaInventory[]
+  cartItems  ToumaCartItem[]
+  orderItems ToumaOrderItem[]
+  reviews    ToumaReview[]
+  favorites  ToumaFavorite[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime?
+
+  @@index([storeId])
+  @@index([categoryId])
+  @@index([status])
+  @@index([countryCode])
+  @@map("touma_products")
+}
+
+/// Image d'un produit.
+model ToumaProductImage {
+  id        String       @id @default(cuid())
+  productId String
+  product   ToumaProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  position  Int          @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([productId])
+  @@map("touma_product_images")
+}
+
+/// Variante (taille, couleur, conditionnement…). `priceDelta` s'ajoute au prix produit.
+model ToumaProductVariant {
+  id         String       @id @default(cuid())
+  productId  String
+  product    ToumaProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name       String
+  sku        String?      @unique
+  priceDelta Decimal      @default(0) @db.Decimal(18, 4)
+  position   Int          @default(0)
+  active     Boolean      @default(true)
+
+  inventory  ToumaInventory?
+  cartItems  ToumaCartItem[]
+  orderItems ToumaOrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@map("touma_product_variants")
+}
+
+/// Stock d'un produit (ou d'une variante). Une ligne par couple produit/variante.
+model ToumaInventory {
+  id                String               @id @default(cuid())
+  productId         String
+  product           ToumaProduct         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId         String?              @unique
+  variant           ToumaProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  /// Quantité disponible à la vente (déjà nette des réservations).
+  quantity          Int                  @default(0)
+  /// Quantité réservée par des commandes non encore expédiées.
+  reserved          Int                  @default(0)
+  /// Seuil d'alerte de réapprovisionnement.
+  lowStockThreshold Int                  @default(5)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, variantId])
+  @@index([productId])
+  @@map("touma_inventory")
+}
+
+// ── Panier ───────────────────────────────────────────────────────────────────
+
+/// Panier d'un acheteur (un panier actif par utilisateur).
+model ToumaCart {
+  id       String  @id @default(cuid())
+  userId   String  @unique
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency String?
+
+  items ToumaCartItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("touma_carts")
+}
+
+/// Ligne de panier. `unitPrice` = prix vu par l'acheteur (revérifié au checkout).
+model ToumaCartItem {
+  id        String               @id @default(cuid())
+  cartId    String
+  cart      ToumaCart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   ToumaProduct         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  variant   ToumaProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  quantity  Int                  @default(1)
+  unitPrice Decimal              @db.Decimal(18, 4)
+  currency  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId, variantId])
+  @@index([cartId])
+  @@map("touma_cart_items")
+}
+
+// ── Commandes ────────────────────────────────────────────────────────────────
+
+/// Commande passée auprès d'UNE boutique (un panier multi-boutiques crée
+/// plusieurs commandes, chacune avec son paiement et son expédition).
+model ToumaOrder {
+  id          String           @id @default(cuid())
+  orderNumber String           @unique
+  buyerId     String
+  buyer       User             @relation(fields: [buyerId], references: [id])
+  storeId     String
+  store       ToumaStore       @relation(fields: [storeId], references: [id])
+  status      ToumaOrderStatus @default(PENDING)
+
+  currency        String
+  /// Somme des lignes (hors livraison).
+  subtotal        Decimal @db.Decimal(18, 4)
+  shippingTotal   Decimal @default(0) @db.Decimal(18, 4)
+  /// Commission Touma retenue sur la commande.
+  commissionTotal Decimal @default(0) @db.Decimal(18, 4)
+  total           Decimal @db.Decimal(18, 4)
+
+  /// Adresse de livraison : référence + copie figée (l'adresse peut être modifiée après coup).
+  shippingAddressId String?
+  shippingAddress   ToumaAddress? @relation(fields: [shippingAddressId], references: [id], onDelete: SetNull)
+  shippingSnapshot  Json
+
+  /// Commande transfrontalière (pays acheteur ≠ pays vendeur) — cœur de la promesse Touma.
+  crossBorder   Boolean @default(false)
+  buyerCountry  String?
+  sellerCountry String?
+
+  note         String?
+  cancelReason String?
+  /// Clé d'idempotence du checkout : rejouer la requête ne crée pas de doublon.
+  checkoutKey  String?
+  placedAt     DateTime  @default(now())
+  paidAt       DateTime?
+  shippedAt    DateTime?
+  deliveredAt  DateTime?
+  completedAt  DateTime?
+  cancelledAt  DateTime?
+
+  items       ToumaOrderItem[]
+  payments    ToumaPayment[]
+  shipments   ToumaShipment[]
+  quotes      ToumaShippingQuote[]
+  reviews     ToumaReview[]
+  disputes    ToumaDispute[]
+  commissions ToumaCommission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([buyerId, storeId, checkoutKey])
+  @@index([buyerId])
+  @@index([storeId])
+  @@index([status])
+  @@map("touma_orders")
+}
+
+/// Ligne de commande : instantané figé du produit au moment de l'achat.
+/// Modifier le produit plus tard ne doit JAMAIS changer une commande passée.
+model ToumaOrderItem {
+  id        String               @id @default(cuid())
+  orderId   String
+  order     ToumaOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   ToumaProduct?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId String?
+  variant   ToumaProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  /// Instantané (snapshot) — source de vérité de la commande.
+  titleSnapshot   String
+  skuSnapshot     String?
+  variantSnapshot String?
+  imageSnapshot   String?
+  unitPrice       Decimal @db.Decimal(18, 4)
+  quantity        Int
+  lineTotal       Decimal @db.Decimal(18, 4)
+  currency        String
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@map("touma_order_items")
+}
+
+// ── Touma Pay ────────────────────────────────────────────────────────────────
+
+/// Paiement d'une commande, orchestré via un adaptateur (mock, PSP réel…).
+model ToumaPayment {
+  id             String        @id @default(cuid())
+  orderId        String
+  order          ToumaOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// Code de l'adaptateur : mock | (PSP réel plus tard).
+  provider       String
+  /// Identifiant du paiement chez le prestataire.
+  providerRef    String?
+  /// Méthode retenue : MOBILE_MONEY | CARD | BANK_TRANSFER | CASH_ON_DELIVERY…
+  method         String
+  status         PaymentStatus @default(PENDING)
+  amount         Decimal       @db.Decimal(18, 4)
+  currency       String
+  refundedAmount Decimal       @default(0) @db.Decimal(18, 4)
+  /// Clé d'idempotence fournie par le client (un seul paiement par clé).
+  idempotencyKey String?       @unique
+  /// Données NON sensibles renvoyées par le prestataire (jamais de données bancaires).
+  metadata       Json          @default("{}")
+  failureReason  String?
+
+  events ToumaPaymentEvent[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  succeededAt DateTime?
+
+  @@index([orderId])
+  @@index([status])
+  @@map("touma_payments")
+}
+
+/// Journal d'audit d'un paiement (création, webhooks, remboursements).
+model ToumaPaymentEvent {
+  id         String       @id @default(cuid())
+  paymentId  String
+  payment    ToumaPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  type       String
+  /// Identifiant de l'événement chez le prestataire : rejoue = ignoré (unicité).
+  externalId String?      @unique
+  payload    Json         @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([paymentId])
+  @@map("touma_payment_events")
+}
+
+/// Commission Touma calculée sur une commande (part plateforme).
+model ToumaCommission {
+  id       String             @id @default(cuid())
+  orderId  String
+  order    ToumaOrder         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  storeId  String
+  store    ToumaStore         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  /// Taux appliqué (ex. 0.0500 = 5 %) — jamais codé en dur, voir la configuration.
+  rate     Decimal            @db.Decimal(6, 4)
+  amount   Decimal            @db.Decimal(18, 4)
+  currency String
+  payoutId String?
+  payout   ToumaSellerPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@index([storeId])
+  @@map("touma_commissions")
+}
+
+/// Versement au vendeur (net de commission).
+model ToumaSellerPayout {
+  id        String       @id @default(cuid())
+  storeId   String
+  store     ToumaStore   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  amount    Decimal      @db.Decimal(18, 4)
+  currency  String
+  status    PayoutStatus @default(PENDING)
+  reference String?
+  paidAt    DateTime?
+
+  commissions ToumaCommission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+  @@map("touma_seller_payouts")
+}
+
+// ── Touma Logistics ──────────────────────────────────────────────────────────
+
+/// Transporteur raccordé (un adaptateur par transporteur).
+model ToumaShippingProvider {
+  id        String  @id @default(cuid())
+  code      String  @unique
+  name      String
+  /// Pays desservis (codes ISO séparés par des virgules ; vide = tous).
+  countries String  @default("")
+  active    Boolean @default(true)
+
+  quotes    ToumaShippingQuote[]
+  shipments ToumaShipment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("touma_shipping_providers")
+}
+
+/// Devis de transport (prix + délai) proposé pour une commande / un panier.
+model ToumaShippingQuote {
+  id           String                 @id @default(cuid())
+  providerId   String?
+  provider     ToumaShippingProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  providerCode String
+  serviceName  String
+  orderId      String?
+  order        ToumaOrder?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  originCountry      String
+  originCity         String?
+  destinationCountry String
+  destinationCity    String?
+  weightGrams        Int
+  /// Dimensions en cm : { length, width, height }.
+  dimensions         Json     @default("{}")
+  amount             Decimal  @db.Decimal(18, 4)
+  currency           String
+  etaMinDays         Int
+  etaMaxDays         Int
+  /// Expire pour empêcher l'utilisation d'un vieux tarif.
+  expiresAt          DateTime
+
+  shipments ToumaShipment[]
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@map("touma_shipping_quotes")
+}
+
+/// Expédition réelle rattachée à une commande.
+model ToumaShipment {
+  id                 String                 @id @default(cuid())
+  orderId            String
+  order              ToumaOrder             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  quoteId            String?
+  quote              ToumaShippingQuote?    @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  providerId         String?
+  provider           ToumaShippingProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  providerCode       String
+  trackingNumber     String                 @unique
+  labelUrl           String?
+  status             ShipmentStatus         @default(PENDING)
+  amount             Decimal                @db.Decimal(18, 4)
+  currency           String
+  etaMinDays         Int                    @default(0)
+  etaMaxDays         Int                    @default(0)
+  originCountry      String
+  destinationCountry String
+
+  events ToumaTrackingEvent[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+
+  @@index([orderId])
+  @@index([status])
+  @@map("touma_shipments")
+}
+
+/// Événement de suivi d'une expédition.
+model ToumaTrackingEvent {
+  id         String         @id @default(cuid())
+  shipmentId String
+  shipment   ToumaShipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  status     ShipmentStatus
+  label      String
+  location   String?
+  occurredAt DateTime       @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@index([shipmentId])
+  @@map("touma_tracking_events")
+}
+
+// ── Avis, litiges, confiance ─────────────────────────────────────────────────
+
+/// Avis d'un acheteur : uniquement sur un produit réellement acheté et livré.
+model ToumaReview {
+  id        String       @id @default(cuid())
+  orderId   String
+  order     ToumaOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   ToumaProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String?
+  /// PENDING | PUBLISHED | REJECTED — modération.
+  status    String       @default("PUBLISHED")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, productId])
+  @@index([productId])
+  @@map("touma_reviews")
+}
+
+/// Litige ouvert sur une commande.
+model ToumaDispute {
+  id           String        @id @default(cuid())
+  orderId      String
+  order        ToumaOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  openedById   String
+  openedBy     User          @relation(fields: [openedById], references: [id], onDelete: Cascade)
+  reason       String
+  details      String?
+  status       DisputeStatus @default(OPEN)
+  /// Décision de l'administrateur (auditée dans ToumaAuditLog).
+  resolution   String?
+  refundAmount Decimal?      @db.Decimal(18, 4)
+  resolvedAt   DateTime?
+
+  messages ToumaDisputeMessage[]
+  evidence ToumaDisputeEvidence[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([status])
+  @@map("touma_disputes")
+}
+
+/// Message échangé dans un litige.
+model ToumaDisputeMessage {
+  id        String       @id @default(cuid())
+  disputeId String
+  dispute   ToumaDispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  /// Message interne (visible des seuls administrateurs).
+  internal  Boolean      @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([disputeId])
+  @@map("touma_dispute_messages")
+}
+
+/// Preuve jointe à un litige (photo, facture…). Stockage privé.
+model ToumaDisputeEvidence {
+  id        String       @id @default(cuid())
+  disputeId String
+  dispute   ToumaDispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  kind      String
+  url       String
+  note      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([disputeId])
+  @@map("touma_dispute_evidence")
+}
+
+// ── Risque & fraude ──────────────────────────────────────────────────────────
+
+/// Score de risque d'un utilisateur (informatif : ne bannit jamais tout seul).
+model ToumaRiskScore {
+  id      String @id @default(cuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 0 (sûr) → 100 (très risqué).
+  score   Int    @default(0)
+  /// LOW | MEDIUM | HIGH
+  level   String @default("LOW")
+  /// Signaux ayant contribué au score : [{ code, weight, detail }].
+  signals Json   @default("[]")
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("touma_risk_scores")
+}
+
+/// Signal de fraude observé (paiement échoué, incohérence pays/adresse…).
+model ToumaFraudEvent {
+  id     String  @id @default(cuid())
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  code   String
+  weight Int     @default(1)
+  detail Json    @default("{}")
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([code])
+  @@map("touma_fraud_events")
+}
+
+// ── Divers ───────────────────────────────────────────────────────────────────
+
+/// Produit mis en favori par un acheteur.
+model ToumaFavorite {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   ToumaProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, productId])
+  @@map("touma_favorites")
+}
+
+/// Notification métier. Le canal (email/SMS/WhatsApp/push) est branché plus tard :
+/// le domaine ne dépend d'aucun fournisseur.
+model ToumaNotification {
+  id       String    @id @default(cuid())
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// ORDER_CREATED | PAYMENT_SUCCEEDED | SHIPMENT_UPDATED | VERIFICATION_APPROVED…
+  type     String
+  title    String
+  body     String
+  data     Json      @default("{}")
+  readAt   DateTime?
+  /// Canaux de diffusion demandés (IN_APP par défaut).
+  channels String    @default("IN_APP")
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("touma_notifications")
+}
+
+/// Jeton de rafraîchissement (rotation + révocation). Seul le hash est stocké.
+model ToumaRefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 du jeton : un vol de base ne permet pas de rejouer le jeton.
+  tokenHash  String    @unique
+  /// Famille de jetons : une réutilisation détectée révoque toute la famille.
+  familyId   String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  /// Jeton émis en remplacement (chaîne de rotation).
+  replacedBy String?
+  userAgent  String?
+  ip         String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("touma_refresh_tokens")
+}
+
+// ── Touma AI ─────────────────────────────────────────────────────────────────
+
+/// Requête envoyée à un fournisseur d'IA (traçabilité, quotas, coûts).
+model ToumaAiRequest {
+  id        String  @id @default(cuid())
+  userId    String?
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  provider  String
+  /// generate | classify | recommend
+  kind      String
+  /// Cas d'usage : product_description | product_title | category_suggestion…
+  useCase   String
+  input     Json    @default("{}")
+  output    Json    @default("{}")
+  /// OK | ERROR
+  status    String  @default("OK")
+  latencyMs Int     @default(0)
+  error     String?
+
+  recommendations ToumaAiRecommendation[]
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("touma_ai_requests")
+}
+
+/// Recommandation produite par l'IA. Toute action critique reste validée par un humain.
+model ToumaAiRecommendation {
+  id         String          @id @default(cuid())
+  requestId  String?
+  request    ToumaAiRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  /// PRODUCT | SUPPLIER | PRICE | CATEGORY
+  targetType String
+  targetId   String?
+  score      Decimal         @default(0) @db.Decimal(6, 4)
+  reason     String?
+  payload    Json            @default("{}")
+  /// L'utilisateur a-t-il accepté la recommandation ?
+  acceptedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@map("touma_ai_recommendations")
+}
+
+/// Journal d'audit : toute action sensible (admin, litige, vérification, paiement).
+model ToumaAuditLog {
+  id       String  @id @default(cuid())
+  actorId  String?
+  actor    User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  /// Ex. verification.approve, order.status.update, dispute.resolve.
+  action   String
+  entity   String
+  entityId String?
+  /// Détail non sensible (jamais de secrets, jetons ou données bancaires).
+  metadata Json    @default("{}")
+  ip       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([action])
+  @@map("touma_audit_logs")
 }

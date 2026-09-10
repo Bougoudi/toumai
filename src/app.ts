@@ -27,6 +27,10 @@ import { supplierRouter } from './modules/suppliers/supplier.routes.js';
 import { aliexpressRouter } from './modules/aliexpress/aliexpress.routes.js';
 import { aliexpressController } from './modules/aliexpress/aliexpress.controller.js';
 import { supportRouter } from './modules/support/support.routes.js';
+import { toumaV1Router } from './touma/touma.routes.js';
+import { paymentWebhookRouter } from './touma/payments/payment.routes.js';
+import { toumaOpenApiDocument } from './touma/openapi.js';
+import { readiness } from './touma/health.js';
 
 /**
  * Dossier des fichiers statiques (PWA). En développement (tsx) le module est
@@ -73,8 +77,19 @@ export function createApp() {
   // Application web (PWA) : fichiers statiques servis à la racine.
   app.use(express.static(publicDir));
 
+  // Webhooks de paiement Touma : corps BRUT requis pour vérifier la signature
+  // (monté AVANT express.json(), qui casserait la vérification).
+  app.use('/api/v1/payments/webhook', paymentWebhookRouter);
+
   // Santé / disponibilité
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'toumai' }));
+
+  // Sonde de disponibilité (Kubernetes/Render) : vérifie PostgreSQL, Redis et
+  // les dépendances critiques. 503 tant qu'une dépendance requise est absente.
+  app.get('/ready', asyncHandler(async (_req, res) => {
+    const report = await readiness();
+    res.status(report.ready ? 200 : 503).json(report);
+  }));
 
   // Android Digital Asset Links : lie l'app Play Store (TWA) au domaine, ce qui
   // supprime la barre d'adresse et permet l'installation « native ». Les empreintes
@@ -146,7 +161,13 @@ export function createApp() {
   // notre jeton ; l'identité est portée par l'état signé).
   app.get('/api/aliexpress/oauth/callback', asyncHandler(aliexpressController.callback));
 
-  // À partir d'ici, toutes les routes /api exigent un jeton valide.
+  // ── API TOUMA v1 (place de marché) ─────────────────────────────────────────
+  // Domaine indépendant du logiciel d'automatisation ci-dessous : il gère sa
+  // propre authentification (jeton d'accès + rafraîchissement) route par route.
+  app.get('/api/v1/openapi.json', (_req, res) => res.json(toumaOpenApiDocument()));
+  app.use('/api/v1', toumaV1Router);
+
+  // À partir d'ici, toutes les routes /api (hors v1) exigent un jeton valide.
   app.use('/api', requireAuth);
 
   app.use('/api/dashboard', dashboardRouter); // vue d'ensemble

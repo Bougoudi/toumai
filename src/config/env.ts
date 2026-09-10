@@ -88,6 +88,54 @@ export const env = {
     jwtTtlSeconds: Number(process.env.JWT_TTL_SECONDS ?? 7 * 24 * 3600),
   },
 
+  /**
+   * TOUMA — place de marché africaine (corridor pilote Tchad ↔ Cameroun).
+   * Rien n'est codé en dur : pays, devises et taux de commission sont
+   * configurables (les pays vivent en base, voir le modèle `Country`).
+   */
+  touma: {
+    /** Secrets distincts pour les jetons d'accès et de rafraîchissement. */
+    accessSecret: process.env.JWT_ACCESS_SECRET ?? process.env.JWT_SECRET ?? 'dev-secret-change-me',
+    refreshSecret: process.env.JWT_REFRESH_SECRET ?? `${process.env.JWT_SECRET ?? 'dev-secret-change-me'}:refresh`,
+    /** Jeton d'accès court (défaut 15 min). */
+    accessTtlSeconds: Number(process.env.TOUMA_ACCESS_TTL_SECONDS ?? 15 * 60),
+    /** Jeton de rafraîchissement (défaut 30 jours), soumis à rotation. */
+    refreshTtlSeconds: Number(process.env.TOUMA_REFRESH_TTL_SECONDS ?? 30 * 24 * 3600),
+    /** Commission plateforme par défaut (0.05 = 5 %). Jamais codée en dur ailleurs. */
+    commissionRate: Number(process.env.TOUMA_COMMISSION_RATE ?? 0.05),
+    /** Devise de repli quand le pays n'en déclare aucune. */
+    defaultCurrency: process.env.TOUMA_DEFAULT_CURRENCY ?? 'XAF',
+    /** Pagination : taille par défaut et maximum autorisé. */
+    pageSize: Number(process.env.TOUMA_PAGE_SIZE ?? 20),
+    maxPageSize: Number(process.env.TOUMA_MAX_PAGE_SIZE ?? 100),
+    /** Secret de signature des webhooks de paiement (HMAC). */
+    paymentWebhookSecret: process.env.TOUMA_PAYMENT_WEBHOOK_SECRET ?? process.env.JWT_SECRET ?? 'dev-secret-change-me',
+    /** Adaptateurs actifs (mock tant qu'aucun prestataire réel n'est raccordé). */
+    paymentProvider: process.env.TOUMA_PAYMENT_PROVIDER ?? 'mock',
+    logisticsProvider: process.env.TOUMA_LOGISTICS_PROVIDER ?? 'mock',
+    aiProvider: process.env.TOUMA_AI_PROVIDER ?? 'mock',
+  },
+
+  /** Cache / file d'attente (Redis). Optionnel : l'API démarre sans. */
+  redis: {
+    url: process.env.REDIS_URL ?? '',
+    get enabled() {
+      return !!process.env.REDIS_URL;
+    },
+  },
+
+  /** Stockage objet compatible S3 (images produits, documents de vérification). */
+  storage: {
+    endpoint: process.env.S3_ENDPOINT ?? '',
+    bucket: process.env.S3_BUCKET ?? '',
+    accessKey: process.env.S3_ACCESS_KEY ?? '',
+    secretKey: process.env.S3_SECRET_KEY ?? '',
+    region: process.env.S3_REGION ?? 'auto',
+    get enabled() {
+      return !!process.env.S3_ENDPOINT && !!process.env.S3_BUCKET;
+    },
+  },
+
   /** Sécurité. */
   security: {
     /** Clé de chiffrement des données sensibles en base (identifiants des canaux). */

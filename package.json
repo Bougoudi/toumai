@@ -22,7 +22,13 @@
     "db:reset": "prisma migrate reset --force",
     "worker": "tsx src/automation/scheduler.ts",
     "autopilot": "tsx src/automation/autopilot.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed": "tsx prisma/seed.touma.ts",
+    "db:seed:touma": "tsx prisma/seed.touma.ts",
+    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "test:unit": "node --import tsx --test tests/unit/*.test.ts",
+    "test:integration": "node --import tsx --test tests/integration/*.test.ts",
+    "test:e2e": "node --import tsx --test tests/e2e/*.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
