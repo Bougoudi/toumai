@@ -5,6 +5,7 @@ import { auditRequest } from '../lib/audit.js';
 import { authenticate, currentUser, optionalAuth, requireRole } from '../middleware/toumaAuth.js';
 import { createProductSchema, listProductsSchema, updateProductSchema } from './product.schema.js';
 import { productService } from './product.service.js';
+import { facetsService } from './facets.service.js';
 
 export const productRouter = Router();
 
@@ -36,6 +37,18 @@ productRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     res.json(await productService.list(parseQuery(listProductsSchema, req)));
+  }),
+);
+
+/**
+ * Facettes de la recherche en cours : combien de résultats chaque filtre
+ * donnerait. Sans ces compteurs, l'acheteur clique à l'aveugle et tombe sur des
+ * listes vides.
+ */
+productRouter.get(
+  '/facets',
+  asyncHandler(async (req, res) => {
+    res.json(await facetsService.forQuery(parseQuery(listProductsSchema, req)));
   }),
 );
 

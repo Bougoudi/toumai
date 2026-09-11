@@ -494,6 +494,12 @@ tbody tr:hover { background: var(--surface-sunken); }
 }
 .tabs a:hover { color: var(--text); text-decoration: none; }
 .tabs a[aria-current="page"] { color: var(--primary); border-bottom-color: var(--accent); }
+
+/* Dans la colonne de filtres, les tranches de prix sont une liste d'options :
+   elles passent à la ligne et alignent leur compteur à droite, plutôt que de
+   défiler hors du panneau. */
+.filters-panel .chip-row { flex-wrap: wrap; overflow-x: visible; }
+.filters-panel .chip { width: 100%; justify-content: space-between; }
 /* L'espace vendeur a fini par compter dix onglets : sur grand écran ils passent
    à la ligne plutôt que de disparaître dans un défilement horizontal discret. */
 @media (min-width: 900px) {

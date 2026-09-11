@@ -100,6 +100,29 @@ await step('accueil', async () => {
   await page.screenshot({ path: `${OUT}/01-accueil.png` });
 });
 
+await step('catalogue : facettes avec compteurs', async () => {
+  await page.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#filters');
+  // Les compteurs viennent du serveur : sans eux, filtrer se fait à l'aveugle.
+  const countries = await page.locator('#f-country option').allTextContents();
+  if (!countries.some((t) => /\(\d+\)/.test(t))) throw new Error('les pays n’annoncent pas leur nombre de résultats');
+  const availability = await page.locator('#f-availability option').allTextContents();
+  if (!availability.some((t) => /En stock uniquement \(\d+\)/.test(t))) throw new Error('la disponibilité n’est pas comptée');
+
+  const buckets = await page.locator('.filters-panel .chip-row a').count();
+  if (buckets === 0) throw new Error('aucune tranche de prix proposée');
+  await page.screenshot({ path: `${OUT}/34-facettes.png` });
+
+  // Cliquer une tranche filtre réellement, et la tranche reste proposée.
+  const label = await page.locator('.filters-panel .chip-row a').first().textContent();
+  await page.click('.filters-panel .chip-row a');
+  await page.waitForTimeout(1800);
+  if (!page.url().includes('minPrice')) throw new Error('la tranche de prix n’a pas été appliquée');
+  const after = await page.locator('.filters-panel .chip-row a').count();
+  if (after === 0) throw new Error('les tranches disparaissent une fois l’une d’elles choisie');
+  if (!label.trim()) throw new Error('tranche sans libellé');
+});
+
 await step('catalogue et filtres', async () => {
   await page.click('.header-nav a[href="/touma/produits"]');
   await page.waitForSelector('.product-card');

@@ -116,7 +116,7 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 
 ## 5. Ce qui est garanti par les tests
 
-217 tests automatisés s'exécutent contre une vraie base PostgreSQL
+225 tests automatisés s'exécutent contre une vraie base PostgreSQL
 (`npm test` — Node ≥ 22, dont le lanceur de tests accepte les motifs glob),
 dont le parcours complet de bout en bout :
 
@@ -194,7 +194,9 @@ Règles vérifiées, entre autres :
   solliciter deux fois le même ne le prévient pas deux fois ;
 - une simulation d'import n'écrit rien, une ligne fautive n'emporte pas les
   bonnes, une même référence deux fois dans un fichier est refusée, et l'export
-  se réimporte sans créer de doublon.
+  se réimporte sans créer de doublon ;
+- le compteur d'une facette est calculé **sans** le filtre de sa propre
+  dimension : choisir un pays ne met pas les autres pays à zéro.
 
 Un test navigateur optionnel (`npm run test:browser`, nécessite Playwright)
 rejoue **tout le parcours dans Chromium** — accueil, catalogue et filtres,
@@ -206,7 +208,7 @@ ouverture d'un ticket d'assistance et réponse de l'équipe, création d'un code
 réduction et son application au paiement, consultation de la facture et du reçu,
 rendu du document à l'impression, réputation affichée sur la vitrine et dans
 l'espace vendeur, recherche de fournisseurs et sollicitation sur un appel
-d'offres, import de catalogue en masse — puis vérifie, à
+d'offres, import de catalogue en masse, facettes de recherche — puis vérifie, à
 **360, 390, 430, 768, 900, 1024, 1280 et 1440 px** : aucune erreur console, aucun
 débordement horizontal, navigation basse et menu latéral fonctionnels.
 
@@ -448,6 +450,27 @@ l'inventaire du vendeur qui fait foi, pas une addition à l'aveugle.
 
 L'export a exactement le même format que l'import : exporter, corriger dans son
 tableur, réimporter. Sans cet aller-retour, l'import ne servirait qu'une fois.
+
+## 4 undecies. Facettes de recherche
+
+Des filtres sans compteur obligent l'acheteur à deviner : il clique, la liste se
+vide, il recommence. Chaque filtre annonce donc **combien de résultats** il
+donnerait — par catégorie, par pays, par disponibilité, pour les boutiques
+vérifiées, et par tranche de prix.
+
+Le point technique qui fait toute la différence : le compteur d'une dimension
+est calculé **sans** le filtre de cette dimension. Sinon, choisir « Cameroun »
+mettrait tous les autres pays à zéro et l'acheteur ne pourrait plus changer
+d'avis sans tout réinitialiser — c'est le défaut classique des facettes mal
+faites. Les autres filtres, eux, s'appliquent bien.
+
+Les tranches de prix sont dérivées des prix **réellement présents** dans les
+résultats, arrondies à des bornes lisibles, et les tranches vides ne sont jamais
+proposées. Elles n'apparaissent que si les résultats partagent une seule devise :
+répartir un panier multi-devises en tranches reviendrait à inventer un taux de
+change, et l'interface explique alors comment affiner.
+
+Tous les compteurs viennent d'agrégats en base — aucun n'est estimé.
 
 ---
 

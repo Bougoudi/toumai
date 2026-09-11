@@ -55,38 +55,60 @@ function serializeList(p: Prisma.ToumaProductGetPayload<{ select: typeof listSel
   };
 }
 
+/** Dimensions filtrables, pour pouvoir en exclure une au calcul des facettes. */
+export type FilterDimension = 'category' | 'country' | 'store' | 'price' | 'availability' | 'verified';
+
+/**
+ * Construit les filtres d'une recherche produit.
+ *
+ * `exclude` sert au calcul des facettes : le compteur d'une dimension doit être
+ * calculé **sans** le filtre de cette dimension, sinon choisir « Cameroun »
+ * ferait tomber à zéro le compteur de tous les autres pays et l'acheteur ne
+ * pourrait plus changer d'avis sans tout réinitialiser.
+ */
+export function buildProductFilters(
+  query: ListProductsQuery,
+  options: { exclude?: FilterDimension } = {},
+): Prisma.ToumaProductWhereInput[] {
+  const and: Prisma.ToumaProductWhereInput[] = [{ status: 'ACTIVE' }, { store: { status: 'ACTIVE' } }];
+
+  if (query.q) {
+    const q = query.q;
+    and.push({
+      OR: [
+        { title: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { keywords: { contains: q, mode: 'insensitive' } },
+        { brand: { contains: q, mode: 'insensitive' } },
+        { category: { name: { contains: q, mode: 'insensitive' } } },
+        { store: { name: { contains: q, mode: 'insensitive' } } },
+      ],
+    });
+  }
+  if (query.category && options.exclude !== 'category') {
+    and.push({ category: { OR: [{ id: query.category }, { slug: query.category }] } });
+  }
+  if (query.country && options.exclude !== 'country') and.push({ countryCode: query.country });
+  if (query.store && options.exclude !== 'store') and.push({ store: { OR: [{ id: query.store }, { slug: query.store }] } });
+  if (options.exclude !== 'price') {
+    if (query.minPrice) and.push({ price: { gte: new Prisma.Decimal(query.minPrice) } });
+    if (query.maxPrice) and.push({ price: { lte: new Prisma.Decimal(query.maxPrice) } });
+  }
+  if (query.verifiedOnly === 'true' && options.exclude !== 'verified') {
+    and.push({ store: { verificationStatus: 'APPROVED' } });
+  }
+  if (options.exclude !== 'availability') {
+    if (query.availability === 'in_stock') and.push({ inventory: { some: { quantity: { gt: 0 } } } });
+    if (query.availability === 'out_of_stock') and.push({ inventory: { every: { quantity: { lte: 0 } } } });
+  }
+  return and;
+}
+
 export const productService = {
   /** Recherche/filtrage du catalogue public (pagination côté serveur). */
   async list(query: ListProductsQuery) {
     const page: PageParams = { page: query.page, limit: query.limit, skip: (query.page - 1) * query.limit };
-    const and: Prisma.ToumaProductWhereInput[] = [
-      { status: 'ACTIVE' },
-      { store: { status: 'ACTIVE' } },
-    ];
-
-    if (query.q) {
-      const q = query.q;
-      and.push({
-        OR: [
-          { title: { contains: q, mode: 'insensitive' } },
-          { description: { contains: q, mode: 'insensitive' } },
-          { keywords: { contains: q, mode: 'insensitive' } },
-          { brand: { contains: q, mode: 'insensitive' } },
-          { category: { name: { contains: q, mode: 'insensitive' } } },
-          { store: { name: { contains: q, mode: 'insensitive' } } },
-        ],
-      });
-    }
-    if (query.category) and.push({ category: { OR: [{ id: query.category }, { slug: query.category }] } });
-    if (query.country) and.push({ countryCode: query.country });
-    if (query.store) and.push({ store: { OR: [{ id: query.store }, { slug: query.store }] } });
-    if (query.minPrice) and.push({ price: { gte: new Prisma.Decimal(query.minPrice) } });
-    if (query.maxPrice) and.push({ price: { lte: new Prisma.Decimal(query.maxPrice) } });
-    if (query.verifiedOnly === 'true') and.push({ store: { verificationStatus: 'APPROVED' } });
-    if (query.availability === 'in_stock') and.push({ inventory: { some: { quantity: { gt: 0 } } } });
-    if (query.availability === 'out_of_stock') and.push({ inventory: { every: { quantity: { lte: 0 } } } });
-
-    const where: Prisma.ToumaProductWhereInput = { AND: and };
+    const where: Prisma.ToumaProductWhereInput = { AND: buildProductFilters(query) };
     const orderBy: Prisma.ToumaProductOrderByWithRelationInput =
       query.sort === 'price_asc'
         ? { price: 'asc' }

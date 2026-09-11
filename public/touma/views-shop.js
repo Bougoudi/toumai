@@ -121,16 +121,18 @@ export async function home() {
 // ── Catalogue ──────────────────────────────────────────────────────────────
 export async function catalog(_params, query) {
   const search = new URLSearchParams();
-  for (const key of ['q', 'category', 'country', 'store', 'minPrice', 'maxPrice', 'availability', 'sort', 'page']) {
+  for (const key of ['q', 'category', 'country', 'store', 'minPrice', 'maxPrice', 'availability', 'verifiedOnly', 'sort', 'page']) {
     const value = query.get(key);
     if (value) search.set(key, value);
   }
   search.set('limit', '12');
 
-  const [result, categories, countries] = await Promise.all([
+  const [result, categories, countries, facets] = await Promise.all([
     api(`/products?${search.toString()}`),
     api('/categories'),
     api('/countries'),
+    // Les compteurs viennent du serveur : sans eux l'acheteur filtre à l'aveugle.
+    api(`/products/facets?${search.toString()}`).catch(() => null),
   ]);
 
   const opt = (value, text, current) => `<option value="${esc(value)}"${current === value ? ' selected' : ''}>${esc(text)}</option>`;
@@ -160,16 +162,21 @@ export async function catalog(_params, query) {
           <label for="f-category">Catégorie</label>
           <select id="f-category" name="category">
             ${opt('', 'Toutes les catégories', query.get('category') || '')}
-            ${categories.items.map((c) => opt(c.slug, `${c.name} (${c.productCount})`, query.get('category') || '')).join('')}
+            ${(facets?.categories ?? categories.items.map((c) => ({ ...c, count: c.productCount })))
+              .map((c) => opt(c.slug, `${c.name} (${c.count})`, query.get('category') || ''))
+              .join('')}
           </select>
         </div>
         <div class="field">
           <label for="f-country">Pays d'expédition</label>
           <select id="f-country" name="country">
             ${opt('', 'Tous les pays', query.get('country') || '')}
-            ${countries.items.map((c) => opt(c.code, c.name, query.get('country') || '')).join('')}
+            ${(facets?.countries ?? countries.items.map((c) => ({ ...c, count: null })))
+              .map((c) => opt(c.code, c.count === null ? c.name : `${c.name} (${c.count})`, query.get('country') || ''))
+              .join('')}
           </select>
         </div>
+        ${priceFacet(facets, query)}
         <div class="row" style="gap:var(--space-3)">
           <div class="field" style="flex:1;min-width:110px">
             <label for="f-min">Prix min.</label>
@@ -184,9 +191,17 @@ export async function catalog(_params, query) {
           <label for="f-availability">Disponibilité</label>
           <select id="f-availability" name="availability">
             ${opt('any', 'Tous les produits', query.get('availability') || 'any')}
-            ${opt('in_stock', 'En stock uniquement', query.get('availability') || 'any')}
+            ${opt(
+              'in_stock',
+              facets ? `En stock uniquement (${facets.availability.inStock})` : 'En stock uniquement',
+              query.get('availability') || 'any',
+            )}
           </select>
         </div>
+        <label class="check" style="margin-bottom:var(--space-4)">
+          <input type="checkbox" name="verifiedOnly" value="true" ${query.get('verifiedOnly') === 'true' ? 'checked' : ''} />
+          <span class="small">Boutiques vérifiées${facets ? ` (${facets.verified})` : ''}</span>
+        </label>
         <div class="field">
           <label for="f-sort">Trier par</label>
           <select id="f-sort" name="sort">
@@ -215,6 +230,43 @@ export async function catalog(_params, query) {
             })}
       </div>
     </div>`;
+}
+
+/**
+ * Tranches de prix cliquables, calculées par le serveur sur les prix réellement
+ * présents dans les résultats. Une tranche vide n'est jamais proposée.
+ */
+function priceFacet(facets, query) {
+  const price = facets?.price;
+  if (!price) return '';
+  if (price.unavailableReason) return `<p class="xs muted">${esc(price.unavailableReason)}</p>`;
+  if (!price.buckets?.length) return '';
+
+  const base = new URLSearchParams(query);
+  base.delete('page');
+  const hrefFor = (from, to) => {
+    const next = new URLSearchParams(base);
+    next.set('minPrice', from);
+    if (to === null) next.delete('maxPrice');
+    else next.set('maxPrice', to);
+    return `/touma/produits?${next.toString()}`;
+  };
+  const active = (from, to) =>
+    (query.get('minPrice') || '') === from && (query.get('maxPrice') || '') === (to ?? '');
+
+  return `<div class="field">
+    <span class="small" style="font-weight:var(--weight-semibold);display:block;margin-bottom:var(--space-2)">Tranches de prix</span>
+    <div class="chip-row">
+      ${price.buckets
+        .map(
+          (b) => `<a class="chip${active(b.from, b.to) ? ' chip-active' : ''}" href="${esc(hrefFor(b.from, b.to))}" data-link>
+            ${b.to === null ? `${money(b.from, price.currency)} et +` : `${money(b.from, price.currency)} – ${money(b.to, price.currency)}`}
+            <span class="muted">${b.count}</span>
+          </a>`,
+        )
+        .join('')}
+    </div>
+  </div>`;
 }
 
 // ── Fiche produit ──────────────────────────────────────────────────────────

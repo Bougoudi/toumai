@@ -81,6 +81,12 @@ export function toumaOpenApiDocument() {
         }),
         post: op('Catalogue', 'Publier un produit', { body: true, role: 'SELLER' }),
       },
+      '/products/facets': {
+        get: op('Catalogue', 'Compteurs de la recherche en cours (facettes)', {
+          auth: false,
+          query: ['q', 'category', 'country', 'store', 'minPrice', 'maxPrice', 'availability', 'verifiedOnly'],
+        }),
+      },
       '/products/mine': { get: op('Vendeur', 'Mes produits', { role: 'SELLER', query: ['storeId', 'status', 'page', 'limit'] }) },
       '/products/{id}': {
         get: op('Catalogue', 'Fiche produit', { auth: false, params: ['id'] }),
