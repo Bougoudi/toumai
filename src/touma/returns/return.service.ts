@@ -9,6 +9,7 @@ import { notify } from '../lib/notifications.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import { refundService } from '../payments/refund.service.js';
+import { reputationService } from '../reputation/reputation.service.js';
 import type { ApproveReturnInput, CreateReturnInput, ListReturnsQuery, ReceiveReturnInput, RefundInput } from './return.schema.js';
 
 /**
@@ -275,6 +276,9 @@ export const returnService = {
       },
       include: returnInclude,
     });
+
+    // Un retour compte dans la réputation de la boutique.
+    await reputationService.invalidate(order.storeId);
 
     await audit({
       actorId: user.id,

@@ -7,6 +7,7 @@ import { audit, auditRequest } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { notify } from '../lib/notifications.js';
 import { authenticate, currentUser, requireAdmin } from '../middleware/toumaAuth.js';
+import { reputationService } from '../reputation/reputation.service.js';
 
 /**
  * Litiges Touma. Acheteur et vendeur échangent messages et preuves ; seule
@@ -91,6 +92,9 @@ disputeRouter.post(
       await tx.toumaOrder.update({ where: { id: order.id }, data: { status: 'DISPUTED' } });
       return created;
     });
+
+    // Un litige pèse dans la réputation de la boutique : son instantané est périmé.
+    await reputationService.invalidate(order.storeId);
 
     const counterpartId = order.buyerId === user.id ? order.store.ownerId : order.buyerId;
     await notify({

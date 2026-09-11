@@ -139,6 +139,14 @@ export const env = {
     companyAddress: process.env.TOUMA_COMPANY_ADDRESS ?? '',
     companyCountry: process.env.TOUMA_COMPANY_COUNTRY ?? '',
     companyEmail: process.env.TOUMA_COMPANY_EMAIL ?? '',
+    /**
+     * Réputation vendeur. En dessous de `reputationMinOrders` commandes
+     * livrées, aucun indicateur n'est publié : un taux calculé sur deux
+     * commandes ne dit rien et induirait l'acheteur en erreur.
+     */
+    reputationMinOrders: Number(process.env.TOUMA_REPUTATION_MIN_ORDERS ?? 5),
+    /** Durée de validité d'un instantané de réputation (secondes). */
+    reputationTtlSeconds: Number(process.env.TOUMA_REPUTATION_TTL_SECONDS ?? 3600),
     /** Adaptateurs actifs (mock tant qu'aucun prestataire réel n'est raccordé). */
     paymentProvider: process.env.TOUMA_PAYMENT_PROVIDER ?? 'mock',
     logisticsProvider: process.env.TOUMA_LOGISTICS_PROVIDER ?? 'mock',

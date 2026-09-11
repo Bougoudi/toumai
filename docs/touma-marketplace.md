@@ -34,6 +34,7 @@ Produits prévus, tous représentés dans l'architecture :
 | Promotions (codes de réduction) | Fonctionnel | `src/touma/promotions` |
 | Fidélité | Fonctionnel | `src/touma/loyalty` |
 | Documents commerciaux | Fonctionnel | `src/touma/documents` |
+| Réputation vendeur | Fonctionnel | `src/touma/reputation` |
 | Touma Intelligence | Amorcé (analytique) | `src/touma/admin/analytics.service.ts` |
 
 ---
@@ -89,7 +90,7 @@ uniquement**) : `admin@touma.dev`, `vendeur.td@touma.dev`,
 
 ## 4. Modèle de données
 
-Cinquante-cinq modèles préfixés `Touma` (tables `touma_*`), plus la table `Country` et
+Cinquante-six modèles préfixés `Touma` (tables `touma_*`), plus la table `Country` et
 l'extension du modèle `User` existant (rôle place de marché, pays, statut).
 
 Domaines : pays et adresses · boutiques et vérification · catégories, produits,
@@ -101,7 +102,8 @@ recommandations d'IA · journal d'audit · groupes de commande, profils
 entreprise, appels d'offres et négociation · conversations et messages ·
 demandes de retour, lignes retournées et remboursements · tickets d'assistance ·
 codes de réduction et leurs utilisations · comptes et mouvements de fidélité ·
-documents commerciaux et leurs séries de numérotation.
+documents commerciaux et leurs séries de numérotation · réputation calculée des
+boutiques.
 
 **Règle absolue : tout montant est un `Decimal(18,4)`.** Aucun `Float` financier.
 L'utilitaire `src/touma/lib/money.ts` centralise additions, multiplications,
@@ -112,7 +114,7 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 
 ## 5. Ce qui est garanti par les tests
 
-184 tests automatisés s'exécutent contre une vraie base PostgreSQL
+191 tests automatisés s'exécutent contre une vraie base PostgreSQL
 (`npm test` — Node ≥ 22, dont le lanceur de tests accepte les motifs glob),
 dont le parcours complet de bout en bout :
 
@@ -180,7 +182,10 @@ Règles vérifiées, entre autres :
 - un document est figé : changer le prix d'un produit après coup ne modifie ni
   ses lignes ni ses totaux, et un remboursement produit un **avoir** qui
   référence la facture au lieu de la réécrire ;
-- une raison sociale n'apparaît sur un document que si elle a été vérifiée.
+- une raison sociale n'apparaît sur un document que si elle a été vérifiée ;
+- aucun indicateur de réputation n'est publié tant que le volume minimal de
+  commandes livrées n'est pas atteint, et un litige ne fait jamais monter un
+  score.
 
 Un test navigateur optionnel (`npm run test:browser`, nécessite Playwright)
 rejoue **tout le parcours dans Chromium** — accueil, catalogue et filtres,
@@ -190,7 +195,8 @@ graphique des ventes), administration, appels d'offres B2B, messagerie,
 expédition puis livraison, demande de retour, acceptation et remboursement,
 ouverture d'un ticket d'assistance et réponse de l'équipe, création d'un code de
 réduction et son application au paiement, consultation de la facture et du reçu,
-rendu du document à l'impression — puis vérifie, à
+rendu du document à l'impression, réputation affichée sur la vitrine et dans
+l'espace vendeur — puis vérifie, à
 **360, 390, 430, 768, 1024, 1280 et 1440 px** : aucune erreur console, aucun
 débordement horizontal, navigation basse et menu latéral fonctionnels.
 
@@ -340,6 +346,38 @@ générateur de PDF aurait signifié soit une dépendance lourde, soit un fichie
 écrit à la main incapable de rendre correctement les accents français — un
 demi-résultat qui aurait mal vieilli.
 
+## 4 octies. Réputation vendeur
+
+Touma Verified contrôle des **pièces** ; la réputation mesure des **faits**.
+Les deux sont complémentaires, et aucun des deux ne garantit une transaction —
+l'interface le dit explicitement.
+
+Les indicateurs sont tous calculés sur les transactions réelles de la boutique :
+taux de livraison dans le délai que le transporteur avait annoncé, délai moyen
+de préparation (paiement → expédition) et d'acheminement (expédition →
+livraison), taux d'annulation après paiement, taux de litige, taux de retour,
+part des conversations où le vendeur a répondu et délai de réponse médian.
+Rien n'est saisi à la main, rien n'est estimé.
+
+**Pas d'indicateur sans volume.** En dessous de `TOUMA_REPUTATION_MIN_ORDERS`
+commandes livrées, les taux valent `null` et l'interface annonce « pas encore
+assez de commandes ». Un « 100 % de livraisons à l'heure » sur deux ventes
+tromperait l'acheteur, et c'est exactement le genre de statistique creuse qu'un
+vendeur nouvellement inscrit pourrait exhiber.
+
+Le score 0–100 agrège ces composantes avec des **pondérations publiées** (30 %
+ponctualité, 25 % note des acheteurs, 20 % absence d'annulation, 15 % absence de
+litige et de retour, 10 % réactivité) : un vendeur doit pouvoir comprendre ce
+qui le fait monter ou descendre, et l'espace vendeur lui montre le détail
+composante par composante. Une composante non mesurable ne pénalise pas — le
+score est renormalisé sur ce qui a réellement pu être observé, plutôt que de
+compter un zéro qui serait faux.
+
+Le calcul est un **instantané** rafraîchi à la lecture quand il a dépassé sa
+durée de validité (`TOUMA_REPUTATION_TTL_SECONDS`). Les événements qui changent
+la réputation — livraison, annulation, litige, retour — se contentent de le
+marquer périmé : un acheteur qui ouvre un litige n'a pas à attendre un agrégat.
+
 ---
 
 ## 5 bis. Interface
@@ -450,10 +488,10 @@ humain valide.
 1. **Recherche** : la recherche s'appuie sur PostgreSQL (`ILIKE` multi-champs +
    pagination serveur). OpenSearch est provisionné en profil Docker optionnel ;
    l'adaptateur reste à écrire quand le volume du catalogue le justifiera.
-0. **Sourcing fournisseurs avancé et réputation calculée sur les délais réels** :
-   non réalisés. Les retours, remboursements et tickets d'assistance
-   (§ 4 quinquies), les codes de réduction et la fidélité (§ 4 sexies) et les
-   documents commerciaux (§ 4 septies) sont en revanche livrés.
+0. **Sourcing fournisseurs avancé** : non réalisé. Les retours, remboursements
+   et tickets d'assistance (§ 4 quinquies), les codes de réduction et la
+   fidélité (§ 4 sexies), les documents commerciaux (§ 4 septies) et la
+   réputation calculée (§ 4 octies) sont en revanche livrés.
 0. **Fiscalité** : aucun régime de TVA n'est configuré ; les documents l'annoncent
    explicitement plutôt que d'afficher une taxe inventée. Brancher un régime réel
    (taux par pays, exonérations, seuils) est un chantier à part, à mener avec un

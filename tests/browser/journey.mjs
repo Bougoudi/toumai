@@ -528,6 +528,31 @@ await step('vendeur : ses documents émis', async () => {
   await seller.screenshot({ path: `${OUT}/27-documents-vendeur.png` });
 });
 
+await step('vitrine : réputation calculée de la boutique', async () => {
+  const view = watch(await browser.newPage({ viewport: { width: 1280, height: 900 } }), ' (vitrine)');
+  await view.goto(`${BASE}/boutiques`, { waitUntil: 'networkidle' });
+  await view.waitForSelector('.card a[href^="/touma/boutiques/"]');
+  await view.click('.card a[href^="/touma/boutiques/"]');
+  await view.waitForSelector('.store-head', { timeout: 20000 });
+  const body = await view.textContent('#view');
+  if (!body.includes('Réputation')) throw new Error('le bloc de réputation est absent de la vitrine');
+  // Publié ou non, la boutique doit dire où elle en est — jamais rester muette.
+  if (!body.includes('/100') && !body.includes('assez de commandes')) {
+    throw new Error('la réputation n’annonce ni score ni volume insuffisant');
+  }
+  await view.screenshot({ path: `${OUT}/28-reputation.png` });
+  await view.close();
+});
+
+await step('vendeur : le détail de son score', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('.grid-stats', { timeout: 20000 });
+  const body = await seller.textContent('#view');
+  if (!body.includes('Réputation')) throw new Error('le panneau de réputation est absent du tableau de bord');
+  await seller.screenshot({ path: `${OUT}/29-reputation-vendeur.png` });
+});
+
 await step('après-vente : pages privées sur mobile', async () => {
   if (!returnId || !ticketUrl) throw new Error('le parcours après-vente n’a pas abouti : rien à vérifier');
   // Ces pages exigent une session : on redimensionne le contexte déjà connecté.

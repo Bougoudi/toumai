@@ -5,6 +5,7 @@ import { notify } from '../lib/notifications.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
+import { reputationService } from '../reputation/reputation.service.js';
 import { refundService } from '../payments/refund.service.js';
 import type { ListOrdersQuery } from './order.schema.js';
 
@@ -236,6 +237,10 @@ export const orderService = {
     // Les points de fidélité se gagnent à la livraison, pas au paiement : une
     // commande annulée avant d'arriver n'a jamais rien rapporté.
     if (status === 'DELIVERED' || status === 'COMPLETED') await loyaltyService.awardForOrder(order.id);
+
+    // Livraison et annulation changent la réputation de la boutique : son
+    // instantané est périmé, il sera recalculé à la prochaine lecture.
+    if (['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(status)) await reputationService.invalidate(order.storeId);
 
     await notify({
       userId: order.buyerId,

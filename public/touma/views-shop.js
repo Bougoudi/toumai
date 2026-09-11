@@ -361,9 +361,73 @@ export async function stores(_params, query) {
       : emptyState({ title: 'Aucune boutique', body: 'Aucune boutique ne correspond à ce filtre.', iconName: 'store' })}`;
 }
 
+/** Libellés des paliers de réputation. Un palier n'est jamais une garantie. */
+const REPUTATION_LEVEL = {
+  EXCELLENT: 'Excellent',
+  FIABLE: 'Fiable',
+  CORRECT: 'Correct',
+  A_SURVEILLER: 'À surveiller',
+  NOUVEAU: 'Nouvelle boutique',
+};
+
+const percent = (value) => `${Math.round(value * 100)} %`;
+
+/** Un délai mesuré à quelques minutes se lit mieux ainsi que « 0.0 h ». */
+const delay = (value, unit) => {
+  if (value === null) return null;
+  if (value < 1) return unit === 'h' ? 'moins d’une heure' : 'moins d’un jour';
+  return unit === 'h' ? `${value.toFixed(1)} h` : `${value.toFixed(1)} j`;
+};
+
+/**
+ * Bloc de réputation. Tant que le volume est insuffisant, on le dit — afficher
+ * « 100 % de livraisons à l'heure » sur deux ventes tromperait l'acheteur.
+ */
+function reputationBlock(r) {
+  if (!r?.published) {
+    return `<div class="card" style="box-shadow:none">
+      <h2 style="font-size:var(--text-md)">Réputation</h2>
+      <p class="small muted" style="margin:0">
+        Pas encore assez de commandes livrées pour publier des indicateurs fiables
+        (${r?.minimumOrders ?? 5} minimum). ${r?.ordersDelivered ?? 0} à ce jour.
+      </p>
+    </div>`;
+  }
+
+  const m = r.metrics;
+  const rows = [
+    m.onTimeRate !== null ? ['Livraisons dans le délai annoncé', percent(m.onTimeRate)] : null,
+    m.avgPreparationHours !== null ? ['Préparation moyenne', delay(m.avgPreparationHours, 'h')] : null,
+    m.avgDeliveryDays !== null ? ['Acheminement moyen', delay(m.avgDeliveryDays, 'j')] : null,
+    m.cancellationRate !== null ? ['Commandes annulées après paiement', percent(m.cancellationRate)] : null,
+    m.disputeRate !== null ? ['Litiges ouverts', percent(m.disputeRate)] : null,
+    m.returnRate !== null ? ['Retours demandés', percent(m.returnRate)] : null,
+    m.responseRate !== null ? ['Messages auxquels le vendeur a répondu', percent(m.responseRate)] : null,
+    m.medianResponseHours !== null ? ['Délai de réponse médian', delay(m.medianResponseHours, 'h')] : null,
+  ].filter(Boolean);
+
+  return `<div class="card" style="box-shadow:none">
+    <div class="card-head">
+      <h2 style="font-size:var(--text-md)">Réputation</h2>
+      <span class="badge badge-verified">${esc(REPUTATION_LEVEL[r.level] ?? r.level)} · ${r.score}/100</span>
+    </div>
+    <dl class="spec-list">
+      ${rows.map(([labelText, value]) => `<div><dt>${esc(labelText)}</dt><dd>${esc(value)}</dd></div>`).join('')}
+    </dl>
+    <p class="xs muted" style="margin:var(--space-3) 0 0">
+      Calculé sur ${r.ordersDelivered} commande(s) livrée(s). Ces chiffres décrivent
+      l’historique de la boutique ; ils ne garantissent pas une transaction.
+    </p>
+  </div>`;
+}
+
 export async function store(params) {
   const s = await api(`/stores/${params.slug}`);
-  const products = await api(`/products?store=${s.id}&limit=24`);
+  const [products, reputation] = await Promise.all([
+    api(`/products?store=${s.id}&limit=24`),
+    // La réputation est publique : elle aide justement à décider avant de s'inscrire.
+    api(`/reputation/store/${s.id}`).catch(() => null),
+  ]);
   const initial = (s.name || 'T').trim().charAt(0).toUpperCase();
 
   return `
@@ -377,6 +441,7 @@ export async function store(params) {
           <div class="product-meta">
             <span class="badge badge-country">${esc(s.countryCode)}${s.city ? ` · ${esc(s.city)}` : ''}</span>
             ${s.verificationStatus === 'APPROVED' ? '<span class="badge badge-verified">Vendeur vérifié</span>' : '<span class="badge">Vérification en cours</span>'}
+            ${reputation?.published ? `<span class="badge badge-verified">${esc(REPUTATION_LEVEL[reputation.level] ?? reputation.level)} · ${reputation.score}/100</span>` : ''}
             ${stars(s.ratingAverage, s.ratingCount)}
           </div>
         </div>
@@ -389,6 +454,7 @@ export async function store(params) {
           <div class="stat-card"><div class="stat-label">Avis</div><div class="stat-value">${s.ratingCount}</div></div>
           <div class="stat-card"><div class="stat-label">Sur TOUMA depuis</div><div class="stat-value" style="font-size:var(--text-md)">${formatDate(s.createdAt)}</div></div>
         </div>
+        <div class="mt-6">${reputationBlock(reputation)}</div>
       </div>
     </div>
 

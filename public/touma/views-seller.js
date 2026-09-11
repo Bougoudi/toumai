@@ -34,12 +34,82 @@ function noStore() {
 }
 
 // ── Tableau de bord ────────────────────────────────────────────────────────
+const REPUTATION_LEVEL = {
+  EXCELLENT: 'Excellent',
+  FIABLE: 'Fiable',
+  CORRECT: 'Correct',
+  A_SURVEILLER: 'À surveiller',
+  NOUVEAU: 'Nouvelle boutique',
+};
+
+const pct = (value) => `${Math.round(value * 100)} %`;
+
+/**
+ * Réputation du vendeur, avec le poids de chaque composante : un vendeur doit
+ * pouvoir agir sur son score, donc savoir ce qui le compose.
+ */
+function reputationPanel(r, store) {
+  if (!r.published) {
+    return `<section class="card" style="margin-bottom:var(--space-5)">
+      <h2 style="font-size:var(--text-md)">Réputation</h2>
+      <p class="small muted" style="margin:0">
+        Vos indicateurs seront publiés sur votre vitrine à partir de ${r.minimumOrders} commandes livrées
+        (${r.ordersDelivered} à ce jour). En dessous, un taux ne voudrait rien dire.
+      </p>
+    </section>`;
+  }
+
+  const m = r.metrics;
+  const rows = [
+    ['Livraisons dans le délai', m.onTimeRate === null ? null : pct(m.onTimeRate), r.weights.onTime],
+    ['Note des acheteurs', r.rating.count ? `${r.rating.average.toFixed(1)}/5 (${r.rating.count})` : null, r.weights.rating],
+    ['Commandes non annulées', m.cancellationRate === null ? null : pct(1 - m.cancellationRate), r.weights.cancellation],
+    [
+      'Sans litige ni retour',
+      m.disputeRate === null || m.returnRate === null ? null : pct(Math.max(0, 1 - (m.disputeRate + m.returnRate))),
+      r.weights.problems,
+    ],
+    ['Réponses aux messages', m.responseRate === null ? null : pct(m.responseRate), r.weights.responsiveness],
+  ];
+
+  return `<section class="card" style="margin-bottom:var(--space-5)">
+    <div class="card-head">
+      <div>
+        <h2 style="font-size:var(--text-md);margin-bottom:2px">Réputation — ${esc(store.name)}</h2>
+        <span class="small muted">Calculée sur ${r.ordersDelivered} commande(s) livrée(s).</span>
+      </div>
+      <span class="badge badge-verified">${esc(REPUTATION_LEVEL[r.level] ?? r.level)} · ${r.score}/100</span>
+    </div>
+    <div class="table-wrap" style="border:0"><table>
+      <thead><tr><th>Composante</th><th>Votre résultat</th><th>Poids</th></tr></thead>
+      <tbody>
+        ${rows
+          .map(
+            ([labelText, value, weight]) => `<tr>
+              <td>${esc(labelText)}</td>
+              <td>${value === null ? '<span class="muted small">pas encore mesurable</span>' : esc(value)}</td>
+              <td class="small muted">${Math.round(weight * 100)} %</td>
+            </tr>`,
+          )
+          .join('')}
+      </tbody>
+    </table></div>
+    <p class="xs muted" style="margin:var(--space-3) 0 0">
+      Une composante non mesurable ne vous pénalise pas : le score est ramené à ce qui a pu être observé.
+    </p>
+  </section>`;
+}
+
 export async function dashboard() {
   const data = await api('/seller/dashboard');
   if (!data.stores.length) return `<h1>Espace vendeur</h1>${tabs('/touma/vendeur')}${noStore()}`;
 
   const main = data.stores[0];
-  const analytics = await api(`/seller/stores/${main.id}/analytics?days=30`).catch(() => null);
+  const [analytics, reputation] = await Promise.all([
+    api(`/seller/stores/${main.id}/analytics?days=30`).catch(() => null),
+    // Recalculée à la demande : le vendeur veut voir l'effet de ses actions.
+    api(`/reputation/mine/${main.id}`).catch(() => null),
+  ]);
   const revenue = Object.entries(main.stats.revenue);
   const user = session.user;
 
@@ -78,6 +148,8 @@ export async function dashboard() {
         </section>`,
       )
       .join('')}
+
+    ${reputation ? reputationPanel(reputation, main) : ''}
 
     ${analytics
       ? `<section class="card" style="margin-bottom:var(--space-5)">

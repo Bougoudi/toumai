@@ -6,6 +6,7 @@ import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { notify } from '../lib/notifications.js';
 import { documentService } from '../documents/document.service.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
+import { reputationService } from '../reputation/reputation.service.js';
 import { MockLogisticsProvider } from './providers/mock.provider.js';
 import type { LogisticsProvider, QuoteRequest, ShippingQuoteResult } from './logistics.types.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
@@ -241,8 +242,12 @@ export const logisticsService = {
       return s;
     });
 
-    // Un colis livré fait avancer la commande : les points suivent le même chemin.
-    if (orderStatus === 'DELIVERED') await loyaltyService.awardForOrder(shipment.orderId);
+    // Un colis livré fait avancer la commande : les points suivent le même
+    // chemin, et le délai tenu (ou non) change la réputation de la boutique.
+    if (orderStatus === 'DELIVERED') {
+      await loyaltyService.awardForOrder(shipment.orderId);
+      await reputationService.invalidate(shipment.order.storeId);
+    }
 
     await notify({
       userId: shipment.order.buyerId,

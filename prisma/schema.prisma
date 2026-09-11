@@ -893,6 +893,7 @@ model ToumaStore {
   tickets       ToumaSupportTicket[]
   coupons       ToumaCoupon[]
   documents     ToumaDocument[]
+  reputation    ToumaStoreReputation?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2395,4 +2396,48 @@ model ToumaDocumentSequence {
   updatedAt DateTime @updatedAt
 
   @@map("touma_document_sequences")
+}
+
+// ── Réputation vendeur ───────────────────────────────────────────────────────
+
+/// Réputation d'une boutique, **calculée sur ses transactions réelles** :
+/// délais tenus, annulations, litiges, retours, réactivité. Aucun indicateur
+/// n'est affiché tant que l'échantillon est trop faible — un « 100 % de
+/// livraisons à l'heure » sur deux commandes ne veut rien dire.
+///
+/// C'est un instantané recalculé, jamais une saisie : la source de vérité reste
+/// les commandes, expéditions, litiges et messages.
+model ToumaStoreReputation {
+  id      String     @id @default(cuid())
+  storeId String     @unique
+  store   ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  /// Volume sur lequel portent les indicateurs.
+  ordersPaid      Int @default(0)
+  ordersDelivered Int @default(0)
+
+  /// Taux (0–1), nuls tant que le volume minimal n'est pas atteint.
+  onTimeRate       Decimal? @db.Decimal(5, 4)
+  cancellationRate Decimal? @db.Decimal(5, 4)
+  disputeRate      Decimal? @db.Decimal(5, 4)
+  returnRate       Decimal? @db.Decimal(5, 4)
+  responseRate     Decimal? @db.Decimal(5, 4)
+
+  /// Délais observés, en heures et en jours.
+  avgPreparationHours Decimal? @db.Decimal(10, 2)
+  avgDeliveryDays     Decimal? @db.Decimal(10, 2)
+  medianResponseHours Decimal? @db.Decimal(10, 2)
+
+  /// Note des avis, recopiée au moment du calcul.
+  ratingAverage Decimal @default(0) @db.Decimal(3, 2)
+  ratingCount   Int     @default(0)
+
+  /// Score global 0–100 et palier. Nuls tant que l'échantillon est insuffisant.
+  score Int?
+  level String @default("NOUVEAU")
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("touma_store_reputations")
 }
