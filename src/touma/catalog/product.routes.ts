@@ -6,6 +6,7 @@ import { authenticate, currentUser, optionalAuth, requireRole } from '../middlew
 import { createProductSchema, listProductsSchema, updateProductSchema } from './product.schema.js';
 import { productService } from './product.service.js';
 import { facetsService } from './facets.service.js';
+import { intelligenceService } from '../admin/intelligence.service.js';
 
 export const productRouter = Router();
 
@@ -35,8 +36,20 @@ productRouter.get(
 /** Catalogue public : filtres, tri et pagination côté serveur. */
 productRouter.get(
   '/',
+  optionalAuth,
   asyncHandler(async (req, res) => {
-    res.json(await productService.list(parseQuery(listProductsSchema, req)));
+    const query = parseQuery(listProductsSchema, req);
+    const result = await productService.list(query);
+
+    // Mesure de la demande : ce que les acheteurs cherchent sans trouver est le
+    // meilleur indice de ce qui manque au catalogue. Journalisé de façon
+    // anonyme (terme, nombre de résultats, pays) — jamais rattaché à un compte.
+    // La première page seule est comptée : la pagination n'est pas une nouvelle
+    // recherche.
+    if (query.q && query.page === 1) {
+      void intelligenceService.recordSearch({ term: query.q, resultCount: result.total, userId: req.toumaUser?.id });
+    }
+    res.json(result);
   }),
 );
 

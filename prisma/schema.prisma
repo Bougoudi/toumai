@@ -795,6 +795,8 @@ enum DocumentIssuer {
   BUYER
 }
 
+// ── Intelligence ─────────────────────────────────────────────────────────────
+
 // ── Référentiels ─────────────────────────────────────────────────────────────
 
 /// Pays desservi par Touma. Le corridor pilote (TD, CM) est une simple donnée :
@@ -2470,4 +2472,28 @@ model ToumaRfqInvitation {
   @@unique([rfqId, storeId])
   @@index([storeId])
   @@map("touma_rfq_invitations")
+}
+
+/// Recherche effectuée dans le catalogue, conservée pour mesurer la **demande
+/// non servie** : ce que les acheteurs cherchent et ne trouvent pas est la
+/// meilleure indication de ce qui manque au catalogue.
+///
+/// Volontairement **anonyme** : le terme, le nombre de résultats et le pays
+/// suffisent à cette mesure. Rattacher chaque recherche à un compte
+/// constituerait un historique personnel dont personne n'a besoin ici.
+model ToumaSearchQuery {
+  id          String  @id @default(cuid())
+  /// Terme normalisé (minuscules, espaces réduits) pour pouvoir être regroupé.
+  term        String
+  /// Terme tel qu'il a été saisi, pour l'afficher tel quel.
+  rawTerm     String
+  resultCount Int     @default(0)
+  /// Pays de l'acheteur, quand il est connu — jamais son identité.
+  countryCode String?
+
+  createdAt DateTime @default(now())
+
+  @@index([term])
+  @@index([createdAt])
+  @@map("touma_search_queries")
 }

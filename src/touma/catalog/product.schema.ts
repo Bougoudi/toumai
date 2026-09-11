@@ -50,7 +50,9 @@ export const updateProductSchema = createProductSchema
   .extend({ status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']).optional() });
 
 export const listProductsSchema = z.object({
-  q: z.string().trim().max(200).optional(),
+  // Les espaces multiples d'un copier-coller casseraient la recherche
+  // (« cacao   brut » ne correspondrait à aucun titre).
+  q: z.string().trim().max(200).transform((v) => v.replace(/\s+/g, ' ')).optional(),
   category: z.string().trim().max(120).optional(),
   country: z.string().trim().toUpperCase().length(2).optional(),
   store: z.string().trim().max(120).optional(),

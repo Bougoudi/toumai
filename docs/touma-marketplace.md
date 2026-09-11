@@ -37,7 +37,7 @@ Produits prévus, tous représentés dans l'architecture :
 | Réputation vendeur | Fonctionnel | `src/touma/reputation` |
 | Sourcing fournisseurs | Fonctionnel | `src/touma/sourcing` |
 | Import / export de catalogue | Fonctionnel | `src/touma/catalog/import.service.ts` |
-| Touma Intelligence | Amorcé (analytique) | `src/touma/admin/analytics.service.ts` |
+| Touma Intelligence | Fonctionnel | `src/touma/admin/intelligence.service.ts` |
 
 ---
 
@@ -92,7 +92,7 @@ uniquement**) : `admin@touma.dev`, `vendeur.td@touma.dev`,
 
 ## 4. Modèle de données
 
-Cinquante-sept modèles préfixés `Touma` (tables `touma_*`), plus la table `Country` et
+Cinquante-huit modèles préfixés `Touma` (tables `touma_*`), plus la table `Country` et
 l'extension du modèle `User` existant (rôle place de marché, pays, statut).
 
 Domaines : pays et adresses · boutiques et vérification · catégories, produits,
@@ -105,7 +105,8 @@ entreprise, appels d'offres et négociation · conversations et messages ·
 demandes de retour, lignes retournées et remboursements · tickets d'assistance ·
 codes de réduction et leurs utilisations · comptes et mouvements de fidélité ·
 documents commerciaux et leurs séries de numérotation · réputation calculée des
-boutiques · sollicitations de fournisseurs sur un appel d'offres.
+boutiques · sollicitations de fournisseurs sur un appel d'offres ·
+recherches catalogue anonymisées (mesure de la demande).
 
 **Règle absolue : tout montant est un `Decimal(18,4)`.** Aucun `Float` financier.
 L'utilitaire `src/touma/lib/money.ts` centralise additions, multiplications,
@@ -116,7 +117,7 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 
 ## 5. Ce qui est garanti par les tests
 
-225 tests automatisés s'exécutent contre une vraie base PostgreSQL
+234 tests automatisés s'exécutent contre une vraie base PostgreSQL
 (`npm test` — Node ≥ 22, dont le lanceur de tests accepte les motifs glob),
 dont le parcours complet de bout en bout :
 
@@ -196,7 +197,10 @@ Règles vérifiées, entre autres :
   bonnes, une même référence deux fois dans un fichier est refusée, et l'export
   se réimporte sans créer de doublon ;
 - le compteur d'une facette est calculé **sans** le filtre de sa propre
-  dimension : choisir un pays ne met pas les autres pays à zéro.
+  dimension : choisir un pays ne met pas les autres pays à zéro ;
+- aucun taux ni aucune tendance n'est publié dans TOUMA Intelligence sans le
+  volume qui le justifie, et une recherche journalisée n'est jamais rattachée à
+  un compte.
 
 Un test navigateur optionnel (`npm run test:browser`, nécessite Playwright)
 rejoue **tout le parcours dans Chromium** — accueil, catalogue et filtres,
@@ -208,7 +212,8 @@ ouverture d'un ticket d'assistance et réponse de l'équipe, création d'un code
 réduction et son application au paiement, consultation de la facture et du reçu,
 rendu du document à l'impression, réputation affichée sur la vitrine et dans
 l'espace vendeur, recherche de fournisseurs et sollicitation sur un appel
-d'offres, import de catalogue en masse, facettes de recherche — puis vérifie, à
+d'offres, import de catalogue en masse, facettes de recherche, TOUMA Intelligence — puis
+vérifie, à
 **360, 390, 430, 768, 900, 1024, 1280 et 1440 px** : aucune erreur console, aucun
 débordement horizontal, navigation basse et menu latéral fonctionnels.
 
@@ -471,6 +476,37 @@ répartir un panier multi-devises en tranches reviendrait à inventer un taux de
 change, et l'interface explique alors comment affiner.
 
 Tous les compteurs viennent d'agrégats en base — aucun n'est estimé.
+
+## 4 duodecies. TOUMA Intelligence
+
+Un tableau de bord d'« insights » est l'écran où l'on invente le plus
+facilement des chiffres. Trois règles l'en empêchent ici.
+
+1. **Tout indicateur vient d'un agrégat sur des données réelles.** Aucune
+   projection, aucune estimation, aucune donnée de démonstration.
+2. **Aucun taux ni aucune tendance sans son volume.** « +300 % » sur deux
+   commandes ne veut rien dire : le volume brut est affiché à côté, et en
+   dessous d'un seuil la variation n'est simplement **pas calculée** —
+   l'interface écrit « volume insuffisant » plutôt qu'un nombre trompeur.
+3. **Un indicateur qu'on ne sait pas mesurer est annoncé comme tel**, jamais
+   rempli par un zéro qui se lirait comme une information (« aucune livraison
+   encore » plutôt que « 0 jour »).
+
+Cinq lectures : les **corridors actifs** (flux réels entre pays, volume, délai
+vécu du paiement à la livraison, litiges) ; la **demande non servie**
+(recherches sans résultat, et appels d'offres restés sans réponse — une demande
+explicite et chiffrée que personne n'a servie) ; la **fiabilité des paiements**
+par méthode (un mobile money qui échoue une fois sur trois est invisible dans le
+GMV) ; les **catégories en mouvement** ; les **produits en tension**, seul
+indicateur de l'écran sur lequel on peut agir le jour même.
+
+**Journalisation des recherches.** Mesurer la demande non servie suppose de
+savoir ce qui a été cherché. Le journal est volontairement **anonyme** : terme
+normalisé, nombre de résultats obtenus, et pays quand il est connu. Le pays est
+résolu puis enregistré seul — l'identifiant du compte n'est jamais écrit.
+Rattacher chaque recherche à une personne constituerait un historique dont
+personne n'a besoin ici. La pagination n'est pas comptée comme une nouvelle
+recherche.
 
 ---
 

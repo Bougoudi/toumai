@@ -188,6 +188,9 @@ export function toumaOpenApiDocument() {
       '/admin/verifications': { get: op('Administration', 'Dossiers de vérification', { role: 'ADMIN' }) },
       '/admin/verifications/{id}/approve': { post: op('Administration', 'Approuver un dossier', { params: ['id'], role: 'ADMIN' }) },
       '/admin/verifications/{id}/reject': { post: op('Administration', 'Rejeter un dossier', { params: ['id'], body: true, role: 'ADMIN' }) },
+      '/admin/intelligence': {
+        get: op('Administration', 'TOUMA Intelligence : corridors, demande non servie, paiements, tensions', { role: 'ADMIN', query: ['days'] }),
+      },
       '/admin/risk': { get: op('Administration', 'Scores de risque', { role: 'ADMIN' }) },
       '/admin/audit': { get: op('Administration', 'Journal d’audit', { role: 'ADMIN', query: ['action', 'page', 'limit'] }) },
     },

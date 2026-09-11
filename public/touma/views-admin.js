@@ -6,7 +6,13 @@ import { api, esc, money, formatDate, label, statusPill, emptyState, svg, toast 
 import { barChart, statCard, pagination } from './components.js';
 
 const SECTIONS = [
-  { group: 'Pilotage', items: [['/touma/admin', 'Tableau de bord', 'chart']] },
+  {
+    group: 'Pilotage',
+    items: [
+      ['/touma/admin', 'Tableau de bord', 'chart'],
+      ['/touma/admin/intelligence', 'Intelligence', 'spark'],
+    ],
+  },
   {
     group: 'Place de marché',
     items: [
@@ -330,4 +336,188 @@ export async function risk() {
       : emptyState({ title: 'Aucun score calculé', body: 'Les scores apparaissent dès qu’un signal est enregistré.', iconName: 'spark' })}`;
 
   return layout('/touma/admin/risque', 'Score de risque', content);
+}
+
+
+// ── TOUMA Intelligence ─────────────────────────────────────────────────────
+const percent = (value) => `${Math.round(value * 100)} %`;
+
+/**
+ * Ce que les transactions réelles apprennent.
+ *
+ * Règle de cet écran : **aucun taux ni aucune tendance sans son volume**. Quand
+ * l'échantillon ne permet pas de conclure, on l'écrit — « +300 % » sur deux
+ * commandes tromperait celui qui pilote.
+ */
+export async function intelligence(_params, query) {
+  const days = Number(query.get('jours') ?? 30);
+  const data = await api(`/admin/intelligence?days=${days}`);
+
+  const periods = [7, 30, 90]
+    .map(
+      (d) => `<a class="chip${d === days ? ' chip-active' : ''}" href="/touma/admin/intelligence?jours=${d}" data-link>${d} jours</a>`,
+    )
+    .join('');
+
+  const content = `
+    <div class="chip-row" style="margin-bottom:var(--space-5)">${periods}</div>
+    <p class="small muted">
+      Tous les chiffres de cet écran sont des agrégats sur des transactions réelles.
+      En dessous de ${data.minVolumeForTrend} observations, un taux n’est pas publié : il induirait en erreur.
+    </p>
+
+    <section class="card">
+      <div class="card-head">
+        <h2 style="font-size:var(--text-md)">Corridors actifs</h2>
+        <span class="small muted">la raison d’être de TOUMA</span>
+      </div>
+      ${data.corridors.length
+        ? `<div class="table-wrap" style="border:0"><table>
+            <thead><tr><th>Corridor</th><th>Commandes</th><th>Volume</th><th>Délai moyen</th><th>Litiges</th></tr></thead>
+            <tbody>
+              ${data.corridors
+                .map(
+                  (c) => `<tr>
+                    <td>
+                      <strong>${esc(c.from)} → ${esc(c.to)}</strong>
+                      ${c.crossBorder ? ' <span class="badge badge-cross">Transfrontalier</span>' : ''}
+                    </td>
+                    <td>${c.orders}</td>
+                    <td>${Object.entries(c.gmv).map(([currency, value]) => money(value, currency)).join(' · ') || '—'}</td>
+                    <td>${c.averageDeliveryDays === null
+                      ? `<span class="muted small">aucune livraison encore</span>`
+                      : `${c.averageDeliveryDays} j <span class="xs muted">sur ${c.deliveredOrders}</span>`}</td>
+                    <td>${c.disputes}${c.disputeRate === null ? '' : ` <span class="xs muted">(${percent(c.disputeRate)})</span>`}</td>
+                  </tr>`,
+                )
+                .join('')}
+            </tbody>
+          </table></div>`
+        : '<p class="muted small">Aucune commande payée sur la période.</p>'}
+    </section>
+
+    <div class="grid grid-2 mt-8" style="align-items:start">
+      <section class="card">
+        <div class="card-head">
+          <h2 style="font-size:var(--text-md)">Demande non servie</h2>
+          <span class="small muted">ce qu’il faudrait référencer</span>
+        </div>
+
+        <h3 style="font-size:var(--text-base);margin-bottom:var(--space-2)">Recherches sans résultat</h3>
+        ${data.demand.emptySearches.length
+          ? `<div class="stack" style="gap:var(--space-2)">
+              ${data.demand.emptySearches
+                .slice(0, 10)
+                .map(
+                  (s) => `<div class="row-between small">
+                    <a href="/touma/produits?q=${encodeURIComponent(s.term)}" data-link>${esc(s.term)}</a>
+                    <strong>${s.searches}</strong>
+                  </div>`,
+                )
+                .join('')}
+            </div>
+            ${data.demand.emptySearchesByCountry.length
+              ? `<p class="xs muted" style="margin:var(--space-3) 0 0">
+                  Origine : ${data.demand.emptySearchesByCountry.map((c) => `${esc(c.countryCode)} (${c.searches})`).join(' · ')}
+                </p>`
+              : ''}`
+          : '<p class="muted small">Aucune recherche infructueuse sur la période.</p>'}
+
+        <h3 style="font-size:var(--text-base);margin:var(--space-5) 0 var(--space-2)">Appels d’offres sans réponse</h3>
+        ${data.demand.unansweredRfqs.length
+          ? `<div class="stack" style="gap:var(--space-2)">
+              ${data.demand.unansweredRfqs
+                .slice(0, 8)
+                .map(
+                  (r) => `<a class="row-between small" href="/touma/business/appels-offres/${esc(r.id)}" data-link style="color:inherit">
+                    <span>
+                      <strong>${esc(r.title)}</strong>
+                      <span class="xs muted" style="display:block">
+                        ${esc(r.reference)} · livraison ${esc(r.countryCode)}${r.items[0] ? ` · ${r.items[0].quantity} ${esc(r.items[0].unit)} de ${esc(r.items[0].name)}` : ''}
+                      </span>
+                    </span>
+                    <span class="xs muted">${formatDate(r.createdAt)}</span>
+                  </a>`,
+                )
+                .join('')}
+            </div>`
+          : '<p class="muted small">Toutes les demandes ont reçu au moins une offre.</p>'}
+      </section>
+
+      <div class="stack">
+        <section class="card">
+          <h2 style="font-size:var(--text-md)">Fiabilité des paiements</h2>
+          ${data.payments.length
+            ? `<div class="table-wrap" style="border:0"><table>
+                <thead><tr><th>Méthode</th><th>Tentatives</th><th>Abouties</th><th>Taux</th></tr></thead>
+                <tbody>
+                  ${data.payments
+                    .map(
+                      (p) => `<tr>
+                        <td>${esc(label(p.method))}</td>
+                        <td>${p.total}</td>
+                        <td>${p.succeeded}${p.failed ? ` <span class="xs" style="color:var(--danger)">(${p.failed} échec(s))</span>` : ''}</td>
+                        <td>${p.successRate === null
+                          ? '<span class="muted small">volume insuffisant</span>'
+                          : `<strong>${percent(p.successRate)}</strong>`}</td>
+                      </tr>`,
+                    )
+                    .join('')}
+                </tbody>
+              </table></div>`
+            : '<p class="muted small">Aucun paiement sur la période.</p>'}
+        </section>
+
+        <section class="card">
+          <h2 style="font-size:var(--text-md)">Catégories en mouvement</h2>
+          ${data.categories.length
+            ? `<div class="table-wrap" style="border:0"><table>
+                <thead><tr><th>Catégorie</th><th>Vendus</th><th>Période précédente</th><th>Variation</th></tr></thead>
+                <tbody>
+                  ${data.categories
+                    .slice(0, 8)
+                    .map(
+                      (c) => `<tr>
+                        <td>${esc(c.category)}</td>
+                        <td>${c.sold}</td>
+                        <td class="muted">${c.previousSold}</td>
+                        <td>${c.change === null
+                          ? '<span class="muted small">volume insuffisant</span>'
+                          : `<strong style="color:${c.change >= 0 ? 'var(--success)' : 'var(--danger)'}">${c.change >= 0 ? '+' : ''}${percent(c.change)}</strong>`}</td>
+                      </tr>`,
+                    )
+                    .join('')}
+                </tbody>
+              </table></div>`
+            : '<p class="muted small">Aucune vente sur la période.</p>'}
+        </section>
+      </div>
+    </div>
+
+    <section class="card mt-8">
+      <div class="card-head">
+        <h2 style="font-size:var(--text-md)">Produits en tension</h2>
+        <span class="small muted">vendus récemment, bientôt en rupture</span>
+      </div>
+      ${data.stockTension.length
+        ? `<div class="table-wrap" style="border:0"><table>
+            <thead><tr><th>Produit</th><th>Boutique</th><th>Vendus</th><th>Stock</th><th>Jours de stock</th></tr></thead>
+            <tbody>
+              ${data.stockTension
+                .map(
+                  (t) => `<tr>
+                    <td><a href="/touma/produits/${esc(t.product.slug)}" data-link>${esc(t.product.title)}</a></td>
+                    <td class="small">${esc(t.store.name)}</td>
+                    <td>${t.sold}</td>
+                    <td>${t.stock === 0 ? '<span style="color:var(--danger)">rupture</span>' : t.stock}</td>
+                    <td>${t.daysOfStock === null ? '—' : `${t.daysOfStock} j`}</td>
+                  </tr>`,
+                )
+                .join('')}
+            </tbody>
+          </table></div>`
+        : '<p class="muted small">Aucun produit en tension : les stocks suivent les ventes.</p>'}
+    </section>`;
+
+  return layout('/touma/admin/intelligence', 'TOUMA Intelligence', content);
 }

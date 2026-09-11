@@ -9,6 +9,7 @@ import { authenticate, currentUser, requireAdmin } from '../middleware/toumaAuth
 import { riskService } from '../risk/risk.service.js';
 import { verificationService } from '../verification/verification.service.js';
 import { analyticsService } from './analytics.service.js';
+import { intelligenceService } from './intelligence.service.js';
 
 /** Toutes les routes d'administration sont protégées (authentification + rôle ADMIN). */
 export const adminRouter = Router();
@@ -242,5 +243,18 @@ adminRouter.get(
       prisma.toumaAuditLog.count({ where }),
     ]);
     res.json(paginated(items, total, page));
+  }),
+);
+
+// ── TOUMA Intelligence ───────────────────────────────────────────────────────
+/**
+ * Ce que les transactions réelles apprennent : corridors actifs, demande non
+ * servie, fiabilité des paiements, catégories en mouvement, tensions de stock.
+ */
+adminRouter.get(
+  '/intelligence',
+  asyncHandler(async (req, res) => {
+    const days = Math.min(365, Math.max(7, Number(req.query.days ?? 30) || 30));
+    res.json(await intelligenceService.overview(days));
   }),
 );

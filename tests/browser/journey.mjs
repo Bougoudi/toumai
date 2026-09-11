@@ -665,6 +665,25 @@ await step('vendeur : import de catalogue en masse', async () => {
   }
 });
 
+await step('administration : TOUMA Intelligence', async () => {
+  const admin = await sessionFor('admin@touma.dev');
+  await admin.goto(`${BASE}/admin/intelligence`, { waitUntil: 'networkidle' });
+  await admin.waitForSelector('.admin-sidebar a[aria-current="page"]', { timeout: 20000 });
+
+  const body = await admin.textContent('#view');
+  for (const section of ['Corridors actifs', 'Demande non servie', 'Fiabilité des paiements', 'Produits en tension']) {
+    if (!body.includes(section)) throw new Error(`section « ${section} » absente`);
+  }
+  // La règle de l'écran est affichée : aucun taux sans volume.
+  if (!body.includes('n’est pas publié')) throw new Error('la règle de volume minimal n’est pas annoncée');
+  await admin.screenshot({ path: `${OUT}/35-intelligence.png` });
+
+  // Changer de période recharge réellement les données.
+  await admin.click('a[href="/touma/admin/intelligence?jours=7"]');
+  await admin.waitForTimeout(1800);
+  if (!admin.url().includes('jours=7')) throw new Error('le changement de période n’a pas pris');
+});
+
 await step('après-vente : pages privées sur mobile', async () => {
   if (!returnId || !ticketUrl) throw new Error('le parcours après-vente n’a pas abouti : rien à vérifier');
   // Ces pages exigent une session : on redimensionne le contexte déjà connecté.

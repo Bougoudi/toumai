@@ -122,7 +122,8 @@ toumaV1Router.use('/admin', adminRouter);
 toumaV1Router.get(
   '/search',
   asyncHandler(async (req, res) => {
-    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    // Espaces multiples réduits : un copier-coller ne doit pas casser la recherche.
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().replace(/\s+/g, ' ') : '';
     if (q.length < 2) return res.json({ products: [], stores: [], categories: [] });
     const [products, stores, categories] = await Promise.all([
       prisma.toumaProduct.findMany({

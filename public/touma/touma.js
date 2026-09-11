@@ -90,6 +90,7 @@ const ROUTES = [
   { path: '/touma/admin', module: 'admin', name: 'dashboard', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/verifications', module: 'admin', name: 'verifications', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/risque', module: 'admin', name: 'risk', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/intelligence', module: 'admin', name: 'intelligence', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/:section', module: 'admin', name: 'list', auth: true, role: 'ADMIN' },
 ];
 
