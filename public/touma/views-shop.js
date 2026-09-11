@@ -967,6 +967,31 @@ export async function order(params) {
             : '<p class="muted small">Le vendeur n’a pas encore créé l’expédition.</p>'}
         </section>
 
+        ${o.refunds?.length
+          ? `<section class="card">
+              <h2 style="font-size:var(--text-md)">Remboursements</h2>
+              <div class="stack" style="gap:var(--space-2)">
+                ${o.refunds
+                  .map(
+                    (r) => `<div class="row-between">
+                      <span class="small">${esc(r.reference)}<br /><span class="xs muted">${formatDate(r.processedAt ?? r.createdAt, true)}</span></span>
+                      <span class="row" style="gap:var(--space-2)">${statusPill(r.status)}<strong>${money(r.amount, r.currency)}</strong></span>
+                    </div>`,
+                  )
+                  .join('')}
+              </div>
+              <p class="small muted" style="margin:var(--space-3) 0 0">Total remboursé : ${money(o.refundedTotal, o.currency)}.</p>
+            </section>`
+          : ''}
+
+        ${['DELIVERED', 'COMPLETED'].includes(o.status) && o.status !== 'REFUNDED'
+          ? `<section class="card">
+              <h2 style="font-size:var(--text-md)">Retour</h2>
+              <p class="small muted">Un article ne convient pas ? Demandez son retour et son remboursement.</p>
+              <a class="btn btn-secondary btn-block btn-sm" href="/touma/retours/nouveau?commande=${esc(o.id)}" data-link>Demander un retour</a>
+            </section>`
+          : ''}
+
         ${['PAID', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'IN_TRANSIT', 'DELIVERED'].includes(o.status)
           ? `<section class="card">
               <h2 style="font-size:var(--text-md)">Un problème ?</h2>
@@ -982,6 +1007,7 @@ export async function order(params) {
                 <div class="field"><label for="d-details">Détails</label><textarea id="d-details" rows="3" maxlength="2000"></textarea></div>
                 <button class="btn btn-secondary btn-block" type="submit">Ouvrir un litige</button>
               </form>
+              <a class="btn btn-ghost btn-block btn-sm mt-6" href="/touma/aide/nouveau?commande=${esc(o.id)}&sujet=ORDER" data-link>Contacter l’assistance</a>
             </section>`
           : ''}
       </aside>

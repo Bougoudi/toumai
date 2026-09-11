@@ -21,6 +21,8 @@ import { sellerRouter } from './seller/seller.routes.js';
 import { businessRouter, quoteRouter, rfqRouter } from './b2b/b2b.routes.js';
 import { conversationRouter } from './messaging/messaging.routes.js';
 import { pickupPointRouter } from './logistics/pickup.routes.js';
+import { returnRouter } from './returns/return.routes.js';
+import { supportRouter } from './support/support.routes.js';
 
 /**
  * API TOUMA v1 — place de marché.
@@ -67,6 +69,8 @@ toumaV1Router.get('/', (_req, res) =>
       quotes: '/api/v1/quotes',
       conversations: '/api/v1/conversations',
       pickupPoints: '/api/v1/pickup-points',
+      returns: '/api/v1/returns',
+      support: '/api/v1/support',
       admin: '/api/v1/admin',
       openapi: '/api/v1/openapi.json',
     },
@@ -95,6 +99,8 @@ toumaV1Router.use('/rfqs', rfqRouter);
 toumaV1Router.use('/quotes', quoteRouter);
 toumaV1Router.use('/conversations', conversationRouter);
 toumaV1Router.use('/pickup-points', pickupPointRouter);
+toumaV1Router.use('/returns', returnRouter);
+toumaV1Router.use('/support', supportRouter);
 toumaV1Router.use('/admin', adminRouter);
 
 /** Recherche transverse (produits + boutiques) pour la barre de recherche. */

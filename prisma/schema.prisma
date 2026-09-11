@@ -224,6 +224,12 @@ model User {
   conversations       ToumaConversationParticipant[]
   messages            ToumaMessage[]
 
+  returnRequests   ToumaReturnRequest[]
+  refundsInitiated ToumaRefund[]         @relation("RefundInitiator")
+  supportTickets   ToumaSupportTicket[]  @relation("TicketRequester")
+  assignedTickets  ToumaSupportTicket[]  @relation("TicketAssignee")
+  supportMessages  ToumaSupportMessage[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -681,6 +687,62 @@ enum AddressKind {
   PICKUP
 }
 
+// ── Après-vente : retours, remboursements, assistance ────────────────────────
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  IN_TRANSIT
+  RECEIVED
+  REFUNDED
+  CANCELLED
+}
+
+/// Motif déclaré par l'acheteur. Détermine qui supporte les frais de retour.
+enum ReturnReason {
+  DAMAGED
+  NOT_AS_DESCRIBED
+  WRONG_ITEM
+  MISSING_PARTS
+  NOT_DELIVERED
+  CHANGED_MIND
+  OTHER
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING_USER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TicketCategory {
+  ORDER
+  PAYMENT
+  DELIVERY
+  RETURN
+  ACCOUNT
+  STORE
+  VERIFICATION
+  OTHER
+}
+
 // ── Référentiels ─────────────────────────────────────────────────────────────
 
 /// Pays desservi par Touma. Le corridor pilote (TD, CM) est une simple donnée :
@@ -776,6 +838,8 @@ model ToumaStore {
   verifications ToumaSellerVerification[]
   payouts       ToumaSellerPayout[]
   commissions   ToumaCommission[]
+  returns       ToumaReturnRequest[]
+  tickets       ToumaSupportTicket[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1039,14 +1103,17 @@ model ToumaOrder {
   completedAt  DateTime?
   cancelledAt  DateTime?
 
-  items         ToumaOrderItem[]
-  payments      ToumaPayment[]
-  conversations ToumaConversation[]
-  shipments     ToumaShipment[]
-  quotes        ToumaShippingQuote[]
-  reviews       ToumaReview[]
-  disputes      ToumaDispute[]
-  commissions   ToumaCommission[]
+  items          ToumaOrderItem[]
+  payments       ToumaPayment[]
+  conversations  ToumaConversation[]
+  shipments      ToumaShipment[]
+  quotes         ToumaShippingQuote[]
+  reviews        ToumaReview[]
+  disputes       ToumaDispute[]
+  commissions    ToumaCommission[]
+  returnRequests ToumaReturnRequest[]
+  refunds        ToumaRefund[]
+  tickets        ToumaSupportTicket[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1079,6 +1146,8 @@ model ToumaOrderItem {
   quantity        Int
   lineTotal       Decimal @db.Decimal(18, 4)
   currency        String
+
+  returnItems ToumaReturnItem[]
 
   createdAt DateTime @default(now())
 
@@ -1113,7 +1182,8 @@ model ToumaPayment {
   metadata       Json             @default("{}")
   failureReason  String?
 
-  events ToumaPaymentEvent[]
+  events  ToumaPaymentEvent[]
+  refunds ToumaRefund[]
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -1893,4 +1963,181 @@ model ToumaMessageAttachment {
 
   @@index([messageId])
   @@map("touma_message_attachments")
+}
+
+// ── Après-vente : retours, remboursements ────────────────────────────────────
+
+/// Demande de retour émise par l'acheteur sur une commande livrée.
+///
+/// Le montant n'est **jamais** transmis par le client : il est recalculé à
+/// partir des instantanés de la commande. Un retour ne rembourse rien par
+/// lui-même — le remboursement est un acte financier distinct (ToumaRefund),
+/// tracé et réversible uniquement par une décision humaine.
+model ToumaReturnRequest {
+  id        String       @id @default(cuid())
+  reference String       @unique
+  orderId   String
+  order     ToumaOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  buyerId   String
+  buyer     User         @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  storeId   String
+  store     ToumaStore   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  status    ReturnStatus @default(REQUESTED)
+  reason    ReturnReason
+  comment   String       @default("")
+
+  currency        String
+  /// Montant réclamé, recalculé côté serveur à partir des lignes retournées.
+  requestedAmount Decimal  @db.Decimal(18, 4)
+  /// Montant validé par le vendeur ou l'administration (≤ montant réclamé).
+  approvedAmount  Decimal? @db.Decimal(18, 4)
+  /// Les frais de livraison sont remboursés quand le tort vient du vendeur.
+  refundShipping  Boolean  @default(false)
+
+  /// Preuves déposées par l'acheteur (URL + type), jamais de données sensibles.
+  evidence Json @default("[]")
+
+  sellerNote     String?
+  rejectionNote  String?
+  /// Numéro de suivi du colis retourné, fourni par l'acheteur.
+  trackingNumber String?
+
+  decidedById String?
+  requestedAt DateTime  @default(now())
+  decidedAt   DateTime?
+  receivedAt  DateTime?
+  refundedAt  DateTime?
+  closedAt    DateTime?
+
+  items   ToumaReturnItem[]
+  refunds ToumaRefund[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([buyerId])
+  @@index([storeId])
+  @@index([status])
+  @@map("touma_return_requests")
+}
+
+/// Ligne retournée : rattachée à une ligne de commande, au prix figé d'achat.
+model ToumaReturnItem {
+  id              String             @id @default(cuid())
+  returnRequestId String
+  returnRequest   ToumaReturnRequest @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+  orderItemId     String
+  orderItem       ToumaOrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  titleSnapshot String
+  quantity      Int
+  unitPrice     Decimal @db.Decimal(18, 4)
+  lineTotal     Decimal @db.Decimal(18, 4)
+  currency      String
+  /// État constaté à réception (renseigné par le vendeur).
+  condition     String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([returnRequestId, orderItemId])
+  @@index([orderItemId])
+  @@map("touma_return_items")
+}
+
+/// Remboursement : mouvement d'argent réel exécuté via le prestataire de
+/// paiement. Toujours rattaché à une commande, et à la demande de retour
+/// lorsqu'il en découle. Aucune donnée bancaire n'y est stockée.
+model ToumaRefund {
+  id        String        @id @default(cuid())
+  reference String        @unique
+  orderId   String
+  order     ToumaOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paymentId String?
+  payment   ToumaPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  returnRequestId String?
+  returnRequest   ToumaReturnRequest? @relation(fields: [returnRequestId], references: [id], onDelete: SetNull)
+
+  amount   Decimal      @db.Decimal(18, 4)
+  currency String
+  status   RefundStatus @default(PENDING)
+  reason   String       @default("")
+
+  /// Adaptateur ayant exécuté le remboursement et référence renvoyée.
+  provider      String
+  providerRef   String?
+  failureReason String?
+  metadata      Json    @default("{}")
+
+  /// Auteur de la décision : toujours un humain (vendeur ou administration).
+  initiatedById String?
+  initiatedBy   User?   @relation("RefundInitiator", fields: [initiatedById], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  processedAt DateTime?
+
+  @@index([orderId])
+  @@index([paymentId])
+  @@index([returnRequestId])
+  @@index([status])
+  @@map("touma_refunds")
+}
+
+// ── Assistance ───────────────────────────────────────────────────────────────
+
+/// Ticket d'assistance. Un acheteur, un vendeur ou une entreprise ouvre un
+/// ticket ; l'administration répond. Les notes internes ne sont jamais
+/// visibles par le demandeur.
+model ToumaSupportTicket {
+  id          String         @id @default(cuid())
+  reference   String         @unique
+  requesterId String
+  requester   User           @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  subject     String
+  category    TicketCategory @default(OTHER)
+  priority    TicketPriority @default(NORMAL)
+  status      TicketStatus   @default(OPEN)
+
+  orderId String?
+  order   ToumaOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  storeId String?
+  store   ToumaStore? @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  assignedToId String?
+  assignedTo   User?   @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  lastReplyAt DateTime  @default(now())
+  resolvedAt  DateTime?
+  closedAt    DateTime?
+
+  messages ToumaSupportMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([requesterId])
+  @@index([status])
+  @@index([assignedToId])
+  @@map("touma_support_tickets")
+}
+
+/// Message d'un ticket. `internal = true` : note d'équipe, jamais renvoyée au
+/// demandeur.
+model ToumaSupportMessage {
+  id          String             @id @default(cuid())
+  ticketId    String
+  ticket      ToumaSupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body        String
+  internal    Boolean            @default(false)
+  /// Pièces jointes contrôlées au dépôt (type et taille).
+  attachments Json               @default("[]")
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@map("touma_support_messages")
 }

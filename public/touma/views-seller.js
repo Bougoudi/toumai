@@ -9,12 +9,13 @@ const TABS = [
   ['/touma/vendeur', 'Tableau de bord'],
   ['/touma/vendeur/produits', 'Produits'],
   ['/touma/vendeur/commandes', 'Commandes'],
+  ['/touma/vendeur/retours', 'Retours'],
   ['/touma/vendeur/boutique', 'Ma boutique'],
   ['/touma/vendeur/analyses', 'Analyses'],
   ['/touma/vendeur/verification', 'Touma Verified'],
 ];
 
-function tabs(current) {
+export function tabs(current) {
   return `<nav class="tabs" aria-label="Espace vendeur">
     ${TABS.map(([href, text]) => `<a href="${href}" data-link${href === current ? ' aria-current="page"' : ''}>${text}</a>`).join('')}
   </nav>`;

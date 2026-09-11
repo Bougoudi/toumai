@@ -110,6 +110,8 @@ export const env = {
     maxPageSize: Number(process.env.TOUMA_MAX_PAGE_SIZE ?? 100),
     /** Secret de signature des webhooks de paiement (HMAC). */
     paymentWebhookSecret: process.env.TOUMA_PAYMENT_WEBHOOK_SECRET ?? process.env.JWT_SECRET ?? 'dev-secret-change-me',
+    /** Délai d'ouverture d'une demande de retour après livraison (jours). */
+    returnWindowDays: Number(process.env.TOUMA_RETURN_WINDOW_DAYS ?? 14),
     /** Adaptateurs actifs (mock tant qu'aucun prestataire réel n'est raccordé). */
     paymentProvider: process.env.TOUMA_PAYMENT_PROVIDER ?? 'mock',
     logisticsProvider: process.env.TOUMA_LOGISTICS_PROVIDER ?? 'mock',

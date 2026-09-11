@@ -29,6 +29,8 @@ Produits prévus, tous représentés dans l'architecture :
 | Touma Verified | Fonctionnel | `src/touma/verification` |
 | Touma AI | Fonctionnel (fournisseur heuristique local) | `src/touma/ai` |
 | Touma Business (B2B) | Fonctionnel | `src/touma/b2b` |
+| Après-vente (retours, remboursements) | Fonctionnel | `src/touma/returns`, `src/touma/payments/refund.service.ts` |
+| Assistance (tickets) | Fonctionnel | `src/touma/support` |
 | Touma Intelligence | Amorcé (analytique) | `src/touma/admin/analytics.service.ts` |
 
 ---
@@ -84,7 +86,7 @@ uniquement**) : `admin@touma.dev`, `vendeur.td@touma.dev`,
 
 ## 4. Modèle de données
 
-Trente modèles préfixés `Touma` (tables `touma_*`), plus la table `Country` et
+Quarante-neuf modèles préfixés `Touma` (tables `touma_*`), plus la table `Country` et
 l'extension du modèle `User` existant (rôle place de marché, pays, statut).
 
 Domaines : pays et adresses · boutiques et vérification · catégories, produits,
@@ -92,7 +94,9 @@ images, variantes, stock · panier · commandes et lignes figées · paiements e
 événements · commissions et versements · transporteurs, devis, expéditions,
 suivi · avis · litiges, messages, preuves · score de risque et signaux de fraude
 · favoris · notifications · jetons de rafraîchissement · requêtes et
-recommandations d'IA · journal d'audit.
+recommandations d'IA · journal d'audit · groupes de commande, profils
+entreprise, appels d'offres et négociation · conversations et messages ·
+demandes de retour, lignes retournées et remboursements · tickets d'assistance.
 
 **Règle absolue : tout montant est un `Decimal(18,4)`.** Aucun `Float` financier.
 L'utilitaire `src/touma/lib/money.ts` centralise additions, multiplications,
@@ -103,7 +107,7 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 
 ## 5. Ce qui est garanti par les tests
 
-126 tests automatisés s'exécutent contre une vraie base PostgreSQL
+149 tests automatisés s'exécutent contre une vraie base PostgreSQL
 (`npm test` — Node ≥ 22, dont le lanceur de tests accepte les motifs glob),
 dont le parcours complet de bout en bout :
 
@@ -143,15 +147,27 @@ Règles vérifiées, entre autres :
   léger que sa commande ;
 - le prestataire de paiement vient de la configuration du serveur : un
   prestataire imposé dans la requête est ignoré, et un code inconnu lève une
-  erreur explicite plutôt que de retomber sur l'adaptateur de démonstration.
+  erreur explicite plutôt que de retomber sur l'adaptateur de démonstration ;
+- un retour n'est ouvrable qu'après livraison et dans le délai configuré, son
+  montant est **recalculé** à partir des prix payés, et il est impossible de
+  retourner plus d'unités que la commande n'en contient ;
+- un remboursement ne dépasse jamais le montant validé, ni ce qui a été
+  réellement encaissé ; un retour déjà remboursé ne peut pas l'être deux fois ;
+  la commission plateforme est contre-passée au prorata ;
+- ni l'acheteur ni un tiers ne déclenchent un remboursement : seul le vendeur de
+  la boutique concernée ou l'administration ;
+- une note interne d'assistance n'apparaît jamais dans la vue du demandeur, et
+  la file complète des tickets reste réservée à l'administration.
 
 Un test navigateur optionnel (`npm run test:browser`, nécessite Playwright)
 rejoue **tout le parcours dans Chromium** — accueil, catalogue et filtres,
 recherche, fiche produit, estimation de livraison, inscription, panier, tunnel
 de commande en quatre étapes, paiement, suivi, espace vendeur (dont le
-graphique des ventes) et administration — puis vérifie, à **360, 390, 430, 768,
-1024, 1280 et 1440 px** : aucune erreur console, aucun débordement horizontal,
-navigation basse et menu latéral fonctionnels.
+graphique des ventes), administration, appels d'offres B2B, messagerie,
+expédition puis livraison, demande de retour, acceptation et remboursement,
+ouverture d'un ticket d'assistance et réponse de l'équipe — puis vérifie, à
+**360, 390, 430, 768, 1024, 1280 et 1440 px** : aucune erreur console, aucun
+débordement horizontal, navigation basse et menu latéral fonctionnels.
 
 ---
 
@@ -206,6 +222,34 @@ Fils acheteur ↔ vendeur, rattachables à une commande. L'accès repose
 entièrement sur la **participation** au fil : aucun identifiant deviné ne donne
 accès à quoi que ce soit. Les pièces jointes sont limitées en type (JPEG, PNG,
 WebP, PDF), en taille (5 Mo) et en nombre (5 par message).
+
+## 4 quinquies. Retours, remboursements et assistance
+
+Le cycle réel d'un après-vente : **demande de l'acheteur → décision du vendeur →
+renvoi du colis → réception → remboursement**. Quatre principes le tiennent.
+
+1. **Le montant n'est jamais fourni par le client.** Il est recalculé à partir
+   des instantanés de la commande (prix payé × quantité retournée). Les frais de
+   livraison ne sont remboursés que si le tort vient du vendeur *et* si la
+   commande est retournée en totalité.
+2. **Un retour ne rembourse rien tout seul.** Le remboursement est un acte
+   distinct, exécuté par un humain (le vendeur de la boutique concernée ou
+   l'administration) via `refundService`, qui appelle réellement l'adaptateur de
+   paiement et trace la référence renvoyée.
+3. **Deux plafonds simultanés.** Un remboursement ne peut dépasser ni le solde
+   remboursable de la commande, ni le montant réellement encaissé par le
+   paiement qui la couvre — ce second plafond protège les autres boutiques d'un
+   panier multi-vendeurs, payé en une seule fois.
+4. **La comptabilité est corrigée, jamais réécrite.** La commission plateforme
+   est contre-passée par une ligne négative au prorata du montant remboursé.
+
+Le délai de retour est une **configuration** (`TOUMA_RETURN_WINDOW_DAYS`, 14
+jours par défaut), jamais une constante enfouie dans le code.
+
+L'assistance fonctionne en tickets : un demandeur, un fil, une priorité déduite
+de la nature du problème (un incident de paiement passe devant), et des **notes
+internes** filtrées à la lecture — elles ne quittent jamais l'administration,
+quelle que soit l'interface qui interroge l'API.
 
 ---
 
@@ -317,11 +361,10 @@ humain valide.
 1. **Recherche** : la recherche s'appuie sur PostgreSQL (`ILIKE` multi-champs +
    pagination serveur). OpenSearch est provisionné en profil Docker optionnel ;
    l'adaptateur reste à écrire quand le volume du catalogue le justifiera.
-0. **Retours et remboursements, tickets de support, coupons et fidélité,
-   documents commerciaux (facture, bon de commande), sourcing avancé et
-   réputation calculée sur les délais réels** : non réalisés. Le remboursement
-   existe côté paiement (administration et litiges) mais sans parcours de retour
-   dédié.
+0. **Coupons et fidélité, documents commerciaux (facture, bon de commande,
+   preuve de paiement), sourcing avancé et réputation calculée sur les délais
+   réels** : non réalisés. Les retours, remboursements et tickets d'assistance
+   sont en revanche livrés (voir § 4 quinquies).
 0. **Monorepo `apps/` + `packages/` (Next.js / NestJS)** : non réalisé. Le
    domaine est déjà découpé en modules autonomes (`src/touma/<module>` avec son
    routeur, son service et ses adaptateurs), ce qui rend l'extraction mécanique ;

@@ -90,6 +90,16 @@ export async function account() {
         </section>
 
         <section class="card">
+          <h2 style="font-size:var(--text-md)">Suivi et après-vente</h2>
+          <div class="stack" style="gap:var(--space-2)">
+            <a class="btn btn-secondary btn-block btn-sm" href="/touma/commandes" data-link>Mes commandes</a>
+            <a class="btn btn-secondary btn-block btn-sm" href="/touma/retours" data-link>Mes retours et remboursements</a>
+            <a class="btn btn-secondary btn-block btn-sm" href="/touma/messages" data-link>Mes messages</a>
+            <a class="btn btn-secondary btn-block btn-sm" href="/touma/aide" data-link>Assistance TOUMA</a>
+          </div>
+        </section>
+
+        <section class="card">
           <div class="card-head"><h2 style="font-size:var(--text-md)">Adresses (${me.addresses.length})</h2></div>
           ${me.addresses.length
             ? `<div class="stack">

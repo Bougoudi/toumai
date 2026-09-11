@@ -247,6 +247,8 @@ input, select, textarea {
   border: 1px solid var(--border-strong); border-radius: var(--radius-md);
   background: var(--surface); color: var(--text);
 }
+/* Cases à cocher et boutons radio : la règle générale ci-dessus les étirerait. */
+input[type="checkbox"], input[type="radio"] { width: auto; min-height: auto; flex: 0 0 auto; accent-color: var(--primary); }
 input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--danger); }
 textarea { min-height: 110px; resize: vertical; }
 select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%), linear-gradient(135deg, var(--text-muted) 50%, transparent 50%); background-position: right 18px center, right 13px center; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: var(--space-8); }
@@ -287,6 +289,13 @@ fieldset { border: 0; padding: 0; margin: 0; }
 .status-DELIVERED, .status-COMPLETED, .status-ACTIVE { background: var(--success-soft); color: var(--success); }
 .status-CANCELLED, .status-REFUNDED, .status-FAILED, .status-REJECTED, .status-SUSPENDED { background: var(--danger-soft); color: var(--danger); }
 .status-DISPUTED, .status-UNDER_REVIEW, .status-OPEN { background: #f2e7fb; color: #6b2fa0; }
+/* Après-vente et assistance. */
+.status-REQUESTED, .status-PENDING_USER { background: var(--warning-soft); color: var(--warning); }
+.status-RECEIVED, .status-RESOLVED { background: var(--success-soft); color: var(--success); }
+.status-IN_PROGRESS { background: var(--info-soft); color: var(--info); }
+.status-URGENT, .status-HIGH { background: var(--danger-soft); color: var(--danger); }
+.status-NORMAL { background: var(--info-soft); color: var(--info); }
+.status-LOW { background: var(--surface-sunken); color: var(--text-muted); }
 
 /* ── Étoiles ───────────────────────────────────────────────────────────── */
 .stars { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); font-size: var(--text-sm); }

@@ -27,11 +27,27 @@ const executablePath = process.env.CHROMIUM_PATH;
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 await mkdir(OUT, { recursive: true });
 
-const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-page.on('console', (m) => {
-  if (m.type() === 'error') errors.push(`console: ${m.text()}`);
-});
-page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+/**
+ * L'API limite le débit par adresse IP (300 requêtes/minute). Ce scénario en
+ * émet davantage : un 429 n'est pas un défaut du produit mais la protection qui
+ * fonctionne. On le repère, on laisse la fenêtre se refermer, et on continue.
+ */
+let rateLimited = false;
+
+function watch(target, tag = '') {
+  target.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    if (m.text().includes('429')) return (rateLimited = true);
+    errors.push(`console${tag}: ${m.text()}`);
+  });
+  target.on('pageerror', (e) => errors.push(`pageerror${tag}: ${e.message}`));
+  target.on('response', (r) => {
+    if (r.status() === 429) rateLimited = true;
+  });
+  return target;
+}
+
+const page = watch(await browser.newPage({ viewport: { width: 1280, height: 900 } }));
 
 /**
  * Sessions par rôle. Se déconnecter et se reconnecter à chaque étape
@@ -42,11 +58,7 @@ const sessions = new Map();
 
 async function sessionFor(email, password = 'touma-dev-1234') {
   if (sessions.has(email)) return sessions.get(email);
-  const context = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  context.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`console (${email}): ${m.text()}`);
-  });
-  context.on('pageerror', (e) => errors.push(`pageerror (${email}): ${e.message}`));
+  const context = watch(await browser.newPage({ viewport: { width: 1280, height: 900 } }), ` (${email})`);
   await context.goto(`${BASE}/connexion`, { waitUntil: 'networkidle' });
   await context.fill('#l-email', email);
   await context.fill('#l-password', password);
@@ -58,6 +70,11 @@ async function sessionFor(email, password = 'touma-dev-1234') {
 
 const step = async (name, fn) => {
   try {
+    if (rateLimited) {
+      // Fenêtre de la limitation de débit : une minute.
+      rateLimited = false;
+      await page.waitForTimeout(62_000);
+    }
     await fn();
     console.log(`✓ ${name}`);
   } catch (e) {
@@ -68,6 +85,9 @@ const step = async (name, fn) => {
 
 const email = `nav-${Date.now()}@touma.test`;
 let rfqUrl = '';
+let orderId = '';
+let returnId = '';
+let ticketUrl = '';
 const PASSWORD = 'motdepasse-nav-123';
 
 await step('accueil', async () => {
@@ -187,6 +207,8 @@ await step('suivi de commande (chronologie)', async () => {
   await page.waitForSelector('.timeline');
   const done = await page.locator('.timeline li[data-done="true"]').count();
   if (done < 1) throw new Error('la chronologie ne reflète pas le paiement');
+  // Cette commande sera suivie jusqu'au retour et au remboursement.
+  orderId = page.url().split('/').pop();
   await page.screenshot({ path: `${OUT}/09-commande.png` });
 });
 
@@ -290,6 +312,123 @@ await step('messagerie acheteur ↔ vendeur', async () => {
   const body = await pro.textContent('#view');
   if (!body.includes('200 kg')) throw new Error('le message n’apparaît pas dans le fil');
   await pro.screenshot({ path: `${OUT}/17-messagerie.png` });
+});
+
+await step('vendeur : expédier puis livrer la commande', async () => {
+  if (!orderId) throw new Error('aucune commande issue du parcours acheteur');
+  // La commande peut appartenir à l'une ou l'autre boutique du jeu de données.
+  let seller = null;
+  for (const email of ['vendeur.cm@touma.dev', 'vendeur.td@touma.dev']) {
+    const candidate = await sessionFor(email);
+    await candidate.goto(`${BASE}/vendeur/commandes/${orderId}`, { waitUntil: 'networkidle' });
+    await candidate.waitForTimeout(900);
+    if (await candidate.locator('[data-create-shipment], [data-update-shipment]').count()) {
+      seller = candidate;
+      break;
+    }
+  }
+  if (!seller) throw new Error('aucun vendeur ne voit cette commande');
+
+  if (await seller.locator('[data-create-shipment]').count()) {
+    await seller.click('[data-create-shipment]');
+    await seller.waitForSelector('[data-update-shipment]', { timeout: 20000 });
+  }
+  // Le suivi transporteur pilote le statut de la commande : SHIPPED puis DELIVERED.
+  for (const status of ['SHIPPED', 'DELIVERED']) {
+    await seller.selectOption('#ship-status', status);
+    await seller.click('[data-update-shipment]');
+    await seller.waitForTimeout(1800);
+  }
+  const body = await seller.textContent('#view');
+  if (!body.includes('Livré')) throw new Error('la commande n’est pas passée à « livrée »');
+});
+
+await step('acheteur : demander un retour', async () => {
+  await page.goto(`${BASE}/commandes/${orderId}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('a[href^="/touma/retours/nouveau"]', { timeout: 15000 });
+  await page.click('a[href^="/touma/retours/nouveau"]');
+  await page.waitForSelector('#return-form', { timeout: 15000 });
+  await page.selectOption('#rr-reason', 'DAMAGED');
+  await page.check('.rr-pick');
+  await page.fill('#rr-comment', 'Un sac est arrivé déchiré.');
+  await page.click('#return-form button[type="submit"]');
+  await page.waitForURL((u) => /\/touma\/retours\/[^/]+$/.test(u.pathname) && !u.pathname.endsWith('/nouveau'), { timeout: 20000 });
+  await page.waitForSelector('.timeline');
+  returnId = page.url().split('/').pop();
+  await page.screenshot({ path: `${OUT}/18-retour.png` });
+});
+
+await step('vendeur : accepter le retour et rembourser', async () => {
+  if (!returnId) throw new Error('aucune demande de retour à traiter');
+  let seller = null;
+  for (const email of ['vendeur.cm@touma.dev', 'vendeur.td@touma.dev']) {
+    const candidate = await sessionFor(email);
+    await candidate.goto(`${BASE}/retours/${returnId}`, { waitUntil: 'networkidle' });
+    await candidate.waitForTimeout(900);
+    if (await candidate.locator('#return-approve-form').count()) {
+      seller = candidate;
+      break;
+    }
+  }
+  if (!seller) throw new Error('le vendeur ne voit pas la demande de retour');
+
+  await seller.click('#return-approve-form button[type="submit"]');
+  await seller.waitForSelector('#return-refund-form', { timeout: 20000 });
+  await seller.screenshot({ path: `${OUT}/19-retour-vendeur.png` });
+
+  await seller.click('#return-refund-form button[type="submit"]');
+  // Un remboursement est un mouvement d'argent : il passe par une confirmation.
+  await seller.waitForSelector('.modal [data-action="confirm"]', { timeout: 10000 });
+  await seller.click('.modal [data-action="confirm"]');
+  await seller.waitForTimeout(2500);
+  const body = await seller.textContent('#view');
+  if (!body.includes('Remboursé')) throw new Error('le retour n’est pas passé à « remboursé »');
+});
+
+await step('assistance : ouvrir un ticket et recevoir une réponse', async () => {
+  await page.goto(`${BASE}/aide/nouveau`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#ticket-form');
+  await page.fill('#t-subject', 'Question sur les délais douaniers');
+  await page.selectOption('#t-category', 'DELIVERY');
+  await page.fill('#t-message', 'Combien de temps prend le passage de la frontière Tchad–Cameroun ?');
+  await page.click('#ticket-form button[type="submit"]');
+  // « /aide/nouveau » correspondrait au motif : on attend une vraie fiche ticket.
+  await page.waitForURL((u) => /\/touma\/aide\/[^/]+$/.test(u.pathname) && !u.pathname.endsWith('/nouveau'), { timeout: 20000 });
+  ticketUrl = page.url();
+  await page.screenshot({ path: `${OUT}/20-assistance.png` });
+
+  const admin = await sessionFor('admin@touma.dev');
+  await admin.goto(`${BASE}/admin/assistance`, { waitUntil: 'networkidle' });
+  await admin.waitForSelector('a[href^="/touma/aide/"]', { timeout: 15000 });
+  await admin.goto(ticketUrl, { waitUntil: 'networkidle' });
+  await admin.waitForSelector('#ticket-reply-form', { timeout: 15000 });
+  await admin.fill('#tr-body', 'Comptez 3 à 5 jours ouvrés au poste de Kousséri.');
+  await admin.click('#ticket-reply-form button[type="submit"]');
+  await admin.waitForTimeout(2000);
+
+  await page.goto(ticketUrl, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1000);
+  const body = await page.textContent('#view');
+  if (!body.includes('Kousséri')) throw new Error('la réponse de l’assistance n’apparaît pas côté acheteur');
+});
+
+await step('après-vente : pages privées sur mobile', async () => {
+  if (!returnId || !ticketUrl) throw new Error('le parcours après-vente n’a pas abouti : rien à vérifier');
+  // Ces pages exigent une session : on redimensionne le contexte déjà connecté.
+  for (const [width, height] of [
+    [360, 780],
+    [390, 844],
+  ]) {
+    await page.setViewportSize({ width, height });
+    for (const path of ['/retours', `/retours/${returnId}`, '/aide', ticketUrl.replace(BASE, '')]) {
+      await page.goto(`${BASE}${path}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(600);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+      if (overflow) throw new Error(`débordement horizontal sur ${path} à ${width}px`);
+    }
+    await page.screenshot({ path: `${OUT}/21-apres-vente-${width}.png` });
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
 });
 
 // ── Largeurs cibles : aucun débordement horizontal, menu mobile fonctionnel ──

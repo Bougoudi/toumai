@@ -28,6 +28,7 @@ const SECTIONS = [
     items: [
       ['/touma/admin/verifications', 'Vérifications', 'shield'],
       ['/touma/admin/litiges', 'Litiges', 'alert'],
+      ['/touma/admin/assistance', 'Assistance', 'inbox'],
       ['/touma/admin/risque', 'Risque', 'spark'],
       ['/touma/admin/audit', 'Audit', 'inbox'],
     ],
@@ -35,7 +36,7 @@ const SECTIONS = [
 ];
 
 /** Enveloppe commune : barre latérale sur grand écran, onglets sur mobile. */
-function layout(current, title, content) {
+export function layout(current, title, content) {
   const sidebar = SECTIONS.map(
     (section) => `<div class="group-label">${esc(section.group)}</div>
       ${section.items

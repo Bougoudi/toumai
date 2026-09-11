@@ -55,7 +55,11 @@ async function metaForPath(pathname: string, canonical: string): Promise<PageMet
   const segments = pathname.replace(/^\/touma\/?/, '').split('/').filter(Boolean);
 
   // Les espaces privés ne doivent jamais être indexés.
-  if (['panier', 'checkout', 'commandes', 'compte', 'vendeur', 'admin', 'connexion', 'inscription'].includes(segments[0] ?? '')) {
+  if (
+    ['panier', 'checkout', 'commandes', 'compte', 'vendeur', 'admin', 'connexion', 'inscription', 'messages', 'retours', 'aide'].includes(
+      segments[0] ?? '',
+    )
+  ) {
     return { ...defaultMeta(canonical), noIndex: true, title: `${SITE_NAME} — espace personnel` };
   }
 

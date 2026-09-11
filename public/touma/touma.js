@@ -52,6 +52,16 @@ const ROUTES = [
   { path: '/touma/messages', module: 'messages', name: 'inbox', auth: true },
   { path: '/touma/messages/:id', module: 'messages', name: 'thread', auth: true },
 
+  // Après-vente et assistance (chargés à la demande).
+  { path: '/touma/retours', module: 'support', name: 'returns', auth: true },
+  { path: '/touma/retours/nouveau', module: 'support', name: 'newReturn', auth: true },
+  { path: '/touma/retours/:id', module: 'support', name: 'returnDetail', auth: true },
+  { path: '/touma/aide', module: 'support', name: 'tickets', auth: true },
+  { path: '/touma/aide/nouveau', module: 'support', name: 'newTicket', auth: true },
+  { path: '/touma/aide/:id', module: 'support', name: 'ticket', auth: true },
+  { path: '/touma/vendeur/retours', module: 'support', name: 'sellerReturns', auth: true, role: 'SELLER' },
+  { path: '/touma/admin/assistance', module: 'support', name: 'adminTickets', auth: true, role: 'ADMIN' },
+
   // Espace vendeur (chargé à la demande).
   { path: '/touma/vendeur', module: 'seller', name: 'dashboard', auth: true, role: 'SELLER' },
   { path: '/touma/vendeur/boutique', module: 'seller', name: 'storeSettings', auth: true },
@@ -76,6 +86,7 @@ const LOADERS = {
   admin: () => import('./views-admin.js'),
   business: () => import('./views-business.js'),
   messages: () => import('./views-messages.js'),
+  support: () => import('./views-support.js'),
 };
 
 async function loadModule(name) {
@@ -136,6 +147,8 @@ function renderChrome() {
   if (user) {
     drawerLinks.splice(2, 0, ['/touma/panier', 'Panier']);
     drawerLinks.push(['/touma/messages', 'Messages']);
+    drawerLinks.push(['/touma/retours', 'Mes retours']);
+    drawerLinks.push(['/touma/aide', 'Assistance']);
     drawerLinks.push(['/touma/compte', 'Mon compte']);
   }
   document.getElementById('drawer-nav').innerHTML = [
@@ -179,6 +192,8 @@ function drawerIcon(href) {
   if (href.includes('commandes')) return svg('box');
   if (href.includes('business')) return svg('chart');
   if (href.includes('messages')) return svg('inbox');
+  if (href.includes('retours')) return svg('truck');
+  if (href.includes('aide')) return svg('alert');
   if (href.includes('vendeur')) return svg('chart');
   if (href.includes('admin')) return svg('shield');
   return svg('user');
@@ -578,6 +593,29 @@ document.addEventListener('click', (event) => {
     return run(async () => {
       await api(`/orders/${d.completeOrder}/status`, { method: 'PATCH', body: { status: 'COMPLETED' } });
       toast('Réception confirmée. Merci !', 'success');
+      await render();
+    });
+  }
+
+  // Après-vente
+  if (d.cancelReturn) {
+    return run(async () => {
+      const ok = await confirmDialog({
+        title: 'Retirer la demande de retour ?',
+        body: 'Le vendeur ne la traitera plus. Vous pourrez en ouvrir une nouvelle tant que le délai court.',
+        confirmLabel: 'Retirer la demande',
+        danger: true,
+      });
+      if (!ok) return;
+      await api(`/returns/${d.cancelReturn}/cancel`, { method: 'POST' });
+      toast('Demande retirée.');
+      await render();
+    });
+  }
+  if (d.closeTicket) {
+    return run(async () => {
+      await api(`/support/tickets/${d.closeTicket}/close`, { method: 'POST' });
+      toast('Ticket clos. Merci de nous avoir prévenus.', 'success');
       await render();
     });
   }
@@ -1071,6 +1109,175 @@ document.addEventListener('submit', (event) => {
           method: 'POST',
           body: { body: document.getElementById('m-body').value },
         });
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        // Le serveur recalcule le montant : l'interface n'envoie que des quantités.
+        const items = [...form.querySelectorAll('.rr-pick')]
+          .filter((box) => box.checked)
+          .map((box) => ({
+            orderItemId: box.dataset.item,
+            quantity: Number(form.querySelector(`.rr-qty[data-item="${box.dataset.item}"]`)?.value || 1),
+          }));
+        if (!items.length) return toast('Sélectionnez au moins un article à retourner.', 'error');
+        const photo = document.getElementById('rr-photo').value.trim();
+        const created = await api('/returns', {
+          method: 'POST',
+          body: {
+            orderId: form.dataset.order,
+            reason: document.getElementById('rr-reason').value,
+            comment: document.getElementById('rr-comment').value || '',
+            items,
+            evidence: photo ? [{ url: photo, name: 'photo', mimeType: 'image/jpeg' }] : [],
+          },
+        });
+        toast('Demande de retour envoyée au vendeur.', 'success');
+        navigate(`/touma/retours/${created.id}`);
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-approve-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const amount = document.getElementById('ra-amount').value.trim().replace(',', '.');
+        await api(`/returns/${form.dataset.return}/approve`, {
+          method: 'POST',
+          body: { approvedAmount: amount || undefined, note: document.getElementById('ra-note').value || undefined },
+        });
+        toast('Retour accepté.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-reject-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/returns/${form.dataset.return}/reject`, {
+          method: 'POST',
+          body: { note: document.getElementById('rj-note').value },
+        });
+        toast('Retour refusé : l’acheteur en est informé.', 'info');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-ship-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/returns/${form.dataset.return}/ship`, {
+          method: 'POST',
+          body: { trackingNumber: document.getElementById('rs-tracking').value },
+        });
+        toast('Merci : le vendeur suit votre colis.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-receive-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/returns/${form.dataset.return}/receive`, {
+          method: 'POST',
+          body: {
+            condition: document.getElementById('rc-condition').value || undefined,
+            restock: document.getElementById('rc-restock').checked,
+          },
+        });
+        toast('Réception enregistrée.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-refund-form') {
+    event.preventDefault();
+    const amount = document.getElementById('rf-amount').value.trim().replace(',', '.');
+    return run(
+      async () => {
+        // Mouvement d'argent réel : confirmation explicite avant l'appel.
+        const ok = await confirmDialog({
+          title: 'Confirmer le remboursement',
+          body: `Rembourser ${amount} à l’acheteur ? Cette opération est tracée et définitive.`,
+          confirmLabel: 'Rembourser',
+        });
+        if (!ok) return;
+        await api(`/returns/${form.dataset.return}/refund`, { method: 'POST', body: { amount: amount || undefined } });
+        toast('Remboursement effectué.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'ticket-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const created = await api('/support/tickets', {
+          method: 'POST',
+          body: {
+            subject: document.getElementById('t-subject').value,
+            category: document.getElementById('t-category').value,
+            message: document.getElementById('t-message').value,
+            orderId: form.dataset.order || undefined,
+          },
+        });
+        toast('Demande envoyée : nous vous répondons ici même.', 'success');
+        navigate(`/touma/aide/${created.id}`);
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'ticket-reply-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/support/tickets/${form.dataset.ticket}/messages`, {
+          method: 'POST',
+          body: {
+            body: document.getElementById('tr-body').value,
+            internal: document.getElementById('tr-internal')?.checked ?? false,
+          },
+        });
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'ticket-update-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/support/tickets/${form.dataset.ticket}`, {
+          method: 'PATCH',
+          body: {
+            status: document.getElementById('tu-status').value,
+            priority: document.getElementById('tu-priority').value,
+          },
+        });
+        toast('Ticket mis à jour.', 'success');
         await render();
       },
       { button: submit },

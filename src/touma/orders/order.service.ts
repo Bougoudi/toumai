@@ -1,9 +1,10 @@
-import type { ToumaOrderStatus } from '@prisma/client';
+import { Prisma, type ToumaOrderStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { conflict, forbidden, notFound } from '../lib/errors.js';
 import { notify } from '../lib/notifications.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
+import { refundService } from '../payments/refund.service.js';
 import type { ListOrdersQuery } from './order.schema.js';
 
 /**
@@ -98,8 +99,15 @@ export const orderService = {
     const allowed = order.buyerId === user.id || order.store.ownerId === user.id || user.role === 'ADMIN';
     // Réponse identique à « inexistant » : ne révèle pas l'existence d'une commande tierce.
     if (!allowed) throw notFound('Commande introuvable.');
+    const refunds = await refundService.listForOrder(order.id);
     return {
       ...serialize(order as never),
+      refunds,
+      // Somme en Decimal : un total d'argent ne transite jamais par un float.
+      refundedTotal: refunds
+        .filter((r) => r.status === 'COMPLETED')
+        .reduce((acc, r) => acc.plus(r.amount), new Prisma.Decimal(0))
+        .toString(),
       payments: order.payments.map((p) => ({
         id: p.id,
         provider: p.provider,
