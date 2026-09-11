@@ -88,6 +88,7 @@ let rfqUrl = '';
 let orderId = '';
 let returnId = '';
 let ticketUrl = '';
+let couponCode = '';
 const PASSWORD = 'motdepasse-nav-123';
 
 await step('accueil', async () => {
@@ -410,6 +411,74 @@ await step('assistance : ouvrir un ticket et recevoir une réponse', async () =>
   await page.waitForTimeout(1000);
   const body = await page.textContent('#view');
   if (!body.includes('Kousséri')) throw new Error('la réponse de l’assistance n’apparaît pas côté acheteur');
+});
+
+await step('vendeur : créer un code de réduction', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur/promotions`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('details summary', { timeout: 15000 });
+  // Le formulaire est replié dès qu'un code existe déjà : on le déplie.
+  if (!(await seller.locator('#coupon-create-form').isVisible())) {
+    await seller.click('details summary');
+    await seller.waitForTimeout(400);
+  }
+  await seller.waitForSelector('#coupon-create-form', { timeout: 15000 });
+  couponCode = `NAV${Date.now().toString().slice(-8)}`;
+  await seller.fill('#co-code', couponCode);
+  await seller.selectOption('#co-type', 'PERCENTAGE');
+  await seller.fill('#co-value', '10');
+  await seller.fill('#co-description', 'Test navigateur');
+  await seller.click('#coupon-create-form button[type="submit"]');
+  await seller.waitForTimeout(2200);
+  const body = await seller.textContent('#view');
+  if (!body.includes(couponCode)) throw new Error('le code créé n’apparaît pas dans la liste');
+  await seller.screenshot({ path: `${OUT}/22-promotions.png` });
+});
+
+await step('acheteur : appliquer le code au paiement', async () => {
+  if (!couponCode) throw new Error('aucun code à appliquer');
+  await page.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.product-card');
+  await page.click('.product-card [data-add-to-cart]');
+  await page.waitForTimeout(1500);
+
+  await page.goto(`${BASE}/checkout`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('[data-checkout-next="1"]');
+  await page.click('[data-checkout-next="1"]');
+  await page.waitForSelector('[data-checkout-next="2"]', { timeout: 25000 });
+  await page.click('[data-checkout-next="2"]');
+  await page.waitForSelector('#coupon-form', { timeout: 20000 });
+
+  const before = await page.textContent('.buybox');
+  await page.fill('#c-code', couponCode.toLowerCase()); // la saisie est insensible à la casse
+  await page.click('#coupon-form button[type="submit"]');
+  await page.waitForTimeout(2200);
+  const after = await page.textContent('.buybox');
+  if (after === before) throw new Error('le récapitulatif n’a pas pris la remise en compte');
+  if (!after.includes(couponCode)) throw new Error('le code appliqué n’apparaît pas dans le récapitulatif');
+  await page.screenshot({ path: `${OUT}/23-code-applique.png` });
+
+  await page.click('[data-place-order]');
+  await page.waitForSelector('.timeline, [href^="/touma/commandes/"]', { timeout: 30000 });
+  const confirmation = await page.textContent('#view');
+  if (!confirmation.includes('enregistrée')) throw new Error('commande non confirmée après remise');
+});
+
+await step('acheteur : la remise figure sur la commande', async () => {
+  await page.goto(`${BASE}/commandes`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('a[href^="/touma/commandes/"]');
+  await page.click('a[href^="/touma/commandes/"]');
+  await page.waitForSelector('.summary', { timeout: 20000 });
+  const body = await page.textContent('#view');
+  if (!body.includes('Remise')) throw new Error('la remise n’apparaît pas sur la commande');
+});
+
+await step('acheteur : mes points de fidélité', async () => {
+  await page.goto(`${BASE}/compte`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.card', { timeout: 15000 });
+  const body = await page.textContent('#view');
+  if (!body.includes('Fidélité TOUMA')) throw new Error('le panneau de fidélité est absent');
+  await page.screenshot({ path: `${OUT}/24-fidelite.png` });
 });
 
 await step('après-vente : pages privées sur mobile', async () => {

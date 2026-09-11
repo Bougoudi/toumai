@@ -31,6 +31,8 @@ function serializeCheckout(result: Awaited<ReturnType<typeof checkoutService.che
       ...o,
       subtotal: o.subtotal.toString(),
       shippingTotal: o.shippingTotal.toString(),
+      discountTotal: o.discountTotal.toString(),
+      sellerFundedDiscount: o.sellerFundedDiscount.toString(),
       total: o.total.toString(),
       commissionTotal: o.commissionTotal.toString(),
     })),

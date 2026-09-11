@@ -4,6 +4,7 @@ import { conflict, forbidden, notFound } from '../lib/errors.js';
 import { notify } from '../lib/notifications.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
+import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { refundService } from '../payments/refund.service.js';
 import type { ListOrdersQuery } from './order.schema.js';
 
@@ -43,6 +44,8 @@ function serialize(order: Awaited<ReturnType<typeof prisma.toumaOrder.findFirstO
     subtotal: order.subtotal.toString(),
     shippingTotal: order.shippingTotal.toString(),
     commissionTotal: order.commissionTotal.toString(),
+    discountTotal: order.discountTotal.toString(),
+    sellerFundedDiscount: order.sellerFundedDiscount.toString(),
     total: order.total.toString(),
   };
 }
@@ -78,6 +81,7 @@ export const orderService = {
         total: o.total.toString(),
         subtotal: o.subtotal.toString(),
         shippingTotal: o.shippingTotal.toString(),
+        discountTotal: o.discountTotal.toString(),
         crossBorder: o.crossBorder,
         itemCount: o.items.reduce((acc, i) => acc + i.quantity, 0),
         store: o.store,
@@ -228,6 +232,10 @@ export const orderService = {
         },
       });
     });
+
+    // Les points de fidélité se gagnent à la livraison, pas au paiement : une
+    // commande annulée avant d'arriver n'a jamais rien rapporté.
+    if (status === 'DELIVERED' || status === 'COMPLETED') await loyaltyService.awardForOrder(order.id);
 
     await notify({
       userId: order.buyerId,

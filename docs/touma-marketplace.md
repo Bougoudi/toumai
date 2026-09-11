@@ -31,6 +31,8 @@ Produits prévus, tous représentés dans l'architecture :
 | Touma Business (B2B) | Fonctionnel | `src/touma/b2b` |
 | Après-vente (retours, remboursements) | Fonctionnel | `src/touma/returns`, `src/touma/payments/refund.service.ts` |
 | Assistance (tickets) | Fonctionnel | `src/touma/support` |
+| Promotions (codes de réduction) | Fonctionnel | `src/touma/promotions` |
+| Fidélité | Fonctionnel | `src/touma/loyalty` |
 | Touma Intelligence | Amorcé (analytique) | `src/touma/admin/analytics.service.ts` |
 
 ---
@@ -86,7 +88,7 @@ uniquement**) : `admin@touma.dev`, `vendeur.td@touma.dev`,
 
 ## 4. Modèle de données
 
-Quarante-neuf modèles préfixés `Touma` (tables `touma_*`), plus la table `Country` et
+Cinquante-trois modèles préfixés `Touma` (tables `touma_*`), plus la table `Country` et
 l'extension du modèle `User` existant (rôle place de marché, pays, statut).
 
 Domaines : pays et adresses · boutiques et vérification · catégories, produits,
@@ -96,7 +98,8 @@ suivi · avis · litiges, messages, preuves · score de risque et signaux de fra
 · favoris · notifications · jetons de rafraîchissement · requêtes et
 recommandations d'IA · journal d'audit · groupes de commande, profils
 entreprise, appels d'offres et négociation · conversations et messages ·
-demandes de retour, lignes retournées et remboursements · tickets d'assistance.
+demandes de retour, lignes retournées et remboursements · tickets d'assistance ·
+codes de réduction et leurs utilisations · comptes et mouvements de fidélité.
 
 **Règle absolue : tout montant est un `Decimal(18,4)`.** Aucun `Float` financier.
 L'utilitaire `src/touma/lib/money.ts` centralise additions, multiplications,
@@ -107,7 +110,7 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 
 ## 5. Ce qui est garanti par les tests
 
-149 tests automatisés s'exécutent contre une vraie base PostgreSQL
+174 tests automatisés s'exécutent contre une vraie base PostgreSQL
 (`npm test` — Node ≥ 22, dont le lanceur de tests accepte les motifs glob),
 dont le parcours complet de bout en bout :
 
@@ -157,7 +160,17 @@ Règles vérifiées, entre autres :
 - ni l'acheteur ni un tiers ne déclenchent un remboursement : seul le vendeur de
   la boutique concernée ou l'administration ;
 - une note interne d'assistance n'apparaît jamais dans la vue du demandeur, et
-  la file complète des tickets reste réservée à l'administration.
+  la file complète des tickets reste réservée à l'administration ;
+- une campagne TOUMA ne réduit pas la commission du vendeur, une promotion de
+  vendeur si : la commission est assise sur ce que la boutique encaisse ;
+- un code de réduction respecte son minimum d'achat, son plafond, ses limites
+  globale et par acheteur, ses pays et ses dates — et ne rend jamais une
+  commande négative ;
+- un vendeur ne peut pas créer de promotion financée par la plateforme, ni de
+  code sur la boutique d'autrui ;
+- la remise annoncée avant de commander est exactement celle appliquée ;
+- les points de fidélité se gagnent à la livraison (jamais au paiement), une
+  seule fois par commande, et sont repris au prorata en cas de remboursement.
 
 Un test navigateur optionnel (`npm run test:browser`, nécessite Playwright)
 rejoue **tout le parcours dans Chromium** — accueil, catalogue et filtres,
@@ -165,7 +178,8 @@ recherche, fiche produit, estimation de livraison, inscription, panier, tunnel
 de commande en quatre étapes, paiement, suivi, espace vendeur (dont le
 graphique des ventes), administration, appels d'offres B2B, messagerie,
 expédition puis livraison, demande de retour, acceptation et remboursement,
-ouverture d'un ticket d'assistance et réponse de l'équipe — puis vérifie, à
+ouverture d'un ticket d'assistance et réponse de l'équipe, création d'un code de
+réduction et son application au paiement — puis vérifie, à
 **360, 390, 430, 768, 1024, 1280 et 1440 px** : aucune erreur console, aucun
 débordement horizontal, navigation basse et menu latéral fonctionnels.
 
@@ -250,6 +264,40 @@ L'assistance fonctionne en tickets : un demandeur, un fil, une priorité déduit
 de la nature du problème (un incident de paiement passe devant), et des **notes
 internes** filtrées à la lecture — elles ne quittent jamais l'administration,
 quelle que soit l'interface qui interroge l'API.
+
+## 4 sexies. Promotions et fidélité
+
+**Qui finance la remise** structure tout le module. Une campagne TOUMA
+(`PLATFORM`) laisse le vendeur payé plein tarif : sa commission reste assise sur
+le sous-total avant remise, la plateforme absorbe le coût de sa propre
+promotion. Une promotion de boutique (`STORE`) réduit le revenu du vendeur, et
+donc la commission qui s'y applique. Chaque sous-commande conserve les deux
+montants (`discountTotal` et `sellerFundedDiscount`) : la répartition est
+vérifiable après coup, elle n'est pas recalculée à la volée.
+
+Le calcul est une **fonction pure** (`computeDiscount`) partagée par l'aperçu
+affiché à l'acheteur et par le checkout : ce qu'il voit est ce qu'il paie. La
+remise est répartie entre les boutiques au prorata, la dernière part absorbant
+le reste de l'arrondi — aucun centime n'est perdu ni créé.
+
+Les garde-fous sont tous côté serveur : minimum d'achat, plafond de remise,
+limite globale (incrémentée de façon **conditionnelle**, comme le stock, pour
+que deux paniers simultanés ne la dépassent pas), limite par acheteur, pays de
+livraison, dates, réservation à une première commande, et l'interdiction
+absolue de rendre une commande négative. Un montant fixe porte obligatoirement
+sa devise : l'appliquer à un panier d'une autre devise reviendrait à inventer un
+taux de change.
+
+**Fidélité.** Les points se gagnent à la **livraison**, pas au paiement — créditer
+au paiement offrirait des points sur des commandes ensuite annulées. Le crédit
+est idempotent (une contrainte d'unicité par commande), et un remboursement
+reprend les points au prorata. Le solde n'est jamais écrit à la main : il est la
+somme des mouvements, et le débit au checkout passe par une mise à jour
+conditionnelle qui interdit de dépenser deux fois les mêmes points. Les points
+ne traversent pas les devises : faute de taux officiel, ils ne sont gagnés et
+dépensés que sur les commandes libellées dans `TOUMA_LOYALTY_CURRENCY`. Taux
+d'acquisition, valeur du point, part maximale du panier réglable en points et
+paliers sont tous des **réglages**, pas des constantes de code.
 
 ---
 
@@ -361,10 +409,10 @@ humain valide.
 1. **Recherche** : la recherche s'appuie sur PostgreSQL (`ILIKE` multi-champs +
    pagination serveur). OpenSearch est provisionné en profil Docker optionnel ;
    l'adaptateur reste à écrire quand le volume du catalogue le justifiera.
-0. **Coupons et fidélité, documents commerciaux (facture, bon de commande,
-   preuve de paiement), sourcing avancé et réputation calculée sur les délais
-   réels** : non réalisés. Les retours, remboursements et tickets d'assistance
-   sont en revanche livrés (voir § 4 quinquies).
+0. **Documents commerciaux (facture, bon de commande, preuve de paiement),
+   sourcing avancé et réputation calculée sur les délais réels** : non réalisés.
+   Les retours, remboursements, tickets d'assistance (§ 4 quinquies), codes de
+   réduction et fidélité (§ 4 sexies) sont en revanche livrés.
 0. **Monorepo `apps/` + `packages/` (Next.js / NestJS)** : non réalisé. Le
    domaine est déjà découpé en modules autonomes (`src/touma/<module>` avec son
    routeur, son service et ses adaptateurs), ce qui rend l'extraction mécanique ;

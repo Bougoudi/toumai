@@ -112,6 +112,21 @@ export const env = {
     paymentWebhookSecret: process.env.TOUMA_PAYMENT_WEBHOOK_SECRET ?? process.env.JWT_SECRET ?? 'dev-secret-change-me',
     /** Délai d'ouverture d'une demande de retour après livraison (jours). */
     returnWindowDays: Number(process.env.TOUMA_RETURN_WINDOW_DAYS ?? 14),
+    /**
+     * Fidélité. Les points ne traversent pas les devises : ils ne sont gagnés
+     * que sur les commandes libellées dans `loyaltyCurrency`, faute de taux de
+     * change officiel.
+     */
+    loyaltyEnabled: process.env.TOUMA_LOYALTY_ENABLED !== 'false',
+    loyaltyCurrency: process.env.TOUMA_LOYALTY_CURRENCY ?? process.env.TOUMA_DEFAULT_CURRENCY ?? 'XAF',
+    /** Points gagnés par unité monétaire dépensée (0.01 = 1 point pour 100). */
+    loyaltyEarnRate: Number(process.env.TOUMA_LOYALTY_EARN_RATE ?? 0.01),
+    /** Valeur d'un point à l'usage, en unités monétaires. */
+    loyaltyPointValue: Number(process.env.TOUMA_LOYALTY_POINT_VALUE ?? 1),
+    /** Part maximale du panier réglable en points (0.5 = la moitié). */
+    loyaltyMaxShare: Number(process.env.TOUMA_LOYALTY_MAX_SHARE ?? 0.5),
+    /** Paliers, du plus bas au plus haut : « NOM:pointsCumulés » séparés par des virgules. */
+    loyaltyTiers: process.env.TOUMA_LOYALTY_TIERS ?? 'BRONZE:0,ARGENT:500,OR:2000,PLATINE:10000',
     /** Adaptateurs actifs (mock tant qu'aucun prestataire réel n'est raccordé). */
     paymentProvider: process.env.TOUMA_PAYMENT_PROVIDER ?? 'mock',
     logisticsProvider: process.env.TOUMA_LOGISTICS_PROVIDER ?? 'mock',

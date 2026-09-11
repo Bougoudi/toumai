@@ -21,6 +21,7 @@ const SECTIONS = [
       ['/touma/admin/commandes', 'Commandes', 'cart'],
       ['/touma/admin/paiements', 'Paiements', 'card'],
       ['/touma/admin/expeditions', 'Expéditions', 'truck'],
+      ['/touma/admin/promotions', 'Promotions', 'spark'],
     ],
   },
   {

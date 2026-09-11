@@ -10,6 +10,10 @@ export const checkoutSchema = z.object({
   /** Devis de transport choisis, par boutique : { storeId: quoteId }. */
   shippingQuotes: z.record(z.string().cuid()).optional(),
   note: z.string().trim().max(1000).optional(),
+  /** Code de réduction saisi par l'acheteur (insensible à la casse). */
+  couponCode: z.string().trim().min(3).max(40).transform((v) => v.toUpperCase()).optional(),
+  /** Points de fidélité à utiliser sur ce panier. */
+  loyaltyPoints: z.number().int().min(0).max(10_000_000).default(0),
   /** Clé d'idempotence : rejouer la même requête ne crée pas deux commandes. */
   idempotencyKey: z.string().trim().min(8).max(120).optional(),
 });

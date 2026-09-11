@@ -224,11 +224,14 @@ model User {
   conversations       ToumaConversationParticipant[]
   messages            ToumaMessage[]
 
-  returnRequests   ToumaReturnRequest[]
-  refundsInitiated ToumaRefund[]         @relation("RefundInitiator")
-  supportTickets   ToumaSupportTicket[]  @relation("TicketRequester")
-  assignedTickets  ToumaSupportTicket[]  @relation("TicketAssignee")
-  supportMessages  ToumaSupportMessage[]
+  returnRequests    ToumaReturnRequest[]
+  refundsInitiated  ToumaRefund[]           @relation("RefundInitiator")
+  supportTickets    ToumaSupportTicket[]    @relation("TicketRequester")
+  assignedTickets   ToumaSupportTicket[]    @relation("TicketAssignee")
+  supportMessages   ToumaSupportMessage[]
+  coupons           ToumaCoupon[]           @relation("CouponAuthor")
+  couponRedemptions ToumaCouponRedemption[]
+  loyaltyAccount    ToumaLoyaltyAccount?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -743,6 +746,35 @@ enum TicketCategory {
   OTHER
 }
 
+// ── Promotions et fidélité ───────────────────────────────────────────────────
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_SHIPPING
+}
+
+/// Qui finance la remise. Déterminant : une promotion de la plateforme ne doit
+/// jamais être payée par le vendeur, et inversement.
+enum DiscountFunding {
+  PLATFORM
+  STORE
+}
+
+enum CouponStatus {
+  ACTIVE
+  PAUSED
+  EXPIRED
+  EXHAUSTED
+}
+
+enum LoyaltyEventType {
+  EARNED
+  REDEEMED
+  REVERSED
+  ADJUSTED
+}
+
 // ── Référentiels ─────────────────────────────────────────────────────────────
 
 /// Pays desservi par Touma. Le corridor pilote (TD, CM) est une simple donnée :
@@ -840,6 +872,7 @@ model ToumaStore {
   commissions   ToumaCommission[]
   returns       ToumaReturnRequest[]
   tickets       ToumaSupportTicket[]
+  coupons       ToumaCoupon[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1074,13 +1107,20 @@ model ToumaOrder {
   pickupPointId  String?
   pickupPoint    ToumaPickupPoint? @relation(fields: [pickupPointId], references: [id], onDelete: SetNull)
 
-  currency        String
+  currency             String
   /// Somme des lignes (hors livraison).
-  subtotal        Decimal @db.Decimal(18, 4)
-  shippingTotal   Decimal @default(0) @db.Decimal(18, 4)
+  subtotal             Decimal @db.Decimal(18, 4)
+  shippingTotal        Decimal @default(0) @db.Decimal(18, 4)
   /// Commission Touma retenue sur la commande.
-  commissionTotal Decimal @default(0) @db.Decimal(18, 4)
-  total           Decimal @db.Decimal(18, 4)
+  commissionTotal      Decimal @default(0) @db.Decimal(18, 4)
+  /// Part de la remise du panier imputée à cette sous-commande — ce que
+  /// l'acheteur ne paie pas.
+  discountTotal        Decimal @default(0) @db.Decimal(18, 4)
+  /// Part de cette remise réellement financée par le vendeur. Le reste est à la
+  /// charge de TOUMA : sa commission reste alors assise sur le sous-total plein,
+  /// pour qu'une campagne de la plateforme ne coûte rien à la boutique.
+  sellerFundedDiscount Decimal @default(0) @db.Decimal(18, 4)
+  total                Decimal @db.Decimal(18, 4)
 
   /// Adresse de livraison : référence + copie figée (l'adresse peut être modifiée après coup).
   shippingAddressId String?
@@ -1114,6 +1154,7 @@ model ToumaOrder {
   returnRequests ToumaReturnRequest[]
   refunds        ToumaRefund[]
   tickets        ToumaSupportTicket[]
+  loyaltyEvents  ToumaLoyaltyEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1643,9 +1684,11 @@ model ToumaOrderGroup {
   /// Vrai dès qu'au moins une sous-commande franchit une frontière.
   crossBorder      Boolean @default(false)
 
-  orders   ToumaOrder[]
-  payments ToumaPayment[]
-  quotes   ToumaQuote[]
+  orders        ToumaOrder[]
+  payments      ToumaPayment[]
+  quotes        ToumaQuote[]
+  redemptions   ToumaCouponRedemption[]
+  loyaltyEvents ToumaLoyaltyEvent[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2140,4 +2183,125 @@ model ToumaSupportMessage {
 
   @@index([ticketId])
   @@map("touma_support_messages")
+}
+
+// ── Promotions ───────────────────────────────────────────────────────────────
+
+/// Code de réduction. Deux natures bien distinctes :
+///   • `PLATFORM` — promotion TOUMA : le vendeur est payé plein tarif, la
+///     plateforme absorbe la remise sur sa commission ;
+///   • `STORE` — promotion du vendeur : elle réduit son propre revenu.
+/// Confondre les deux reviendrait à faire financer nos campagnes par les
+/// boutiques.
+model ToumaCoupon {
+  id      String          @id @default(cuid())
+  /// Normalisé en majuscules : la saisie de l'acheteur est insensible à la casse.
+  code    String          @unique
+  funding DiscountFunding @default(PLATFORM)
+  /// Renseigné si et seulement si la promotion appartient à une boutique.
+  storeId String?
+  store   ToumaStore?     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  type        DiscountType
+  /// Pourcentage (0–100) ou montant fixe, selon `type`. Ignoré pour la livraison offerte.
+  value       Decimal      @default(0) @db.Decimal(18, 4)
+  /// Devise obligatoire pour un montant fixe : aucune conversion approximative.
+  currency    String?
+  description String       @default("")
+
+  /// Conditions d'éligibilité, toutes facultatives.
+  minOrderAmount    Decimal? @db.Decimal(18, 4)
+  /// Plafond de remise pour un pourcentage (évite qu'un -20 % sur un gros panier coûte une fortune).
+  maxDiscountAmount Decimal? @db.Decimal(18, 4)
+  /// Pays de livraison éligibles (codes ISO séparés par des virgules). Vide = tous.
+  countryCodes      String   @default("")
+  /// Réservé à une première commande.
+  firstOrderOnly    Boolean  @default(false)
+
+  startsAt DateTime  @default(now())
+  endsAt   DateTime?
+
+  /// Nombre total d'utilisations autorisées, et par acheteur.
+  usageLimit        Int?
+  usageLimitPerUser Int?
+  usageCount        Int          @default(0)
+  status            CouponStatus @default(ACTIVE)
+
+  createdById String?
+  createdBy   User?   @relation("CouponAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  redemptions ToumaCouponRedemption[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+  @@index([status])
+  @@map("touma_coupons")
+}
+
+/// Utilisation effective d'un code sur un panier validé. L'unicité par panier
+/// empêche qu'un même code soit compté deux fois sur la même commande.
+model ToumaCouponRedemption {
+  id           String          @id @default(cuid())
+  couponId     String
+  coupon       ToumaCoupon     @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderGroupId String
+  orderGroup   ToumaOrderGroup @relation(fields: [orderGroupId], references: [id], onDelete: Cascade)
+
+  amount   Decimal @db.Decimal(18, 4)
+  currency String
+
+  createdAt DateTime @default(now())
+
+  @@unique([couponId, orderGroupId])
+  @@index([userId])
+  @@map("touma_coupon_redemptions")
+}
+
+// ── Fidélité ─────────────────────────────────────────────────────────────────
+
+/// Compte de fidélité. Le solde n'est jamais écrit à la main : il est la somme
+/// des événements, appliquée de façon atomique à chaque mouvement.
+model ToumaLoyaltyAccount {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  balance        Int    @default(0)
+  lifetimePoints Int    @default(0)
+  /// Niveau déduit des points cumulés (paliers configurables).
+  tier           String @default("BRONZE")
+
+  events ToumaLoyaltyEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("touma_loyalty_accounts")
+}
+
+/// Mouvement de points, signé (positif = gagné, négatif = dépensé ou repris).
+model ToumaLoyaltyEvent {
+  id        String              @id @default(cuid())
+  accountId String
+  account   ToumaLoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  type      LoyaltyEventType
+  points    Int
+
+  orderId      String?
+  order        ToumaOrder?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderGroupId String?
+  orderGroup   ToumaOrderGroup? @relation(fields: [orderGroupId], references: [id], onDelete: SetNull)
+
+  reason String @default("")
+
+  createdAt DateTime @default(now())
+
+  /// Un seul gain par commande : rejouer une livraison ne crédite pas deux fois.
+  @@unique([orderId, type])
+  @@index([accountId])
+  @@map("touma_loyalty_events")
 }

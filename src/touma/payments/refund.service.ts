@@ -6,6 +6,7 @@ import { audit } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { money, roundTo } from '../lib/money.js';
 import { notify } from '../lib/notifications.js';
+import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { getPaymentProvider } from './payment.service.js';
 
 /**
@@ -206,6 +207,12 @@ export const refundService = {
       }
       return done;
     });
+
+    // Rembourser une commande reprend les points qu'elle avait rapportés, au
+    // prorata : sans cela, un remboursement reviendrait à offrir ses points.
+    const refundedForOrder = await refundedTotal(order.id);
+    const ratio = order.total.greaterThan(0) ? Number(refundedForOrder.dividedBy(order.total).toString()) : 1;
+    await loyaltyService.reverseForOrder(order.id, ratio);
 
     await audit({
       actorId: request.actorId,

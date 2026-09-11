@@ -1,7 +1,7 @@
 /**
  * TOUMA — compte : connexion, inscription, profil, adresses, notifications.
  */
-import { api, esc, formatDate, label, session, emptyState, svg } from './core.js';
+import { api, esc, formatDate, label, money, session, emptyState, svg } from './core.js';
 import { breadcrumb } from './components.js';
 
 export async function login(_params, query) {
@@ -67,7 +67,12 @@ export async function register() {
 }
 
 export async function account() {
-  const [me, notifications] = await Promise.all([api('/auth/me'), api('/notifications')]);
+  const [me, notifications, loyalty] = await Promise.all([
+    api('/auth/me'),
+    api('/notifications'),
+    // La fidélité peut être désactivée : son absence ne casse pas la page.
+    api('/loyalty').catch(() => null),
+  ]);
   return `
     ${breadcrumb([{ label: 'Accueil', href: '/touma/' }, { label: 'Mon compte' }])}
     <h1>Mon compte</h1>
@@ -88,6 +93,40 @@ export async function account() {
             : `<a class="btn btn-secondary btn-block mt-6" href="/touma/vendeur" data-link>Espace vendeur</a>`}
           <button class="btn btn-ghost btn-block btn-sm mt-6" data-logout-all>Déconnecter tous mes appareils</button>
         </section>
+
+        ${loyalty?.enabled
+          ? `<section class="card">
+              <div class="card-head">
+                <h2 style="font-size:var(--text-md)">Fidélité TOUMA</h2>
+                <span class="badge badge-verified">${esc(loyalty.tier)}</span>
+              </div>
+              <p style="margin:0;font-size:var(--text-xl);font-weight:var(--weight-bold)">${loyalty.balance} point(s)</p>
+              <p class="small muted" style="margin:2px 0 0">
+                Soit ${money(loyalty.balanceValue, loyalty.currency)} de remise utilisable au moment de commander.
+              </p>
+              ${loyalty.nextTier
+                ? `<p class="small" style="margin:var(--space-3) 0 0">
+                    Encore ${loyalty.nextTier.remaining} point(s) pour atteindre <strong>${esc(loyalty.nextTier.name)}</strong>.
+                  </p>`
+                : '<p class="small" style="margin:var(--space-3) 0 0">Vous êtes au palier le plus élevé.</p>'}
+              ${loyalty.events.length
+                ? `<details style="margin-top:var(--space-4)">
+                    <summary class="small">Historique des points</summary>
+                    <div class="stack" style="gap:var(--space-2);margin-top:var(--space-3)">
+                      ${loyalty.events
+                        .slice(0, 12)
+                        .map(
+                          (e) => `<div class="row-between small">
+                            <span>${esc(e.reason || e.type)}${e.orderNumber ? ` <span class="muted">${esc(e.orderNumber)}</span>` : ''}</span>
+                            <strong style="color:${e.points >= 0 ? 'var(--success)' : 'var(--danger)'}">${e.points >= 0 ? '+' : ''}${e.points}</strong>
+                          </div>`,
+                        )
+                        .join('')}
+                    </div>
+                  </details>`
+                : '<p class="xs muted" style="margin:var(--space-3) 0 0">Vos points apparaîtront ici dès votre première commande livrée.</p>'}
+            </section>`
+          : ''}
 
         <section class="card">
           <h2 style="font-size:var(--text-md)">Suivi et après-vente</h2>

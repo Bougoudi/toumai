@@ -23,6 +23,8 @@ import { conversationRouter } from './messaging/messaging.routes.js';
 import { pickupPointRouter } from './logistics/pickup.routes.js';
 import { returnRouter } from './returns/return.routes.js';
 import { supportRouter } from './support/support.routes.js';
+import { couponRouter } from './promotions/coupon.routes.js';
+import { loyaltyRouter } from './loyalty/loyalty.routes.js';
 
 /**
  * API TOUMA v1 — place de marché.
@@ -71,6 +73,8 @@ toumaV1Router.get('/', (_req, res) =>
       pickupPoints: '/api/v1/pickup-points',
       returns: '/api/v1/returns',
       support: '/api/v1/support',
+      coupons: '/api/v1/coupons',
+      loyalty: '/api/v1/loyalty',
       admin: '/api/v1/admin',
       openapi: '/api/v1/openapi.json',
     },
@@ -101,6 +105,8 @@ toumaV1Router.use('/conversations', conversationRouter);
 toumaV1Router.use('/pickup-points', pickupPointRouter);
 toumaV1Router.use('/returns', returnRouter);
 toumaV1Router.use('/support', supportRouter);
+toumaV1Router.use('/coupons', couponRouter);
+toumaV1Router.use('/loyalty', loyaltyRouter);
 toumaV1Router.use('/admin', adminRouter);
 
 /** Recherche transverse (produits + boutiques) pour la barre de recherche. */

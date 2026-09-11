@@ -10,6 +10,7 @@ const TABS = [
   ['/touma/vendeur/produits', 'Produits'],
   ['/touma/vendeur/commandes', 'Commandes'],
   ['/touma/vendeur/retours', 'Retours'],
+  ['/touma/vendeur/promotions', 'Promotions'],
   ['/touma/vendeur/boutique', 'Ma boutique'],
   ['/touma/vendeur/analyses', 'Analyses'],
   ['/touma/vendeur/verification', 'Touma Verified'],

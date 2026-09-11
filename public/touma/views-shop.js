@@ -484,7 +484,21 @@ export async function cart() {
 const CHECKOUT_STEPS = ['Adresse', 'Livraison', 'Paiement', 'Confirmation'];
 
 /** État du tunnel, conservé le temps de la session de navigation. */
-export const checkoutState = { step: 0, addressId: null, quotes: {}, orders: [], group: null, deliveryMethod: 'HOME', pickupPointId: null };
+export const checkoutState = {
+  step: 0,
+  addressId: null,
+  quotes: {},
+  orders: [],
+  group: null,
+  deliveryMethod: 'HOME',
+  pickupPointId: null,
+  /** Code de réduction validé par le serveur, et remise annoncée. */
+  coupon: null,
+  loyaltyPoints: 0,
+  loyaltyValue: 0,
+  /** Transport retenu à l'étape 2, pour l'afficher aussi à l'étape paiement. */
+  shippingTotal: null,
+};
 
 export async function checkout(_params, query) {
   const step = Number(query.get('etape') ?? checkoutState.step ?? 0);
@@ -614,6 +628,11 @@ export async function checkout(_params, query) {
     for (const { group, quotes } of groups) {
       if (!checkoutState.quotes[group.store.id]) checkoutState.quotes[group.store.id] = quotes[0]?.id ?? null;
     }
+    // Mémorisé pour que l'étape de paiement affiche un total complet.
+    checkoutState.shippingTotal = groups.reduce((acc, { group, quotes }) => {
+      const chosen = quotes.find((q) => q.id === checkoutState.quotes[group.store.id]) ?? quotes[0];
+      return acc + Number(chosen?.amount ?? 0);
+    }, 0);
 
     return `${header}
       <div class="grid grid-2">
@@ -662,10 +681,42 @@ export async function checkout(_params, query) {
 
   // Étape 3 — paiement
   if (step === 2) {
-    const providers = await api('/payments/providers');
+    const [providers, loyalty] = await Promise.all([api('/payments/providers'), api('/loyalty/usable').catch(() => null)]);
     const methods = providers.items[0]?.methods ?? ['MOBILE_MONEY'];
+    const usable = loyalty?.usablePoints ?? 0;
     return `${header}
       <div class="grid grid-2">
+        <div class="stack">
+        <section class="card">
+          <h2 style="font-size:var(--text-md)">Réductions</h2>
+          <form id="coupon-form" class="row" style="gap:var(--space-2);align-items:flex-end">
+            <div class="field" style="flex:1;margin:0">
+              <label for="c-code">Code de réduction</label>
+              <input id="c-code" maxlength="40" placeholder="BIENVENUE10" value="${esc(checkoutState.coupon?.code ?? '')}" autocomplete="off" />
+            </div>
+            <button class="btn btn-secondary" type="submit">Appliquer</button>
+          </form>
+          ${checkoutState.coupon
+            ? `<p class="small" style="color:var(--success);margin:var(--space-3) 0 0">
+                ${esc(checkoutState.coupon.label)} appliqué${checkoutState.coupon.description ? ` — ${esc(checkoutState.coupon.description)}` : ''}.
+                <button class="btn btn-ghost btn-sm" data-remove-coupon>Retirer</button>
+              </p>`
+            : ''}
+
+          ${usable > 0
+            ? `<form id="loyalty-form" class="mt-6">
+                <div class="field" style="margin:0">
+                  <label for="c-points">Points de fidélité (${usable} utilisable(s), soit ${money(loyalty.value, loyalty.currency)})</label>
+                  <div class="row" style="gap:var(--space-2)">
+                    <input id="c-points" type="number" min="0" max="${usable}" step="1" value="${checkoutState.loyaltyPoints || 0}" style="flex:1" />
+                    <button class="btn btn-secondary" type="submit">Utiliser</button>
+                  </div>
+                  <span class="field-hint">Vos points valent une remise immédiate sur cette commande.</span>
+                </div>
+              </form>`
+            : '<p class="xs muted" style="margin:var(--space-3) 0 0">Aucun point de fidélité utilisable sur ce panier.</p>'}
+        </section>
+
         <section class="card">
           <h2 style="font-size:var(--text-md)">Moyen de paiement</h2>
           <p class="small muted">Le paiement est confirmé par le serveur TOUMA auprès du prestataire. Aucune donnée bancaire n'est stockée par TOUMA.</p>
@@ -681,6 +732,7 @@ export async function checkout(_params, query) {
               .join('')}
           </div>
         </section>
+        </div>
 
         <aside>
           <div class="card buybox">
@@ -734,8 +786,17 @@ function summaryBlock(data, groups = null) {
         const chosen = quotes.find((q) => q.id === checkoutState.quotes[group.store.id]) ?? quotes[0];
         return acc + Number(chosen?.amount ?? 0);
       }, 0)
-    : null;
-  const total = shipping === null ? Number(data.subtotal) : Number(data.subtotal) + shipping;
+    : // Une fois le transport choisi, il reste affiché jusqu'au paiement.
+      (checkoutState.shippingTotal ?? null);
+  // Les remises affichées sont celles que le serveur a calculées : l'interface
+  // ne décide jamais d'un montant par elle-même.
+  const couponDiscount = checkoutState.coupon && !checkoutState.coupon.onShipping ? Number(checkoutState.coupon.discount) : 0;
+  const freeShipping = checkoutState.coupon?.onShipping && shipping !== null ? shipping : 0;
+  const pointsValue = Number(checkoutState.loyaltyValue ?? 0);
+  const discount = couponDiscount + freeShipping + pointsValue;
+
+  const gross = shipping === null ? Number(data.subtotal) : Number(data.subtotal) + shipping;
+  const total = Math.max(0, gross - discount);
 
   return `<h2 style="font-size:var(--text-md)">Récapitulatif</h2>
     <div class="summary">
@@ -744,6 +805,18 @@ function summaryBlock(data, groups = null) {
         <span>Livraison</span>
         <span>${shipping === null ? '<span class="muted small">à l\'étape suivante</span>' : money(shipping, data.currency)}</span>
       </div>
+      ${couponDiscount || freeShipping
+        ? `<div class="summary-line" style="color:var(--success)">
+            <span>Code ${esc(checkoutState.coupon.code)}</span>
+            <span>− ${money(couponDiscount + freeShipping, data.currency)}</span>
+          </div>`
+        : ''}
+      ${pointsValue
+        ? `<div class="summary-line" style="color:var(--success)">
+            <span>${checkoutState.loyaltyPoints} point(s) de fidélité</span>
+            <span>− ${money(pointsValue, data.currency)}</span>
+          </div>`
+        : ''}
       <div class="summary-line summary-total"><span>Total</span><span>${money(total, data.currency)}</span></div>
     </div>`;
 }
@@ -795,7 +868,9 @@ export async function orderGroup(params) {
           <div class="summary">
             <div class="summary-line"><span>Marchandise</span><span>${money(g.itemsTotal, g.currency)}</span></div>
             <div class="summary-line"><span>Livraison</span><span>${money(g.shippingTotal, g.currency)}</span></div>
-            ${Number(g.discountTotal) > 0 ? `<div class="summary-line"><span>Remise</span><span>− ${money(g.discountTotal, g.currency)}</span></div>` : ''}
+            ${Number(g.discountTotal) > 0
+              ? `<div class="summary-line" style="color:var(--success)"><span>Remise</span><span>− ${money(g.discountTotal, g.currency)}</span></div>`
+              : ''}
             <div class="summary-line summary-total"><span>Total payé</span><span>${money(g.total, g.currency)}</span></div>
           </div>
           ${g.payment
@@ -913,6 +988,9 @@ export async function order(params) {
           <div class="summary mt-6">
             <div class="summary-line"><span>Sous-total</span><span>${money(o.subtotal, o.currency)}</span></div>
             <div class="summary-line"><span>Livraison</span><span>${money(o.shippingTotal, o.currency)}</span></div>
+            ${Number(o.discountTotal) > 0
+              ? `<div class="summary-line" style="color:var(--success)"><span>Remise</span><span>− ${money(o.discountTotal, o.currency)}</span></div>`
+              : ''}
             <div class="summary-line summary-total"><span>Total</span><span>${money(o.total, o.currency)}</span></div>
           </div>
         </section>

@@ -62,6 +62,11 @@ const ROUTES = [
   { path: '/touma/vendeur/retours', module: 'support', name: 'sellerReturns', auth: true, role: 'SELLER' },
   { path: '/touma/admin/assistance', module: 'support', name: 'adminTickets', auth: true, role: 'ADMIN' },
 
+  // Promotions (codes de réduction).
+  { path: '/touma/vendeur/promotions', module: 'promotions', name: 'sellerCoupons', auth: true, role: 'SELLER' },
+  { path: '/touma/admin/promotions', module: 'promotions', name: 'adminCoupons', auth: true, role: 'ADMIN' },
+  { path: '/touma/promotions/:id', module: 'promotions', name: 'couponDetail', auth: true },
+
   // Espace vendeur (chargé à la demande).
   { path: '/touma/vendeur', module: 'seller', name: 'dashboard', auth: true, role: 'SELLER' },
   { path: '/touma/vendeur/boutique', module: 'seller', name: 'storeSettings', auth: true },
@@ -87,6 +92,7 @@ const LOADERS = {
   business: () => import('./views-business.js'),
   messages: () => import('./views-messages.js'),
   support: () => import('./views-support.js'),
+  promotions: () => import('./views-promotions.js'),
 };
 
 async function loadModule(name) {
@@ -531,6 +537,8 @@ document.addEventListener('click', (event) => {
             shippingQuotes: shop.checkoutState.quotes,
             deliveryMethod: shop.checkoutState.deliveryMethod,
             pickupPointId: shop.checkoutState.pickupPointId ?? undefined,
+            couponCode: shop.checkoutState.coupon?.code ?? undefined,
+            loyaltyPoints: shop.checkoutState.loyaltyPoints || 0,
             idempotencyKey: key,
           },
         });
@@ -544,6 +552,12 @@ document.addEventListener('click', (event) => {
         const paid = confirmed.status === 'SUCCEEDED';
         shop.checkoutState.group = result.group;
         shop.checkoutState.orders = result.orders.map((o) => ({ ...o, status: paid ? 'PAID' : o.status }));
+        // Les réductions ont été consommées : elles ne doivent pas se reporter
+        // sur la commande suivante.
+        shop.checkoutState.coupon = null;
+        shop.checkoutState.loyaltyPoints = 0;
+        shop.checkoutState.loyaltyValue = 0;
+        shop.checkoutState.shippingTotal = null;
         shop.checkoutState.step = 3;
         await refreshCounters();
         toast(paid ? 'Commande confirmée. Merci !' : 'Commande créée : le paiement reste à confirmer.', paid ? 'success' : 'warning');
@@ -551,6 +565,22 @@ document.addEventListener('click', (event) => {
       },
       { button: el },
     );
+  }
+
+  if (d.pauseCoupon || d.resumeCoupon) {
+    const id = d.pauseCoupon ?? d.resumeCoupon;
+    const status = d.pauseCoupon ? 'PAUSED' : 'ACTIVE';
+    return run(async () => {
+      await api(`/coupons/${id}`, { method: 'PATCH', body: { status } });
+      toast(status === 'PAUSED' ? 'Code suspendu.' : 'Code réactivé.', 'success');
+      await render();
+    });
+  }
+
+  if (d.removeCoupon !== undefined) {
+    shop.checkoutState.coupon = null;
+    toast('Code retiré.');
+    return render();
   }
 
   // Commandes acheteur
@@ -1109,6 +1139,85 @@ document.addEventListener('submit', (event) => {
           method: 'POST',
           body: { body: document.getElementById('m-body').value },
         });
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'coupon-create-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const value = document.getElementById('co-value').value.trim().replace(',', '.');
+        const currency = document.getElementById('co-currency').value.trim().toUpperCase();
+        const countries = document.getElementById('co-countries').value
+          .split(',')
+          .map((c) => c.trim().toUpperCase())
+          .filter(Boolean);
+        const endsAt = document.getElementById('co-ends').value;
+        const limit = document.getElementById('co-limit').value;
+        const perUser = document.getElementById('co-limit-user').value;
+        const min = document.getElementById('co-min').value.trim().replace(',', '.');
+        const max = document.getElementById('co-max').value.trim().replace(',', '.');
+
+        await api('/coupons', {
+          method: 'POST',
+          body: {
+            code: document.getElementById('co-code').value.trim(),
+            type: document.getElementById('co-type').value,
+            value: value || undefined,
+            currency: currency || undefined,
+            description: document.getElementById('co-description').value || '',
+            storeId: form.dataset.scope === 'store' ? document.getElementById('co-store').value : undefined,
+            minOrderAmount: min || undefined,
+            maxDiscountAmount: max || undefined,
+            countryCodes: countries,
+            firstOrderOnly: document.getElementById('co-first').checked,
+            // Une date de fin saisie vaut pour toute la journée choisie.
+            endsAt: endsAt ? new Date(`${endsAt}T23:59:59Z`).toISOString() : undefined,
+            usageLimit: limit ? Number(limit) : undefined,
+            usageLimitPerUser: perUser ? Number(perUser) : undefined,
+          },
+        });
+        toast('Code créé.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'coupon-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const code = document.getElementById('c-code').value.trim();
+        if (!code) return toast('Saisissez un code.', 'error');
+        // C'est le serveur qui valide le code et calcule la remise : l'interface
+        // se contente d'afficher ce qu'il renvoie.
+        const preview = await api('/coupons/preview', { method: 'POST', body: { code } });
+        shop.checkoutState.coupon = preview;
+        toast(`${preview.label} appliqué.`, 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'loyalty-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const field = document.getElementById('c-points');
+        const points = Math.max(0, Math.floor(Number(field.value) || 0));
+        const usable = await api('/loyalty/usable');
+        if (points > usable.usablePoints) {
+          return toast(`Vous pouvez utiliser au plus ${usable.usablePoints} point(s).`, 'error');
+        }
+        shop.checkoutState.loyaltyPoints = points;
+        // Le taux vient du serveur : l'interface se contente de multiplier.
+        shop.checkoutState.loyaltyValue = points * usable.pointValue;
+        toast(points ? `${points} point(s) appliqué(s).` : 'Points retirés.', 'success');
         await render();
       },
       { button: submit },
