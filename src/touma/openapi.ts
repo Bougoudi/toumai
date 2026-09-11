@@ -59,6 +59,7 @@ export function toumaOpenApiDocument() {
       { name: 'Promotions', description: 'Codes de réduction et fidélité' },
       { name: 'Documents', description: 'Facture, avoir, reçu, bon de commande, bon de livraison' },
       { name: 'Réputation', description: 'Indicateurs calculés sur les transactions réelles' },
+      { name: 'Sourcing', description: 'Recherche de fournisseurs et sollicitation' },
       { name: 'Vendeur' },
       { name: 'Administration' },
     ],
@@ -157,6 +158,14 @@ export function toumaOpenApiDocument() {
       '/reputation/store/{idOrSlug}': { get: op('Réputation', 'Réputation publique d’une boutique', { auth: false, params: ['idOrSlug'] }) },
       '/reputation/mine/{storeId}': { get: op('Réputation', 'Ma réputation, recalculée à la demande', { params: ['storeId'], role: 'SELLER' }) },
       '/reputation/leaderboard': { get: op('Réputation', 'Classement des boutiques par score', { role: 'ADMIN', query: ['limit'] }) },
+      '/sourcing/suppliers': {
+        get: op('Sourcing', 'Trouver un fournisseur', {
+          auth: false,
+          query: ['q', 'category', 'country', 'destination', 'minQuantity', 'verifiedOnly', 'sort', 'page', 'limit'],
+        }),
+      },
+      '/sourcing/suppliers/{idOrSlug}': { get: op('Sourcing', 'Fiche fournisseur', { auth: false, params: ['idOrSlug'] }) },
+      '/rfqs/{id}/invitations': { post: op('Sourcing', 'Solliciter des fournisseurs sur un appel d’offres', { params: ['id'], body: true }) },
       '/notifications': { get: op('Auth', 'Mes notifications') },
       '/ai/generate': { post: op('Touma AI', 'Générer un texte (proposition, validation humaine requise)', { body: true }) },
       '/ai/classify': { post: op('Touma AI', 'Classer un texte', { body: true }) },

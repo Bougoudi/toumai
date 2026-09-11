@@ -9,6 +9,7 @@ const TABS = [
   ['/touma/business', "Vue d'ensemble"],
   ['/touma/business/appels-offres', "Mes appels d'offres"],
   ['/touma/business/appels-offres/nouveau', 'Publier une demande'],
+  ['/touma/sourcing', 'Sourcing'],
   ['/touma/business/profil', 'Profil entreprise'],
 ];
 
@@ -127,21 +128,40 @@ function rfqList(items) {
 
 // ── Liste des appels d'offres ──────────────────────────────────────────────
 export async function rfqs(_params, query) {
-  const scope = query.get('scope') === 'open' ? 'open' : 'mine';
+  const requested = query.get('scope');
+  const scope = ['open', 'invited'].includes(requested) ? requested : 'mine';
   const data = await api(`/rfqs?scope=${scope}&limit=25`);
+
+  const EMPTY = {
+    mine: {
+      title: 'Aucune demande publiée',
+      body: 'Publiez votre première demande d’achat.',
+      actionLabel: 'Publier une demande',
+    },
+    open: {
+      title: 'Aucune demande ouverte',
+      body: 'Revenez plus tard : les demandes des acheteurs apparaîtront ici.',
+    },
+    invited: {
+      title: 'Aucune sollicitation reçue',
+      body: 'Quand un acheteur vous repère dans le sourcing et vous invite à répondre, sa demande apparaît ici.',
+    },
+  }[scope];
+
   return `
     <h1 style="font-size:var(--text-xl)">Appels d'offres</h1>
     ${tabs('/touma/business/appels-offres')}
     <div class="chip-row" style="margin-bottom:var(--space-5)">
       <a class="chip" href="/touma/business/appels-offres" data-link aria-current="${scope === 'mine'}">Mes demandes</a>
       <a class="chip" href="/touma/business/appels-offres?scope=open" data-link aria-current="${scope === 'open'}">Demandes ouvertes</a>
+      ${session.isSeller
+        ? `<a class="chip" href="/touma/business/appels-offres?scope=invited" data-link aria-current="${scope === 'invited'}">Sollicitations reçues</a>`
+        : ''}
     </div>
     ${data.items.length
       ? rfqList(data.items)
       : emptyState({
-          title: scope === 'mine' ? 'Aucune demande publiée' : 'Aucune demande ouverte',
-          body: scope === 'mine' ? 'Publiez votre première demande d’achat.' : 'Revenez plus tard : les demandes des acheteurs apparaîtront ici.',
-          actionLabel: scope === 'mine' ? 'Publier une demande' : undefined,
+          ...EMPTY,
           actionHref: '/touma/business/appels-offres/nouveau',
           iconName: 'inbox',
         })}`;

@@ -46,6 +46,8 @@ const ROUTES = [
   { path: '/touma/business/appels-offres/nouveau', module: 'business', name: 'newRfq', auth: true },
   { path: '/touma/business/appels-offres/:id', module: 'business', name: 'rfq', auth: true },
   { path: '/touma/business/profil', module: 'business', name: 'profile', auth: true },
+  { path: '/touma/sourcing', module: 'sourcing', name: 'suppliers' },
+  { path: '/touma/sourcing/:slug', module: 'sourcing', name: 'supplier' },
   { path: '/touma/vendeur/offres', module: 'business', name: 'myQuotes', auth: true, role: 'SELLER' },
 
   // Messagerie.
@@ -99,6 +101,7 @@ const LOADERS = {
   support: () => import('./views-support.js'),
   promotions: () => import('./views-promotions.js'),
   documents: () => import('./views-documents.js'),
+  sourcing: () => import('./views-sourcing.js'),
 };
 
 async function loadModule(name) {
@@ -1154,6 +1157,35 @@ document.addEventListener('submit', (event) => {
           method: 'POST',
           body: { body: document.getElementById('m-body').value },
         });
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'sourcing-filters') {
+    event.preventDefault();
+    const params = new URLSearchParams();
+    for (const [key, value] of new FormData(form).entries()) if (String(value).trim()) params.set(key, String(value).trim());
+    return navigate(`/touma/sourcing?${params.toString()}`);
+  }
+
+  if (form.id === 'invite-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const storeIds = [...document.querySelectorAll('.supplier-pick')]
+          .filter((box) => box.checked)
+          .map((box) => box.dataset.store);
+        if (!storeIds.length) return toast('Cochez au moins un fournisseur.', 'error');
+        const rfqId = document.getElementById('so-rfq').value;
+        const result = await api(`/rfqs/${rfqId}/invitations`, { method: 'POST', body: { storeIds } });
+        toast(
+          result.invited
+            ? `${result.invited} fournisseur(s) sollicité(s).`
+            : 'Ces fournisseurs étaient déjà sollicités.',
+          result.invited ? 'success' : 'info',
+        );
         await render();
       },
       { button: submit },

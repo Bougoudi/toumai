@@ -43,7 +43,8 @@ export const createRfqSchema = z.object({
 
 export const listRfqsSchema = z.object({
   /** `mine` = mes appels d'offres ; `open` = ceux auxquels je peux répondre. */
-  scope: z.enum(['mine', 'open']).default('open'),
+  /** `mine` = mes appels d'offres ; `open` = ouverts ; `invited` = ceux où mes boutiques sont sollicitées. */
+  scope: z.enum(['mine', 'open', 'invited']).default('open'),
   country: z.string().trim().toUpperCase().length(2).optional(),
   status: z.enum(['OPEN', 'QUOTED', 'AWARDED', 'CLOSED', 'EXPIRED', 'CANCELLED']).optional(),
   q: z.string().trim().max(200).optional(),
@@ -79,3 +80,11 @@ export const negotiationSchema = z.object({
 export type CreateRfqInput = z.infer<typeof createRfqSchema>;
 export type CreateQuoteInput = z.infer<typeof createQuoteSchema>;
 export type ListRfqsQuery = z.infer<typeof listRfqsSchema>;
+
+/** Invitation de fournisseurs repérés par le sourcing à répondre à une demande. */
+export const inviteSuppliersSchema = z.object({
+  storeIds: z.array(z.string().cuid()).min(1, 'Choisissez au moins un fournisseur.').max(20),
+  message: z.string().trim().max(1000).default(''),
+});
+
+export type InviteSuppliersInput = z.infer<typeof inviteSuppliersSchema>;

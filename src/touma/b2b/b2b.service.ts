@@ -8,7 +8,7 @@ import { notify } from '../lib/notifications.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import { documentService } from '../documents/document.service.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
-import type { CreateQuoteInput, CreateRfqInput, ListRfqsQuery } from './b2b.schema.js';
+import type { CreateQuoteInput, CreateRfqInput, InviteSuppliersInput, ListRfqsQuery } from './b2b.schema.js';
 
 /**
  * TOUMA BUSINESS — appels d'offres (RFQ), devis fournisseurs et négociation.
@@ -35,6 +35,7 @@ const rfqInclude = {
   buyer: { select: { id: true, name: true, countryCode: true } },
   business: { select: { id: true, legalName: true, sector: true, countryCode: true, city: true } },
   _count: { select: { quotes: true } },
+  invitations: { include: { store: { select: { id: true, name: true, slug: true, countryCode: true } } } },
 };
 
 function serializeRfq(rfq: Prisma.ToumaRfqGetPayload<{ include: typeof rfqInclude }>) {
@@ -51,6 +52,8 @@ function serializeRfq(rfq: Prisma.ToumaRfqGetPayload<{ include: typeof rfqInclud
     deadline: rfq.deadline,
     createdAt: rfq.createdAt,
     quoteCount: rfq._count.quotes,
+    /** Fournisseurs explicitement sollicités par l'acheteur. */
+    invitedSuppliers: rfq.invitations.map((i) => ({ ...i.store, invitedAt: i.createdAt })),
     buyer: { name: rfq.buyer.name, countryCode: rfq.buyer.countryCode },
     business: rfq.business,
     items: rfq.items.map((i) => ({
@@ -177,6 +180,12 @@ export const b2bService = {
     const where: Prisma.ToumaRfqWhereInput =
       query.scope === 'mine'
         ? { buyerId: user?.id ?? '__anonyme__', ...(query.status ? { status: query.status } : {}) }
+        : query.scope === 'invited'
+        ? {
+            // Sollicitations reçues par les boutiques du vendeur connecté.
+            invitations: { some: { store: { ownerId: user?.id ?? '__anonyme__' } } },
+            ...(query.status ? { status: query.status } : {}),
+          }
         : {
             status: query.status ?? { in: ['OPEN', 'QUOTED'] },
             ...(query.country ? { countryCode: query.country } : {}),
@@ -519,6 +528,69 @@ export const b2bService = {
       orderNumber: created.order.orderNumber,
       total: created.group.total.toString(),
       currency: created.group.currency,
+    };
+  },
+
+  /**
+   * Sollicite des fournisseurs repérés par le sourcing. L'appel d'offres reste
+   * ouvert à tous : l'invitation ne crée aucun privilège, elle prévient un
+   * fournisseur qu'on l'attend. C'est ainsi qu'un acheteur en gros travaille —
+   * il démarche, il ne publie pas dans le vide.
+   */
+  async inviteSuppliers(user: ToumaRequestUser, rfqId: string, input: InviteSuppliersInput) {
+    const rfq = await prisma.toumaRfq.findFirst({ where: { OR: [{ id: rfqId }, { reference: rfqId }] } });
+    if (!rfq) throw notFound('Appel d’offres introuvable.');
+    if (rfq.buyerId !== user.id) throw notFound('Appel d’offres introuvable.');
+    if (!['OPEN', 'QUOTED'].includes(rfq.status)) throw conflict('Cet appel d’offres n’accepte plus d’offres.');
+
+    const stores = await prisma.toumaStore.findMany({
+      where: { id: { in: input.storeIds }, status: 'ACTIVE' },
+      select: { id: true, name: true, ownerId: true },
+    });
+    if (stores.length === 0) throw badRequest('Aucun fournisseur valide dans cette sélection.');
+
+    // Idempotent : réinviter un fournisseur déjà sollicité ne le prévient pas deux fois.
+    const existing = await prisma.toumaRfqInvitation.findMany({
+      where: { rfqId: rfq.id, storeId: { in: stores.map((s) => s.id) } },
+      select: { storeId: true },
+    });
+    const already = new Set(existing.map((e) => e.storeId));
+    const fresh = stores.filter((s) => !already.has(s.id));
+
+    if (fresh.length > 0) {
+      await prisma.toumaRfqInvitation.createMany({
+        data: fresh.map((s) => ({ rfqId: rfq.id, storeId: s.id, invitedById: user.id, message: input.message })),
+        skipDuplicates: true,
+      });
+      await Promise.all(
+        fresh.map((store) =>
+          notify({
+            userId: store.ownerId,
+            type: 'NEW_ORDER_FOR_SELLER',
+            title: 'Un acheteur vous sollicite',
+            body: `${rfq.title} — vous êtes invité à proposer une offre (${rfq.reference}).`,
+            data: { rfqId: rfq.id, reference: rfq.reference, storeId: store.id },
+          }),
+        ),
+      );
+      await audit({
+        actorId: user.id,
+        action: 'rfq.invite',
+        entity: 'ToumaRfq',
+        entityId: rfq.id,
+        metadata: { stores: fresh.map((s) => s.id) },
+      });
+    }
+
+    const invitations = await prisma.toumaRfqInvitation.findMany({
+      where: { rfqId: rfq.id },
+      include: { store: { select: { id: true, name: true, slug: true, countryCode: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    return {
+      invited: fresh.length,
+      alreadyInvited: stores.length - fresh.length,
+      items: invitations.map((i) => ({ ...i.store, invitedAt: i.createdAt })),
     };
   },
 

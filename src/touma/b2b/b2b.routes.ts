@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { asyncHandler, parseBody, parseQuery } from '../../middleware/validate.js';
 import { authenticate, currentUser, optionalAuth, requireRole } from '../middleware/toumaAuth.js';
 import { b2bService } from './b2b.service.js';
-import { businessProfileSchema, createQuoteSchema, createRfqSchema, listRfqsSchema, negotiationSchema } from './b2b.schema.js';
+import { businessProfileSchema, createQuoteSchema, createRfqSchema, inviteSuppliersSchema, listRfqsSchema, negotiationSchema } from './b2b.schema.js';
 
 /**
  * TOUMA Business : profil entreprise, appels d'offres, offres fournisseurs et
@@ -39,7 +39,9 @@ rfqRouter.get(
   optionalAuth,
   asyncHandler(async (req, res) => {
     const query = parseQuery(listRfqsSchema, req);
-    if (query.scope === 'mine' && !req.toumaUser) return res.status(401).json({ error: 'Authentification requise.' });
+    if (['mine', 'invited'].includes(query.scope) && !req.toumaUser) {
+      return res.status(401).json({ error: 'Authentification requise.' });
+    }
     res.json(await b2bService.listRfqs(req.toumaUser, query));
   }),
 );
@@ -66,6 +68,16 @@ rfqRouter.post(
   authenticate,
   asyncHandler(async (req, res) => {
     res.json(await b2bService.closeRfq(currentUser(req), req.params.id));
+  }),
+);
+
+/** L'acheteur sollicite des fournisseurs repérés dans le sourcing. */
+rfqRouter.post(
+  '/:id/invitations',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const input = parseBody(inviteSuppliersSchema, req);
+    res.status(201).json(await b2bService.inviteSuppliers(currentUser(req), req.params.id, input));
   }),
 );
 

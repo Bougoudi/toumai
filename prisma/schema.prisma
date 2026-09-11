@@ -233,6 +233,7 @@ model User {
   couponRedemptions ToumaCouponRedemption[]
   loyaltyAccount    ToumaLoyaltyAccount?
   documents         ToumaDocument[]
+  rfqInvitations    ToumaRfqInvitation[]    @relation("InvitationAuthor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -882,18 +883,19 @@ model ToumaStore {
   ratingAverage      Decimal            @default(0) @db.Decimal(3, 2)
   ratingCount        Int                @default(0)
 
-  products      ToumaProduct[]
-  orders        ToumaOrder[]
-  quotes        ToumaQuote[]
-  conversations ToumaConversation[]
-  verifications ToumaSellerVerification[]
-  payouts       ToumaSellerPayout[]
-  commissions   ToumaCommission[]
-  returns       ToumaReturnRequest[]
-  tickets       ToumaSupportTicket[]
-  coupons       ToumaCoupon[]
-  documents     ToumaDocument[]
-  reputation    ToumaStoreReputation?
+  products       ToumaProduct[]
+  orders         ToumaOrder[]
+  quotes         ToumaQuote[]
+  conversations  ToumaConversation[]
+  verifications  ToumaSellerVerification[]
+  payouts        ToumaSellerPayout[]
+  commissions    ToumaCommission[]
+  returns        ToumaReturnRequest[]
+  tickets        ToumaSupportTicket[]
+  coupons        ToumaCoupon[]
+  documents      ToumaDocument[]
+  reputation     ToumaStoreReputation?
+  rfqInvitations ToumaRfqInvitation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1828,8 +1830,9 @@ model ToumaRfq {
   /// Date limite de réception des offres.
   deadline      DateTime?
 
-  items  ToumaRfqItem[]
-  quotes ToumaQuote[]
+  items       ToumaRfqItem[]
+  quotes      ToumaQuote[]
+  invitations ToumaRfqInvitation[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2440,4 +2443,31 @@ model ToumaStoreReputation {
   updatedAt  DateTime @updatedAt
 
   @@map("touma_store_reputations")
+}
+
+// ── Sourcing ─────────────────────────────────────────────────────────────────
+
+/// Invitation d'un fournisseur à répondre à un appel d'offres.
+///
+/// Un appel d'offres ouvert reste visible de tous : l'invitation ne crée pas de
+/// privilège, elle **sollicite** explicitement un fournisseur repéré par
+/// l'acheteur — et le prévient. C'est la façon dont un acheteur en gros
+/// travaille réellement : il ne publie pas dans le vide, il démarche.
+model ToumaRfqInvitation {
+  id      String     @id @default(cuid())
+  rfqId   String
+  rfq     ToumaRfq   @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  storeId String
+  store   ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  invitedById String?
+  invitedBy   User?   @relation("InvitationAuthor", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  message String @default("")
+
+  createdAt DateTime @default(now())
+
+  @@unique([rfqId, storeId])
+  @@index([storeId])
+  @@map("touma_rfq_invitations")
 }

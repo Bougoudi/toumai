@@ -136,6 +136,15 @@ async function metaForPath(pathname: string, canonical: string): Promise<PageMet
     };
   }
 
+  if (segments[0] === 'sourcing') {
+    return {
+      title: `Trouver un fournisseur en Afrique centrale | ${SITE_NAME}`,
+      description:
+        'Recherchez des fournisseurs par produit, pays, volume et délai. Capacité, pays desservis et réputation calculés sur les transactions réelles des boutiques TOUMA.',
+      canonical,
+    };
+  }
+
   if (segments[0] === 'boutiques') {
     return {
       title: `Boutiques vérifiées | ${SITE_NAME}`,
@@ -244,6 +253,8 @@ export async function sitemapXml(_req: Request, res: Response) {
     url(`${base}/touma/`, undefined, '1.0', 'daily'),
     url(`${base}/touma/produits`, undefined, '0.9', 'daily'),
     url(`${base}/touma/boutiques`, undefined, '0.8', 'weekly'),
+    url(`${base}/touma/sourcing`, undefined, '0.8', 'weekly'),
+    ...stores.map((s) => url(`${base}/touma/sourcing/${s.slug}`, s.updatedAt, '0.6')),
     ...categories.map((c) => url(`${base}/touma/produits?category=${c.slug}`, c.updatedAt, '0.7')),
     ...stores.map((s) => url(`${base}/touma/boutiques/${s.slug}`, s.updatedAt, '0.7')),
     ...products.map((p) => url(`${base}/touma/produits/${p.slug}`, p.updatedAt, '0.8', 'daily')),

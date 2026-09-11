@@ -553,6 +553,48 @@ await step('vendeur : le détail de son score', async () => {
   await seller.screenshot({ path: `${OUT}/29-reputation-vendeur.png` });
 });
 
+await step('sourcing : trouver un fournisseur sans compte', async () => {
+  const visitor = watch(await browser.newPage({ viewport: { width: 1280, height: 900 } }), ' (sourcing)');
+  await visitor.goto(`${BASE}/sourcing`, { waitUntil: 'networkidle' });
+  await visitor.waitForSelector('#sourcing-filters', { timeout: 20000 });
+  await visitor.fill('#so-q', 'savon');
+  await visitor.fill('#so-quantity', '10');
+  await visitor.click('#sourcing-filters button[type="submit"]');
+  await visitor.waitForTimeout(2000);
+
+  const body = await visitor.textContent('#view');
+  if (!body.includes('Capacité en stock')) throw new Error('la capacité réelle n’est pas annoncée');
+  if (!body.includes('volume demandé')) throw new Error('la capacité à servir le volume n’est pas indiquée');
+  await visitor.screenshot({ path: `${OUT}/30-sourcing.png` });
+
+  // Fiche fournisseur : ce qu'il propose et ce qu'il a réellement fait.
+  await visitor.click('a[href^="/touma/sourcing/"]');
+  await visitor.waitForSelector('.spec-list', { timeout: 20000 });
+  const sheet = await visitor.textContent('#view');
+  if (!sheet.includes('Ce qu’il a réellement fait')) throw new Error('la fiche fournisseur n’expose pas les faits observés');
+  await visitor.screenshot({ path: `${OUT}/31-fournisseur.png` });
+  await visitor.close();
+});
+
+await step('sourcing : solliciter un fournisseur sur un appel d’offres', async () => {
+  const pro = await sessionFor('acheteur@touma.dev');
+  await pro.goto(`${BASE}/sourcing?q=savon`, { waitUntil: 'networkidle' });
+  await pro.waitForSelector('#sourcing-filters', { timeout: 20000 });
+  if (!(await pro.locator('#invite-form').count())) throw new Error('l’acheteur ne peut pas solliciter de fournisseur');
+
+  await pro.check('.supplier-pick');
+  await pro.click('#invite-form button[type="submit"]');
+  await pro.waitForTimeout(2200);
+  await pro.screenshot({ path: `${OUT}/32-sollicitation.png` });
+
+  // Le fournisseur retrouve la demande dans les sollicitations reçues.
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/business/appels-offres?scope=invited`, { waitUntil: 'networkidle' });
+  await seller.waitForTimeout(1500);
+  const received = await seller.textContent('#view');
+  if (received.includes('Aucune sollicitation')) throw new Error('le fournisseur ne voit pas la sollicitation reçue');
+});
+
 await step('après-vente : pages privées sur mobile', async () => {
   if (!returnId || !ticketUrl) throw new Error('le parcours après-vente n’a pas abouti : rien à vérifier');
   // Ces pages exigent une session : on redimensionne le contexte déjà connecté.
