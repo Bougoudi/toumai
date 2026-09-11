@@ -232,6 +232,7 @@ model User {
   coupons           ToumaCoupon[]           @relation("CouponAuthor")
   couponRedemptions ToumaCouponRedemption[]
   loyaltyAccount    ToumaLoyaltyAccount?
+  documents         ToumaDocument[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -775,6 +776,24 @@ enum LoyaltyEventType {
   ADJUSTED
 }
 
+// ── Documents commerciaux ────────────────────────────────────────────────────
+
+/// Nature du document. Chacun a un émetteur et un destinataire identifiés : une
+/// facture est émise par le **vendeur**, jamais par la place de marché.
+enum DocumentType {
+  INVOICE
+  CREDIT_NOTE
+  PAYMENT_RECEIPT
+  PURCHASE_ORDER
+  DELIVERY_NOTE
+}
+
+enum DocumentIssuer {
+  STORE
+  PLATFORM
+  BUYER
+}
+
 // ── Référentiels ─────────────────────────────────────────────────────────────
 
 /// Pays desservi par Touma. Le corridor pilote (TD, CM) est une simple donnée :
@@ -873,6 +892,7 @@ model ToumaStore {
   returns       ToumaReturnRequest[]
   tickets       ToumaSupportTicket[]
   coupons       ToumaCoupon[]
+  documents     ToumaDocument[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1155,6 +1175,7 @@ model ToumaOrder {
   refunds        ToumaRefund[]
   tickets        ToumaSupportTicket[]
   loyaltyEvents  ToumaLoyaltyEvent[]
+  documents      ToumaDocument[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1689,6 +1710,7 @@ model ToumaOrderGroup {
   quotes        ToumaQuote[]
   redemptions   ToumaCouponRedemption[]
   loyaltyEvents ToumaLoyaltyEvent[]
+  documents     ToumaDocument[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -2304,4 +2326,73 @@ model ToumaLoyaltyEvent {
   @@unique([orderId, type])
   @@index([accountId])
   @@map("touma_loyalty_events")
+}
+
+// ── Documents commerciaux ────────────────────────────────────────────────────
+
+/// Facture, avoir, reçu, bon de commande, bon de livraison.
+///
+/// Un document est **figé** : son contenu (parties, lignes, totaux) est copié
+/// dans `payload` à l'émission et n'est plus jamais modifié. Corriger une
+/// facture se fait par un avoir, jamais en réécrivant l'original — c'est la
+/// règle de base d'une comptabilité vérifiable.
+model ToumaDocument {
+  id     String       @id @default(cuid())
+  type   DocumentType
+  /// Numéro affiché, unique : « FAC-2026-A1B2-00001 ».
+  number String       @unique
+  /// Série de numérotation : un émetteur, un type, une année.
+  series String
+
+  issuerKind DocumentIssuer
+
+  /// Émetteur boutique, le cas échéant.
+  storeId String?
+  store   ToumaStore? @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  /// Destinataire (ou émetteur, pour un bon de commande).
+  buyerId String
+  buyer   User        @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+
+  orderId      String?
+  order        ToumaOrder?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  orderGroupId String?
+  orderGroup   ToumaOrderGroup? @relation(fields: [orderGroupId], references: [id], onDelete: SetNull)
+
+  currency    String
+  totalAmount Decimal @db.Decimal(18, 4)
+  /// Taxes effectivement facturées. Nul tant qu'aucun régime fiscal n'est
+  /// configuré pour l'émetteur : mieux vaut ne rien annoncer qu'annoncer faux.
+  taxAmount   Decimal @default(0) @db.Decimal(18, 4)
+
+  /// Contenu figé du document (parties, lignes, totaux, mentions).
+  payload Json
+
+  /// Clé d'origine (« INVOICE:<orderId> ») : un même événement n'émet qu'un
+  /// seul document, même rejoué.
+  sourceKey String? @unique
+
+  /// Document corrigé par celui-ci (un avoir référence sa facture).
+  relatedDocumentId String?
+
+  issuedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([buyerId])
+  @@index([storeId])
+  @@index([orderId])
+  @@index([type])
+  @@map("touma_documents")
+}
+
+/// Compteur d'une série de numérotation. Incrémenté de façon atomique : deux
+/// factures ne peuvent pas porter le même numéro.
+model ToumaDocumentSequence {
+  id      String @id @default(cuid())
+  /// « INVOICE:2026:<storeId> » ou « PAYMENT_RECEIPT:2026:platform ».
+  key     String @unique
+  counter Int    @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@map("touma_document_sequences")
 }

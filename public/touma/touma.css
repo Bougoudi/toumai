@@ -595,3 +595,29 @@ tbody tr:hover { background: var(--surface-sunken); }
 .footer a:hover { color: #fff; }
 .footer p { font-size: var(--text-sm); opacity: .85; }
 .footer-bottom { margin-top: var(--space-8); padding-top: var(--space-5); border-top: 1px solid rgba(255,255,255,.12); font-size: var(--text-xs); opacity: .75; }
+
+/* ── Documents commerciaux ─────────────────────────────────────────────────
+   Un document doit rester lisible une fois imprimé : c'est ainsi qu'on en
+   produit un PDF ici, sans embarquer de bibliothèque de génération. */
+.document { max-width: 840px; margin: 0 auto; }
+.document .brand-mark { width: 38px; height: 38px; font-size: var(--text-md); }
+.document table { font-size: var(--text-sm); }
+
+@page { margin: 14mm; }
+
+@media print {
+  /* Ne survit à l'impression que le document lui-même. */
+  .header, .footer, .bottom-nav, .drawer, .drawer-backdrop,
+  .toast-stack, .no-print, #modal-root, .breadcrumb { display: none !important; }
+  body { background: #fff; }
+  main, #view, .container { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+  .document {
+    max-width: none; border: 0; box-shadow: none; padding: 0;
+    /* Éviter qu'une ligne de tableau soit coupée entre deux pages. */
+    break-inside: auto;
+  }
+  .document tr, .document .summary { break-inside: avoid; }
+  a[data-link] { text-decoration: none; color: inherit; }
+  /* Aucune bordure ni ombre de l'interface ne doit se retrouver sur le papier. */
+  main, #view, .container, .card { border: 0 !important; box-shadow: none !important; }
+}

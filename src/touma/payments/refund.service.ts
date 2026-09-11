@@ -6,6 +6,7 @@ import { audit } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { money, roundTo } from '../lib/money.js';
 import { notify } from '../lib/notifications.js';
+import { documentService } from '../documents/document.service.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { getPaymentProvider } from './payment.service.js';
 
@@ -207,6 +208,9 @@ export const refundService = {
       }
       return done;
     });
+
+    // Avoir : un remboursement corrige une facture, il ne la réécrit pas.
+    await documentService.issueCreditNoteForRefund(refund.id);
 
     // Rembourser une commande reprend les points qu'elle avait rapportés, au
     // prorata : sans cela, un remboursement reviendrait à offrir ses points.

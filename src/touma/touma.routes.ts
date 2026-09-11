@@ -25,6 +25,7 @@ import { returnRouter } from './returns/return.routes.js';
 import { supportRouter } from './support/support.routes.js';
 import { couponRouter } from './promotions/coupon.routes.js';
 import { loyaltyRouter } from './loyalty/loyalty.routes.js';
+import { documentRouter } from './documents/document.routes.js';
 
 /**
  * API TOUMA v1 — place de marché.
@@ -75,6 +76,7 @@ toumaV1Router.get('/', (_req, res) =>
       support: '/api/v1/support',
       coupons: '/api/v1/coupons',
       loyalty: '/api/v1/loyalty',
+      documents: '/api/v1/documents',
       admin: '/api/v1/admin',
       openapi: '/api/v1/openapi.json',
     },
@@ -107,6 +109,7 @@ toumaV1Router.use('/returns', returnRouter);
 toumaV1Router.use('/support', supportRouter);
 toumaV1Router.use('/coupons', couponRouter);
 toumaV1Router.use('/loyalty', loyaltyRouter);
+toumaV1Router.use('/documents', documentRouter);
 toumaV1Router.use('/admin', adminRouter);
 
 /** Recherche transverse (produits + boutiques) pour la barre de recherche. */

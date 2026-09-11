@@ -56,7 +56,7 @@ async function metaForPath(pathname: string, canonical: string): Promise<PageMet
 
   // Les espaces privés ne doivent jamais être indexés.
   if (
-    ['panier', 'checkout', 'commandes', 'compte', 'vendeur', 'admin', 'connexion', 'inscription', 'messages', 'retours', 'aide', 'promotions'].includes(
+    ['panier', 'checkout', 'commandes', 'compte', 'vendeur', 'admin', 'connexion', 'inscription', 'messages', 'retours', 'aide', 'promotions', 'documents'].includes(
       segments[0] ?? '',
     )
   ) {

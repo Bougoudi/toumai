@@ -947,7 +947,11 @@ export async function orders(_params, query) {
 }
 
 export async function order(params) {
-  const o = await api(`/orders/${params.id}`);
+  const [o, documents] = await Promise.all([
+    api(`/orders/${params.id}`),
+    // Les documents sont émis automatiquement : leur absence n'est pas une erreur.
+    api(`/documents/order/${params.id}`).catch(() => ({ items: [] })),
+  ]);
   const shipment = o.shipments?.[0];
   const payment = o.payments?.[0];
 
@@ -1044,6 +1048,22 @@ export async function order(params) {
                ${o.status === 'DELIVERED' ? `<button class="btn btn-block" data-complete-order="${esc(o.id)}">Confirmer la réception</button>` : ''}`
             : '<p class="muted small">Le vendeur n’a pas encore créé l’expédition.</p>'}
         </section>
+
+        ${documents.items.length
+          ? `<section class="card">
+              <h2 style="font-size:var(--text-md)">Documents</h2>
+              <div class="stack" style="gap:var(--space-2)">
+                ${documents.items
+                  .map(
+                    (doc) => `<a class="row-between" href="/touma/documents/${esc(doc.id)}" data-link style="color:inherit;text-decoration:none">
+                      <span class="small"><strong>${esc(doc.title)}</strong><br /><span class="xs muted" style="font-family:var(--font-mono)">${esc(doc.number)}</span></span>
+                      <span class="small">${doc.type === 'DELIVERY_NOTE' ? '' : money(doc.totalAmount, doc.currency)} →</span>
+                    </a>`,
+                  )
+                  .join('')}
+              </div>
+            </section>`
+          : ''}
 
         ${o.refunds?.length
           ? `<section class="card">

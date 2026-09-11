@@ -62,6 +62,11 @@ const ROUTES = [
   { path: '/touma/vendeur/retours', module: 'support', name: 'sellerReturns', auth: true, role: 'SELLER' },
   { path: '/touma/admin/assistance', module: 'support', name: 'adminTickets', auth: true, role: 'ADMIN' },
 
+  // Documents commerciaux.
+  { path: '/touma/documents', module: 'documents', name: 'documents', auth: true },
+  { path: '/touma/documents/:id', module: 'documents', name: 'documentView', auth: true },
+  { path: '/touma/vendeur/documents', module: 'documents', name: 'sellerDocuments', auth: true, role: 'SELLER' },
+
   // Promotions (codes de réduction).
   { path: '/touma/vendeur/promotions', module: 'promotions', name: 'sellerCoupons', auth: true, role: 'SELLER' },
   { path: '/touma/admin/promotions', module: 'promotions', name: 'adminCoupons', auth: true, role: 'ADMIN' },
@@ -93,6 +98,7 @@ const LOADERS = {
   messages: () => import('./views-messages.js'),
   support: () => import('./views-support.js'),
   promotions: () => import('./views-promotions.js'),
+  documents: () => import('./views-documents.js'),
 };
 
 async function loadModule(name) {
@@ -154,6 +160,7 @@ function renderChrome() {
     drawerLinks.splice(2, 0, ['/touma/panier', 'Panier']);
     drawerLinks.push(['/touma/messages', 'Messages']);
     drawerLinks.push(['/touma/retours', 'Mes retours']);
+    drawerLinks.push(['/touma/documents', 'Mes documents']);
     drawerLinks.push(['/touma/aide', 'Assistance']);
     drawerLinks.push(['/touma/compte', 'Mon compte']);
   }
@@ -200,6 +207,7 @@ function drawerIcon(href) {
   if (href.includes('messages')) return svg('inbox');
   if (href.includes('retours')) return svg('truck');
   if (href.includes('aide')) return svg('alert');
+  if (href.includes('documents')) return svg('inbox');
   if (href.includes('vendeur')) return svg('chart');
   if (href.includes('admin')) return svg('shield');
   return svg('user');
@@ -565,6 +573,13 @@ document.addEventListener('click', (event) => {
       },
       { button: el },
     );
+  }
+
+  if (d.print !== undefined) {
+    // L'export PDF passe par l'impression du navigateur : aucune bibliothèque
+    // embarquée, et un rendu fidèle à ce que l'utilisateur voit.
+    window.print();
+    return;
   }
 
   if (d.pauseCoupon || d.resumeCoupon) {

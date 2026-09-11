@@ -89,6 +89,7 @@ let orderId = '';
 let returnId = '';
 let ticketUrl = '';
 let couponCode = '';
+let documentUrl = '';
 const PASSWORD = 'motdepasse-nav-123';
 
 await step('accueil', async () => {
@@ -479,6 +480,52 @@ await step('acheteur : mes points de fidélité', async () => {
   const body = await page.textContent('#view');
   if (!body.includes('Fidélité TOUMA')) throw new Error('le panneau de fidélité est absent');
   await page.screenshot({ path: `${OUT}/24-fidelite.png` });
+});
+
+await step('acheteur : facture et reçu de la commande', async () => {
+  await page.goto(`${BASE}/commandes`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('a[href^="/touma/commandes/"]');
+  await page.click('a[href^="/touma/commandes/"]');
+  await page.waitForSelector('a[href^="/touma/documents/"]', { timeout: 20000 });
+  const body = await page.textContent('#view');
+  if (!body.includes('Facture')) throw new Error('la facture n’est pas rattachée à la commande');
+  if (!body.includes('Reçu de paiement')) throw new Error('le reçu de paiement est absent');
+
+  await page.click('a[href^="/touma/documents/"]');
+  await page.waitForSelector('.document', { timeout: 20000 });
+  const doc = await page.textContent('.document');
+  // Le document porte ses deux parties et sa mention fiscale.
+  if (!doc.includes('Émetteur') || !doc.includes('Destinataire')) throw new Error('les parties ne figurent pas sur le document');
+  if (!doc.includes('TVA')) throw new Error('la mention fiscale est absente');
+  documentUrl = page.url();
+  await page.screenshot({ path: `${OUT}/25-facture.png` });
+});
+
+await step('document : rendu à l’impression', async () => {
+  if (!documentUrl) throw new Error('aucun document à imprimer');
+  // Le document est privé : on reste dans la session déjà connectée.
+  await page.goto(documentUrl, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.document');
+  // En impression, l'ossature du site disparaît : il ne reste que le document.
+  await page.emulateMedia({ media: 'print' });
+  await page.waitForTimeout(400);
+  if (await page.locator('.header').isVisible()) throw new Error('l’en-tête du site survit à l’impression');
+  if (!(await page.locator('.document').isVisible())) throw new Error('le document disparaît à l’impression');
+  await page.screenshot({ path: `${OUT}/26-facture-impression.png` });
+  await page.emulateMedia({ media: 'screen' });
+});
+
+await step('vendeur : ses documents émis', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur/documents`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('.tabs', { timeout: 15000 });
+  await seller.waitForSelector('tbody tr', { timeout: 15000 });
+  // Le reçu est émis par TOUMA : il n'a rien à faire dans les documents du
+  // vendeur. On regarde les lignes du tableau, pas les filtres de la page.
+  const rows = await seller.locator('tbody tr').allTextContents();
+  if (rows.some((r) => r.includes('Reçu de paiement'))) throw new Error('le vendeur voit un document qu’il n’émet pas');
+  if (!rows.some((r) => r.includes('Facture'))) throw new Error('aucune facture émise par le vendeur');
+  await seller.screenshot({ path: `${OUT}/27-documents-vendeur.png` });
 });
 
 await step('après-vente : pages privées sur mobile', async () => {

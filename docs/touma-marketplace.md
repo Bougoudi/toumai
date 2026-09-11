@@ -33,6 +33,7 @@ Produits prévus, tous représentés dans l'architecture :
 | Assistance (tickets) | Fonctionnel | `src/touma/support` |
 | Promotions (codes de réduction) | Fonctionnel | `src/touma/promotions` |
 | Fidélité | Fonctionnel | `src/touma/loyalty` |
+| Documents commerciaux | Fonctionnel | `src/touma/documents` |
 | Touma Intelligence | Amorcé (analytique) | `src/touma/admin/analytics.service.ts` |
 
 ---
@@ -88,7 +89,7 @@ uniquement**) : `admin@touma.dev`, `vendeur.td@touma.dev`,
 
 ## 4. Modèle de données
 
-Cinquante-trois modèles préfixés `Touma` (tables `touma_*`), plus la table `Country` et
+Cinquante-cinq modèles préfixés `Touma` (tables `touma_*`), plus la table `Country` et
 l'extension du modèle `User` existant (rôle place de marché, pays, statut).
 
 Domaines : pays et adresses · boutiques et vérification · catégories, produits,
@@ -99,7 +100,8 @@ suivi · avis · litiges, messages, preuves · score de risque et signaux de fra
 recommandations d'IA · journal d'audit · groupes de commande, profils
 entreprise, appels d'offres et négociation · conversations et messages ·
 demandes de retour, lignes retournées et remboursements · tickets d'assistance ·
-codes de réduction et leurs utilisations · comptes et mouvements de fidélité.
+codes de réduction et leurs utilisations · comptes et mouvements de fidélité ·
+documents commerciaux et leurs séries de numérotation.
 
 **Règle absolue : tout montant est un `Decimal(18,4)`.** Aucun `Float` financier.
 L'utilitaire `src/touma/lib/money.ts` centralise additions, multiplications,
@@ -110,7 +112,7 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 
 ## 5. Ce qui est garanti par les tests
 
-174 tests automatisés s'exécutent contre une vraie base PostgreSQL
+184 tests automatisés s'exécutent contre une vraie base PostgreSQL
 (`npm test` — Node ≥ 22, dont le lanceur de tests accepte les motifs glob),
 dont le parcours complet de bout en bout :
 
@@ -170,7 +172,15 @@ Règles vérifiées, entre autres :
   code sur la boutique d'autrui ;
 - la remise annoncée avant de commander est exactement celle appliquée ;
 - les points de fidélité se gagnent à la livraison (jamais au paiement), une
-  seule fois par commande, et sont repris au prorata en cas de remboursement.
+  seule fois par commande, et sont repris au prorata en cas de remboursement ;
+- la facture émane de la **boutique**, le reçu de paiement de **TOUMA** : le
+  vendeur ne voit jamais dans ses documents un reçu qu'il n'a pas émis ;
+- rejouer un paiement n'émet pas une seconde facture, et deux documents ne
+  portent jamais le même numéro ;
+- un document est figé : changer le prix d'un produit après coup ne modifie ni
+  ses lignes ni ses totaux, et un remboursement produit un **avoir** qui
+  référence la facture au lieu de la réécrire ;
+- une raison sociale n'apparaît sur un document que si elle a été vérifiée.
 
 Un test navigateur optionnel (`npm run test:browser`, nécessite Playwright)
 rejoue **tout le parcours dans Chromium** — accueil, catalogue et filtres,
@@ -179,7 +189,8 @@ de commande en quatre étapes, paiement, suivi, espace vendeur (dont le
 graphique des ventes), administration, appels d'offres B2B, messagerie,
 expédition puis livraison, demande de retour, acceptation et remboursement,
 ouverture d'un ticket d'assistance et réponse de l'équipe, création d'un code de
-réduction et son application au paiement — puis vérifie, à
+réduction et son application au paiement, consultation de la facture et du reçu,
+rendu du document à l'impression — puis vérifie, à
 **360, 390, 430, 768, 1024, 1280 et 1440 px** : aucune erreur console, aucun
 débordement horizontal, navigation basse et menu latéral fonctionnels.
 
@@ -299,6 +310,36 @@ dépensés que sur les commandes libellées dans `TOUMA_LOYALTY_CURRENCY`. Taux
 d'acquisition, valeur du point, part maximale du panier réglable en points et
 paliers sont tous des **réglages**, pas des constantes de code.
 
+## 4 septies. Documents commerciaux
+
+Facture, avoir, reçu de paiement, bon de commande, bon de livraison. Trois
+principes les gouvernent.
+
+1. **L'émetteur est celui qui vend.** La facture est émise par la **boutique**
+   au nom de l'acheteur ; TOUMA n'émet que le reçu du paiement qu'elle a
+   effectivement encaissé, et le bon de commande émane de l'acheteur. Confondre
+   ces rôles ferait de la place de marché le vendeur, ce qu'elle n'est pas.
+2. **Un document est figé.** Son contenu — parties, lignes, totaux, mentions —
+   est copié à l'émission et n'est plus jamais modifié. Une correction passe par
+   un avoir qui référence la facture d'origine : on corrige, on ne réécrit pas.
+3. **Rien n'est inventé.** Aucune TVA n'est calculée tant qu'aucun régime fiscal
+   n'est configuré, et le document le **dit** au lieu d'afficher un montant de
+   taxe faux. Même chose pour l'identité légale : la raison sociale d'un vendeur
+   n'apparaît que si elle a été vérifiée par TOUMA, et celle de l'exploitant
+   seulement si elle est renseignée (`TOUMA_COMPANY_*`).
+
+La numérotation suit une série par émetteur, type et année
+(`FAC-2026-A1B2-00001`), avec un compteur incrémenté de façon atomique : deux
+factures ne peuvent pas porter le même numéro. L'émission est **idempotente**
+par événement source, donc rejouer un webhook de paiement ne produit pas de
+doublon.
+
+**Format.** Le document est une page HTML pensée pour l'impression, avec une
+feuille de style dédiée : c'est le navigateur qui produit le PDF. Embarquer un
+générateur de PDF aurait signifié soit une dépendance lourde, soit un fichier
+écrit à la main incapable de rendre correctement les accents français — un
+demi-résultat qui aurait mal vieilli.
+
 ---
 
 ## 5 bis. Interface
@@ -409,10 +450,14 @@ humain valide.
 1. **Recherche** : la recherche s'appuie sur PostgreSQL (`ILIKE` multi-champs +
    pagination serveur). OpenSearch est provisionné en profil Docker optionnel ;
    l'adaptateur reste à écrire quand le volume du catalogue le justifiera.
-0. **Documents commerciaux (facture, bon de commande, preuve de paiement),
-   sourcing avancé et réputation calculée sur les délais réels** : non réalisés.
-   Les retours, remboursements, tickets d'assistance (§ 4 quinquies), codes de
-   réduction et fidélité (§ 4 sexies) sont en revanche livrés.
+0. **Sourcing fournisseurs avancé et réputation calculée sur les délais réels** :
+   non réalisés. Les retours, remboursements et tickets d'assistance
+   (§ 4 quinquies), les codes de réduction et la fidélité (§ 4 sexies) et les
+   documents commerciaux (§ 4 septies) sont en revanche livrés.
+0. **Fiscalité** : aucun régime de TVA n'est configuré ; les documents l'annoncent
+   explicitement plutôt que d'afficher une taxe inventée. Brancher un régime réel
+   (taux par pays, exonérations, seuils) est un chantier à part, à mener avec un
+   conseil fiscal local.
 0. **Monorepo `apps/` + `packages/` (Next.js / NestJS)** : non réalisé. Le
    domaine est déjà découpé en modules autonomes (`src/touma/<module>` avec son
    routeur, son service et ses adaptateurs), ce qui rend l'extraction mécanique ;

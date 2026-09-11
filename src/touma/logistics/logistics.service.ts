@@ -4,6 +4,7 @@ import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { notify } from '../lib/notifications.js';
+import { documentService } from '../documents/document.service.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { MockLogisticsProvider } from './providers/mock.provider.js';
 import type { LogisticsProvider, QuoteRequest, ShippingQuoteResult } from './logistics.types.js';
@@ -163,6 +164,9 @@ export const logisticsService = {
       await tx.toumaOrder.update({ where: { id: order.id }, data: { status: 'PROCESSING' } });
       return created$;
     });
+
+    // Bon de livraison : quantités expédiées, sans montant à payer.
+    await documentService.issueDeliveryNote(shipment.id);
 
     await notify({
       userId: order.buyerId,

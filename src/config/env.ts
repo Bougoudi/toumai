@@ -127,6 +127,18 @@ export const env = {
     loyaltyMaxShare: Number(process.env.TOUMA_LOYALTY_MAX_SHARE ?? 0.5),
     /** Paliers, du plus bas au plus haut : « NOM:pointsCumulés » séparés par des virgules. */
     loyaltyTiers: process.env.TOUMA_LOYALTY_TIERS ?? 'BRONZE:0,ARGENT:500,OR:2000,PLATINE:10000',
+    /**
+     * Identité légale de TOUMA, portée sur les reçus de paiement. Tant qu'elle
+     * n'est pas renseignée, le document le dit plutôt que d'inventer une
+     * raison sociale ou un numéro d'immatriculation.
+     */
+    companyName: process.env.TOUMA_COMPANY_NAME ?? '',
+    companyLegalName: process.env.TOUMA_COMPANY_LEGAL_NAME ?? '',
+    companyRegistrationNo: process.env.TOUMA_COMPANY_REGISTRATION_NO ?? '',
+    companyTaxId: process.env.TOUMA_COMPANY_TAX_ID ?? '',
+    companyAddress: process.env.TOUMA_COMPANY_ADDRESS ?? '',
+    companyCountry: process.env.TOUMA_COMPANY_COUNTRY ?? '',
+    companyEmail: process.env.TOUMA_COMPANY_EMAIL ?? '',
     /** Adaptateurs actifs (mock tant qu'aucun prestataire réel n'est raccordé). */
     paymentProvider: process.env.TOUMA_PAYMENT_PROVIDER ?? 'mock',
     logisticsProvider: process.env.TOUMA_LOGISTICS_PROVIDER ?? 'mock',

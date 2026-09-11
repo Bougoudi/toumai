@@ -5,6 +5,7 @@ import { logger } from '../../utils/logger.js';
 import { audit } from '../lib/audit.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { notify } from '../lib/notifications.js';
+import { documentService } from '../documents/document.service.js';
 import { MockPaymentProvider } from './providers/mock.provider.js';
 import type { PaymentMethod, PaymentProvider, ProviderPaymentStatus } from './payment.types.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
@@ -118,6 +119,13 @@ async function applySuccess(paymentId: string, providerRef: string | null, metad
         data: { orderId: order.id },
       }),
     ]);
+    // Documents commerciaux : une facture par boutique (c'est elle qui vend) et
+    // un reçu du paiement encaissé par TOUMA. Émission idempotente.
+    await Promise.all([
+      ...result.orders.map((order) => documentService.issueInvoiceForOrder(order.id)),
+      documentService.issueReceiptForPayment(result.payment.id),
+    ]);
+
     await Promise.all([
       ...notifications,
       audit({

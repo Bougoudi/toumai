@@ -133,6 +133,7 @@ export async function account() {
           <div class="stack" style="gap:var(--space-2)">
             <a class="btn btn-secondary btn-block btn-sm" href="/touma/commandes" data-link>Mes commandes</a>
             <a class="btn btn-secondary btn-block btn-sm" href="/touma/retours" data-link>Mes retours et remboursements</a>
+            <a class="btn btn-secondary btn-block btn-sm" href="/touma/documents" data-link>Mes factures et reçus</a>
             <a class="btn btn-secondary btn-block btn-sm" href="/touma/messages" data-link>Mes messages</a>
             <a class="btn btn-secondary btn-block btn-sm" href="/touma/aide" data-link>Assistance TOUMA</a>
           </div>

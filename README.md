@@ -7,7 +7,7 @@ Ce dépôt héberge **deux produits** qui partagent un même socle technique
 
 | Produit | Ce que c'est | Interface | API |
 | --- | --- | --- | --- |
-| **Touma — place de marché** | Commerce B2B/B2C entre pays africains : catalogue, panier multi-vendeurs, paiements, logistique, points relais, confiance, litiges, messagerie, appels d'offres B2B, retours et remboursements, assistance, promotions, fidélité et IA. Corridor pilote **Tchad ↔ Cameroun**. | `/touma/` | `/api/v1` |
+| **Touma — place de marché** | Commerce B2B/B2C entre pays africains : catalogue, panier multi-vendeurs, paiements, logistique, points relais, confiance, litiges, messagerie, appels d'offres B2B, retours et remboursements, assistance, promotions, fidélité, documents commerciaux et IA. Corridor pilote **Tchad ↔ Cameroun**. | `/touma/` | `/api/v1` |
 | **Toumai — automatisation e-commerce** | Le logiciel d'automatisation dropshipping historique (analyse marché, génération de produits, sourcing, canaux de vente). | `/` | `/api` |
 
 Les deux cohabitent sans interférence : la place de marché vit dans
@@ -34,7 +34,7 @@ uniquement) : `admin@touma.dev`, `vendeur.td@touma.dev`, `vendeur.cm@touma.dev`,
 `acheteur@touma.dev`.
 
 ```bash
-npm test              # 174 tests : unitaires, intégration et parcours complet (Node ≥ 22)
+npm test              # 184 tests : unitaires, intégration et parcours complet (Node ≥ 22)
 npm run typecheck     # TypeScript strict
 ```
 

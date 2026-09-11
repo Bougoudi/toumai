@@ -6,6 +6,7 @@ import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { assertSameCurrency, sum } from '../lib/money.js';
 import { notify } from '../lib/notifications.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
+import { documentService } from '../documents/document.service.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import type { CreateQuoteInput, CreateRfqInput, ListRfqsQuery } from './b2b.schema.js';
 
@@ -490,6 +491,9 @@ export const b2bService = {
 
       return { group, order };
     });
+
+    // Bon de commande : il émane de l'acheteur, qui est celui qui commande.
+    await documentService.issuePurchaseOrderForQuote(quote.id);
 
     await Promise.all([
       notify({
