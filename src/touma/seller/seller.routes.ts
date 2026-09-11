@@ -4,6 +4,7 @@ import { asyncHandler } from '../../middleware/validate.js';
 import { forbidden, notFound } from '../lib/errors.js';
 import { authenticate, currentUser, requireRole } from '../middleware/toumaAuth.js';
 import { analyticsService } from '../admin/analytics.service.js';
+import { importService } from '../catalog/import.service.js';
 
 /** Espace vendeur (Seller Center) : agrégats prêts à afficher. */
 export const sellerRouter = Router();
@@ -84,5 +85,43 @@ sellerRouter.get(
       take: 100,
     });
     res.json({ items });
+  }),
+);
+
+// ── Import et export de catalogue ────────────────────────────────────────────
+
+/**
+ * Simulation puis application d'un import. Le corps est le **texte CSV brut** :
+ * le vendeur colle le contenu de son tableur ou envoie son fichier, sans avoir
+ * à le convertir en JSON.
+ */
+sellerRouter.post(
+  '/stores/:storeId/catalogue/import',
+  // Le CSV arrive en texte : la taille est bornée par le middleware global.
+  asyncHandler(async (req, res) => {
+    const csv = typeof req.body === 'string' ? req.body : String((req.body as { csv?: unknown })?.csv ?? '');
+    const dryRun = String(req.query.dryRun ?? 'true') !== 'false';
+    res.json(await importService.importCatalogue(currentUser(req), req.params.storeId, csv, { dryRun }));
+  }),
+);
+
+/** Export au même format que l'import : exporter, corriger, réimporter. */
+sellerRouter.get(
+  '/stores/:storeId/catalogue/export',
+  asyncHandler(async (req, res) => {
+    const csv = await importService.exportCatalogue(currentUser(req), req.params.storeId);
+    res.setHeader('content-type', 'text/csv; charset=utf-8');
+    res.setHeader('content-disposition', `attachment; filename="catalogue-touma.csv"`);
+    res.send(csv);
+  }),
+);
+
+/** Modèle vierge, pour partir du bon format plutôt que de le deviner. */
+sellerRouter.get(
+  '/catalogue/modele',
+  asyncHandler(async (_req, res) => {
+    res.setHeader('content-type', 'text/csv; charset=utf-8');
+    res.setHeader('content-disposition', 'attachment; filename="modele-catalogue-touma.csv"');
+    res.send(importService.templateCsv());
   }),
 );

@@ -70,6 +70,10 @@ export function createApp() {
     asyncHandler(paymentController.iyzicoCallback),
   );
 
+  // Import de catalogue : le corps est du CSV brut, pas du JSON. Monté avant
+  // express.json() qui le rejetterait comme malformé.
+  app.use(express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }));
+
   // Corps JSON limité (anti-abus).
   app.use(express.json({ limit: '1mb' }));
 

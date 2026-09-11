@@ -8,6 +8,7 @@ import { breadcrumb, barChart, statCard, trackingTimeline } from './components.j
 const TABS = [
   ['/touma/vendeur', 'Tableau de bord'],
   ['/touma/vendeur/produits', 'Produits'],
+  ['/touma/vendeur/import', 'Import catalogue'],
   ['/touma/vendeur/commandes', 'Commandes'],
   ['/touma/vendeur/retours', 'Retours'],
   ['/touma/vendeur/promotions', 'Promotions'],
@@ -554,4 +555,126 @@ export async function verification() {
           <button class="btn btn-accent" type="submit">Envoyer le dossier</button>
         </form>`
       : noStore()}`;
+}
+
+
+// ── Import de catalogue ────────────────────────────────────────────────────
+/**
+ * Import en masse. Un grossiste qui a deux cents références ne les saisira pas
+ * une par une : sans cette page, son catalogue ne monte jamais en ligne.
+ *
+ * Le déroulé est volontairement en deux temps — analyser, puis appliquer :
+ * un fichier à moitié importé coûte plus cher à réparer qu'à ressaisir.
+ */
+export async function catalogueImport() {
+  const stores = await api('/stores/mine');
+  if (!stores.items.length) return `<h1 style="font-size:var(--text-xl)">Import catalogue</h1>${tabs('/touma/vendeur/import')}${noStore()}`;
+
+  return `
+    <h1 style="font-size:var(--text-xl)">Import de catalogue</h1>
+    ${tabs('/touma/vendeur/import')}
+
+    <div class="grid grid-2" style="align-items:start">
+      <section class="card">
+        <h2 style="font-size:var(--text-md)">Votre fichier</h2>
+        <p class="small muted">
+          Un tableur exporté en CSV suffit. Les colonnes sont reconnues en français comme en anglais,
+          avec ou sans accents, séparées par des virgules ou des points-virgules.
+        </p>
+
+        <form id="import-form">
+          <div class="field">
+            <label for="im-store">Boutique</label>
+            <select id="im-store">${stores.items.map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select>
+          </div>
+
+          <div class="field">
+            <label for="im-file">Choisir un fichier CSV</label>
+            <input id="im-file" type="file" accept=".csv,text/csv,text/plain" />
+          </div>
+
+          <div class="field">
+            <label for="im-csv">…ou collez le contenu</label>
+            <textarea id="im-csv" rows="8" spellcheck="false"
+              style="font-family:var(--font-mono);font-size:var(--text-xs)"
+              placeholder="sku;titre;prix;stock;statut&#10;CACAO-50;Cacao en fèves;145000;40;ACTIVE"></textarea>
+          </div>
+
+          <button class="btn btn-block" type="submit">Analyser le fichier</button>
+          <p class="xs muted" style="margin:var(--space-2) 0 0">
+            Rien n’est enregistré à cette étape : vous verrez d’abord le résultat ligne par ligne.
+          </p>
+        </form>
+      </section>
+
+      <aside class="stack">
+        <section class="card">
+          <h2 style="font-size:var(--text-md)">Colonnes attendues</h2>
+          <dl class="spec-list">
+            <div><dt>sku</dt><dd>votre référence — sert à mettre à jour</dd></div>
+            <div><dt>titre</dt><dd>obligatoire</dd></div>
+            <div><dt>prix</dt><dd>obligatoire, dans la devise de la boutique</dd></div>
+            <div><dt>stock</dt><dd>quantité disponible</dd></div>
+            <div><dt>quantite_minimale</dt><dd>commande minimale (gros)</dd></div>
+            <div><dt>poids_grammes</dt><dd>sert au calcul du transport</dd></div>
+            <div><dt>categorie</dt><dd>identifiant ou nom de catégorie</dd></div>
+            <div><dt>statut</dt><dd>ACTIVE ou DRAFT</dd></div>
+            <div><dt>image_url</dt><dd>lien vers une photo</dd></div>
+          </dl>
+          <div class="stack" style="gap:var(--space-2);margin-top:var(--space-4)">
+            <a class="btn btn-secondary btn-sm" href="/api/v1/seller/catalogue/modele" data-authed-download>Télécharger un modèle vierge</a>
+            <a class="btn btn-secondary btn-sm" href="#" data-export-catalogue>Exporter mon catalogue actuel</a>
+          </div>
+          <p class="xs muted" style="margin:var(--space-3) 0 0">
+            L’export a exactement le même format : exportez, corrigez dans votre tableur, réimportez.
+          </p>
+        </section>
+      </aside>
+    </div>
+
+    <div id="import-report"></div>`;
+}
+
+/** Rapport d'analyse : ce qui sera créé, mis à jour, et ce qui bloque. */
+export function importReport(result, storeId) {
+  const errors = result.results.filter((r) => r.action === 'error');
+  const applied = !result.dryRun;
+
+  return `<section class="card mt-8">
+    <div class="card-head">
+      <h2 style="font-size:var(--text-md)">${applied ? 'Import terminé' : 'Résultat de l’analyse'}</h2>
+      <span class="small muted">${result.summary.rows} ligne(s) lue(s)</span>
+    </div>
+
+    <div class="grid grid-stats">
+      ${statCard(applied ? 'Produits créés' : 'À créer', applied ? result.summary.created : result.summary.toCreate)}
+      ${statCard(applied ? 'Produits mis à jour' : 'À mettre à jour', applied ? result.summary.updated : result.summary.toUpdate)}
+      ${statCard('Lignes en erreur', result.summary.errors, result.summary.errors ? 'à corriger dans votre fichier' : 'aucune')}
+    </div>
+
+    ${errors.length
+      ? `<div class="table-wrap mt-6"><table>
+          <thead><tr><th>Ligne</th><th>Référence</th><th>Problème</th></tr></thead>
+          <tbody>
+            ${errors
+              .map(
+                (e) => `<tr>
+                  <td>${e.line}</td>
+                  <td class="small">${esc(e.sku ?? '—')}</td>
+                  <td class="small" style="color:var(--danger)">${esc(e.message ?? '')}</td>
+                </tr>`,
+              )
+              .join('')}
+          </tbody>
+        </table></div>`
+      : ''}
+
+    ${applied
+      ? `<a class="btn btn-secondary mt-6" href="/touma/vendeur/produits" data-link>Voir mes produits</a>`
+      : result.summary.toCreate + result.summary.toUpdate > 0
+        ? `<button class="btn btn-accent mt-6" data-apply-import="${esc(storeId)}">
+            Appliquer : ${result.summary.toCreate} création(s), ${result.summary.toUpdate} mise(s) à jour
+          </button>`
+        : '<p class="small muted mt-6">Aucune ligne exploitable : corrigez votre fichier et relancez l’analyse.</p>'}
+  </section>`;
 }

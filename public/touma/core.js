@@ -79,24 +79,38 @@ export class ApiError extends Error {
 }
 
 /** Appelle l'API ; réessaie une fois après renouvellement du jeton d'accès. */
-export async function api(path, { method = 'GET', body, retry = true } = {}) {
+/**
+ * Client d'API. JSON par défaut ; `contentType` permet d'envoyer un corps brut
+ * (import CSV) et `accept` de récupérer un fichier texte (export) sans passer
+ * par un lien, qui partirait sans en-tête d'authentification.
+ */
+export async function api(path, { method = 'GET', body, retry = true, contentType, accept } = {}) {
   const current = session.read();
   const headers = {};
-  if (body !== undefined) headers['content-type'] = 'application/json';
+  const raw = Boolean(contentType);
+  if (body !== undefined) headers['content-type'] = contentType ?? 'application/json';
+  if (accept) headers.accept = accept;
   if (current?.accessToken) headers.authorization = `Bearer ${current.accessToken}`;
 
   let res;
   try {
-    res = await fetch(`${API}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    res = await fetch(`${API}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
+    });
   } catch {
     throw new ApiError('Connexion impossible. Vérifiez votre réseau puis réessayez.', 0);
   }
 
   if (res.status === 401 && retry && current?.refreshToken) {
-    if (await refreshSession(current.refreshToken)) return api(path, { method, body, retry: false });
+    if (await refreshSession(current.refreshToken)) return api(path, { method, body, retry: false, contentType, accept });
   }
 
   const text = await res.text();
+  // Une réponse non-JSON (un CSV) est rendue telle quelle une fois le succès acquis.
+  if (res.ok && accept && accept !== 'application/json') return text;
+
   let data = null;
   try {
     data = text ? JSON.parse(text) : null;

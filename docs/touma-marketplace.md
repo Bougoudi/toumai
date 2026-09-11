@@ -36,6 +36,7 @@ Produits prévus, tous représentés dans l'architecture :
 | Documents commerciaux | Fonctionnel | `src/touma/documents` |
 | Réputation vendeur | Fonctionnel | `src/touma/reputation` |
 | Sourcing fournisseurs | Fonctionnel | `src/touma/sourcing` |
+| Import / export de catalogue | Fonctionnel | `src/touma/catalog/import.service.ts` |
 | Touma Intelligence | Amorcé (analytique) | `src/touma/admin/analytics.service.ts` |
 
 ---
@@ -115,7 +116,7 @@ entre devises tant qu'aucun fournisseur de taux officiel n'est raccordé.
 
 ## 5. Ce qui est garanti par les tests
 
-204 tests automatisés s'exécutent contre une vraie base PostgreSQL
+217 tests automatisés s'exécutent contre une vraie base PostgreSQL
 (`npm test` — Node ≥ 22, dont le lanceur de tests accepte les motifs glob),
 dont le parcours complet de bout en bout :
 
@@ -190,7 +191,10 @@ Règles vérifiées, entre autres :
 - la capacité annoncée d'un fournisseur est son stock réel, et un pays n'est
   déclaré desservi que s'il l'a réellement été ;
 - seul l'auteur d'un appel d'offres peut y solliciter des fournisseurs, et
-  solliciter deux fois le même ne le prévient pas deux fois.
+  solliciter deux fois le même ne le prévient pas deux fois ;
+- une simulation d'import n'écrit rien, une ligne fautive n'emporte pas les
+  bonnes, une même référence deux fois dans un fichier est refusée, et l'export
+  se réimporte sans créer de doublon.
 
 Un test navigateur optionnel (`npm run test:browser`, nécessite Playwright)
 rejoue **tout le parcours dans Chromium** — accueil, catalogue et filtres,
@@ -202,8 +206,8 @@ ouverture d'un ticket d'assistance et réponse de l'équipe, création d'un code
 réduction et son application au paiement, consultation de la facture et du reçu,
 rendu du document à l'impression, réputation affichée sur la vitrine et dans
 l'espace vendeur, recherche de fournisseurs et sollicitation sur un appel
-d'offres — puis vérifie, à
-**360, 390, 430, 768, 1024, 1280 et 1440 px** : aucune erreur console, aucun
+d'offres, import de catalogue en masse — puis vérifie, à
+**360, 390, 430, 768, 900, 1024, 1280 et 1440 px** : aucune erreur console, aucun
 débordement horizontal, navigation basse et menu latéral fonctionnels.
 
 ---
@@ -411,6 +415,39 @@ l'invitation ne crée aucun privilège, elle prévient un fournisseur qu'on
 l'attend — c'est ainsi qu'un acheteur en gros travaille réellement, il démarche
 plutôt que de publier dans le vide. Le fournisseur retrouve ces demandes dans
 « Sollicitations reçues ».
+
+## 4 decies. Import et export de catalogue
+
+Un grossiste qui a deux cents références ne les saisira pas une par une : sans
+import en masse, il ne met pas son catalogue en ligne et la place de marché
+reste vide. C'est un sujet d'**adoption**, pas de confort.
+
+Le format d'entrée est ce qu'un tableur produit réellement, pas un CSV idéal :
+guillemets, virgules et retours à la ligne dans les cellules, guillemets
+doublés, séparateur point-virgule des Excel francophones, BOM UTF-8, en-têtes
+accentués, nombres au format « 12 500,50 ». Les colonnes sont reconnues en
+français comme en anglais. L'analyseur est écrit à la main (aucune dépendance)
+et couvert par ses tests unitaires.
+
+**Rien n'est écrit avant que le vendeur ait vu le résultat.** L'import se fait
+en deux temps : une simulation qui rend un diagnostic ligne par ligne — avec le
+numéro de ligne tel que le vendeur le voit dans son tableur — puis
+l'application. Un fichier à moitié importé, dont les erreurs se découvrent
+après coup, coûte plus cher à réparer qu'à ressaisir.
+
+**Une ligne fautive n'emporte pas les autres.** Chaque ligne est validée
+isolément ; l'application n'écrit que les lignes valides et rend la liste exacte
+des rejets avec leur motif. L'écriture se fait par transactions courtes, une par
+ligne, plutôt qu'en une transaction géante qui verrouillerait la base et
+annulerait 499 lignes valides pour une seule en échec.
+
+La devise vient toujours du pays de la boutique : accepter une devise étrangère
+dans un fichier reviendrait à inventer un taux de change. La mise à jour se fait
+par référence (`sku`), et le stock importé **remplace** le stock connu — c'est
+l'inventaire du vendeur qui fait foi, pas une addition à l'aveugle.
+
+L'export a exactement le même format que l'import : exporter, corriger dans son
+tableur, réimporter. Sans cet aller-retour, l'import ne servirait qu'une fois.
 
 ---
 

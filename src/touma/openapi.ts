@@ -172,6 +172,11 @@ export function toumaOpenApiDocument() {
       '/ai/recommend': { post: op('Touma AI', 'Recommander des produits', { auth: false, body: true }) },
       '/seller/dashboard': { get: op('Vendeur', 'Tableau de bord vendeur', { role: 'SELLER' }) },
       '/seller/inventory/low-stock': { get: op('Vendeur', 'Stocks faibles', { role: 'SELLER' }) },
+      '/seller/stores/{storeId}/catalogue/import': {
+        post: op('Vendeur', 'Importer un catalogue CSV (dryRun=true pour simuler)', { params: ['storeId'], query: ['dryRun'], body: true, role: 'SELLER' }),
+      },
+      '/seller/stores/{storeId}/catalogue/export': { get: op('Vendeur', 'Exporter le catalogue en CSV', { params: ['storeId'], role: 'SELLER' }) },
+      '/seller/catalogue/modele': { get: op('Vendeur', 'Modèle de fichier d’import', { role: 'SELLER' }) },
       '/admin/dashboard': { get: op('Administration', 'Tableau de bord', { role: 'ADMIN' }) },
       '/admin/users': { get: op('Administration', 'Utilisateurs', { role: 'ADMIN', query: ['q', 'page', 'limit'] }) },
       '/admin/verifications': { get: op('Administration', 'Dossiers de vérification', { role: 'ADMIN' }) },

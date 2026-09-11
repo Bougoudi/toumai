@@ -595,6 +595,53 @@ await step('sourcing : solliciter un fournisseur sur un appel d’offres', async
   if (received.includes('Aucune sollicitation')) throw new Error('le fournisseur ne voit pas la sollicitation reçue');
 });
 
+await step('vendeur : import de catalogue en masse', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur/import`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('#import-form', { timeout: 20000 });
+
+  const ref = `NAVIMP-${Date.now().toString().slice(-8)}`;
+  await seller.fill(
+    '#im-csv',
+    [
+      'sku;titre;prix;stock;quantite_minimale;poids_grammes;statut',
+      `${ref};Cacao en fèves — import navigateur;145000;40;5;50000;ACTIVE`,
+      ';;;;;;', // ligne vide, ignorée
+      'BAD-1;;12000;10;1;500;ACTIVE', // titre manquant : doit être rejetée
+    ].join('\n'),
+  );
+  await seller.click('#import-form button[type="submit"]');
+  await seller.waitForSelector('[data-apply-import]', { timeout: 20000 });
+
+  const report = await seller.textContent('#import-report');
+  if (!report.includes('Lignes en erreur')) throw new Error('le rapport ne signale pas les lignes fautives');
+  await seller.screenshot({ path: `${OUT}/33-import.png` });
+
+  // Rien ne doit être écrit tant que l'import n'est pas appliqué.
+  await seller.goto(`${BASE}/vendeur/produits`, { waitUntil: 'networkidle' });
+  await seller.waitForTimeout(1200);
+  if ((await seller.textContent('#view')).includes(ref)) throw new Error('l’analyse a écrit avant confirmation');
+
+  await seller.goBack({ waitUntil: 'networkidle' });
+  await seller.waitForSelector('#import-form', { timeout: 20000 });
+  // Le rapport a disparu avec la navigation : on relance l'analyse puis on applique.
+  await seller.fill('#im-csv', `sku;titre;prix;stock;statut\n${ref};Cacao en fèves — import navigateur;145000;40;ACTIVE`);
+  await seller.click('#import-form button[type="submit"]');
+  await seller.waitForSelector('[data-apply-import]', { timeout: 20000 });
+  await seller.click('[data-apply-import]');
+  await seller.waitForSelector('.modal [data-action="confirm"]', { timeout: 10000 });
+  await seller.click('.modal [data-action="confirm"]');
+  await seller.waitForTimeout(2500);
+
+  const applied = await seller.textContent('#import-report');
+  if (!applied.includes('Import terminé')) throw new Error('l’import n’a pas été appliqué');
+  await seller.goto(`${BASE}/vendeur/produits`, { waitUntil: 'networkidle' });
+  await seller.waitForTimeout(1500);
+  if (!(await seller.textContent('#view')).includes('import navigateur')) {
+    throw new Error('le produit importé n’apparaît pas dans le catalogue');
+  }
+});
+
 await step('après-vente : pages privées sur mobile', async () => {
   if (!returnId || !ticketUrl) throw new Error('le parcours après-vente n’a pas abouti : rien à vérifier');
   // Ces pages exigent une session : on redimensionne le contexte déjà connecté.
@@ -620,6 +667,9 @@ for (const [width, height] of [
   [390, 844],
   [430, 932],
   [768, 1024],
+  // 900 px est la bascule vers l'en-tête de bureau : c'est précisément là que
+  // la navigation d'un vendeur connecté faisait déborder la page.
+  [900, 900],
   [1024, 768],
   [1280, 900],
   [1440, 900],

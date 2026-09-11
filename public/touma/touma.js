@@ -79,6 +79,7 @@ const ROUTES = [
   { path: '/touma/vendeur/boutique', module: 'seller', name: 'storeSettings', auth: true },
   { path: '/touma/vendeur/produits', module: 'seller', name: 'products', auth: true, role: 'SELLER' },
   { path: '/touma/vendeur/produits/nouveau', module: 'seller', name: 'productForm', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/import', module: 'seller', name: 'catalogueImport', auth: true, role: 'SELLER' },
   { path: '/touma/vendeur/produits/:id', module: 'seller', name: 'productForm', auth: true, role: 'SELLER' },
   { path: '/touma/vendeur/commandes', module: 'seller', name: 'orders', auth: true, role: 'SELLER' },
   { path: '/touma/vendeur/commandes/:id', module: 'seller', name: 'order', auth: true, role: 'SELLER' },
@@ -91,6 +92,26 @@ const ROUTES = [
   { path: '/touma/admin/risque', module: 'admin', name: 'risk', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/:section', module: 'admin', name: 'list', auth: true, role: 'ADMIN' },
 ];
+
+/** Dernier fichier analysé, conservé pour l'appliquer sans le redemander. */
+let pendingImport = null;
+
+/**
+ * Télécharge un fichier protégé par le jeton : un simple lien partirait sans
+ * en-tête d'authentification et se ferait refuser.
+ */
+async function downloadAuthed(path, filename) {
+  const text = await api(path, { accept: 'text/csv' });
+  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 
 const modules = {};
 const LOADERS = {
@@ -583,6 +604,49 @@ document.addEventListener('click', (event) => {
     // embarquée, et un rendu fidèle à ce que l'utilisateur voit.
     window.print();
     return;
+  }
+
+  if (d.applyImport) {
+    return run(
+      async () => {
+        if (!pendingImport || pendingImport.storeId !== d.applyImport) {
+          return toast('Relancez l’analyse avant d’appliquer.', 'error');
+        }
+        const ok = await confirmDialog({
+          title: 'Appliquer l’import ?',
+          body: 'Les produits existants portant la même référence seront mis à jour, stock compris.',
+          confirmLabel: 'Appliquer',
+        });
+        if (!ok) return;
+        const result = await api(`/seller/stores/${pendingImport.storeId}/catalogue/import?dryRun=false`, {
+          method: 'POST',
+          body: pendingImport.csv,
+          contentType: 'text/csv',
+        });
+        const { importReport } = await import('./views-seller.js');
+        document.getElementById('import-report').innerHTML = importReport(result, pendingImport.storeId);
+        pendingImport = null;
+        toast(`${result.summary.created} création(s), ${result.summary.updated} mise(s) à jour.`, 'success');
+      },
+      { button: el },
+    );
+  }
+
+  if (d.exportCatalogue !== undefined) {
+    return run(async () => {
+      const storeId = document.getElementById('im-store')?.value;
+      if (!storeId) return toast('Choisissez une boutique.', 'error');
+      // Le fichier est protégé par le jeton : on le récupère puis on le remet
+      // au navigateur, plutôt qu'un lien qui partirait sans authentification.
+      await downloadAuthed(`/seller/stores/${storeId}/catalogue/export`, 'catalogue-touma.csv');
+    });
+  }
+
+  if (d.authedDownload !== undefined) {
+    event.preventDefault();
+    return run(async () => {
+      await downloadAuthed('/seller/catalogue/modele', 'modele-catalogue-touma.csv');
+    });
   }
 
   if (d.pauseCoupon || d.resumeCoupon) {
@@ -1158,6 +1222,32 @@ document.addEventListener('submit', (event) => {
           body: { body: document.getElementById('m-body').value },
         });
         await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'import-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const file = document.getElementById('im-file').files?.[0];
+        const pasted = document.getElementById('im-csv').value.trim();
+        // Le fichier prime sur le collage : c'est le geste le plus explicite.
+        const csv = file ? await file.text() : pasted;
+        if (!csv) return toast('Choisissez un fichier ou collez son contenu.', 'error');
+
+        const storeId = document.getElementById('im-store').value;
+        const result = await api(`/seller/stores/${storeId}/catalogue/import?dryRun=true`, {
+          method: 'POST',
+          body: csv,
+          contentType: 'text/csv',
+        });
+        const { importReport } = await import('./views-seller.js');
+        document.getElementById('import-report').innerHTML = importReport(result, storeId);
+        // Le CSV analysé est conservé pour l'appliquer sans redemander le fichier.
+        pendingImport = { storeId, csv };
+        toast(result.summary.errors ? `${result.summary.errors} ligne(s) à corriger.` : 'Fichier analysé : aucune erreur.', result.summary.errors ? 'warning' : 'success');
       },
       { button: submit },
     );
