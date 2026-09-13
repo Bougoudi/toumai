@@ -2085,3 +2085,74 @@ const initialQuery = new URL(location.href).searchParams.get('q');
 if (initialQuery) document.getElementById('search-input').value = initialQuery;
 
 render();
+
+// ── Application installable ──────────────────────────────────────────────────
+//
+// Le service worker n'apporte pas la vitesse — il apporte la tolérance au
+// réseau. Sur un téléphone de N'Djamena ou de Douala, la connexion n'est pas
+// « présente ou absente » : elle est intermittente. Une application qui ouvre sa
+// coquille et explique ce qu'elle ne peut pas faire vaut mieux qu'une page
+// blanche.
+//
+// Il n'est enregistré qu'en HTTPS (ou sur localhost) : ailleurs, le navigateur
+// le refuse, et insister ne ferait qu'encombrer la console.
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/touma/sw.js', { scope: '/touma/' }).catch(() => {
+      // Un service worker refusé ne casse rien : l'application fonctionne
+      // exactement pareil, simplement sans filet hors ligne.
+    });
+  });
+}
+
+// Invitation à installer — seulement là où le navigateur la propose vraiment
+// (Android, Chrome et Edge de bureau). Refusée une fois, elle ne revient pas :
+// une bannière qui insiste est une bannière qu'on apprend à ignorer.
+let installEvent = null;
+const INSTALL_DISMISSED = 'touma.install.refuse';
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installEvent = event;
+  if (localStorage.getItem(INSTALL_DISMISSED) === '1') return;
+  showInstallBar();
+});
+
+function showInstallBar() {
+  if (document.getElementById('install-bar')) return;
+  const bar = document.createElement('div');
+  bar.className = 'install-bar';
+  bar.id = 'install-bar';
+  bar.innerHTML = `
+    <div>
+      <strong>Installer TOUMA</strong>
+      <span>Ouverture plus rapide, et l'application s'ouvre même quand le réseau faiblit.</span>
+    </div>
+    <div class="install-actions">
+      <button type="button" class="btn btn-sm" data-install>Installer</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-install-dismiss>Plus tard</button>
+    </div>`;
+  document.body.appendChild(bar);
+}
+
+document.addEventListener('click', async (event) => {
+  const install = event.target.closest('[data-install]');
+  if (install) {
+    document.getElementById('install-bar')?.remove();
+    if (!installEvent) return;
+    installEvent.prompt();
+    const { outcome } = await installEvent.userChoice;
+    installEvent = null;
+    if (outcome === 'dismissed') localStorage.setItem(INSTALL_DISMISSED, '1');
+    return;
+  }
+  if (event.target.closest('[data-install-dismiss]')) {
+    localStorage.setItem(INSTALL_DISMISSED, '1');
+    document.getElementById('install-bar')?.remove();
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  document.getElementById('install-bar')?.remove();
+  localStorage.setItem(INSTALL_DISMISSED, '1');
+});

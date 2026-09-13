@@ -25,7 +25,7 @@ npm run seed                  # pays, catégories, comptes et catalogue de démo
 npm run dev
 ```
 
-- Place de marché : <http://localhost:3000/touma/> (mobile d'abord, testée de 360 à 1440 px)
+- Place de marché : <http://localhost:3000/touma/> (mobile d'abord, testée de 360 à 1440 px, **installable** sur téléphone et sur ordinateur)
 - API v1 : <http://localhost:3000/api/v1> · OpenAPI : `/api/v1/openapi.json`
 - Sondes : `/health` et `/ready`
 

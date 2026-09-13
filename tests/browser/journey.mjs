@@ -34,10 +34,18 @@ await mkdir(OUT, { recursive: true });
  */
 let rateLimited = false;
 
+/**
+ * Une étape coupe volontairement le réseau pour vérifier le comportement hors
+ * ligne. Les échecs de chargement qu'elle provoque sont le sujet du test, pas
+ * un défaut : pendant cette fenêtre, on ne les compte pas.
+ */
+let offlineExpected = false;
+
 function watch(target, tag = '') {
   target.on('console', (m) => {
     if (m.type() !== 'error') return;
     if (m.text().includes('429')) return (rateLimited = true);
+    if (offlineExpected && /ERR_INTERNET_DISCONNECTED|Failed to fetch|NetworkError/.test(m.text())) return;
     errors.push(`console${tag}: ${m.text()}`);
   });
   target.on('pageerror', (e) => errors.push(`pageerror${tag}: ${e.message}`));
@@ -903,6 +911,83 @@ await step('messagerie : mobile plein écran, sans débordement', async () => {
     await buyer.screenshot({ path: `${OUT}/39-messagerie-${width}.png` });
   }
   await buyer.setViewportSize({ width: 1280, height: 900 });
+});
+
+// ── Application installable ─────────────────────────────────────────────────
+await step('installable : manifeste complet et icônes réelles', async () => {
+  const res = await page.request.get(`${BASE}/manifest.webmanifest`);
+  if (!res.ok()) throw new Error(`manifeste absent (${res.status()})`);
+  if (!/application\/manifest\+json/.test(res.headers()['content-type'] ?? '')) {
+    throw new Error(`type incorrect : ${res.headers()['content-type']}`);
+  }
+  const manifest = await res.json();
+  for (const key of ['name', 'short_name', 'start_url', 'scope', 'display', 'icons']) {
+    if (!manifest[key]) throw new Error(`clé « ${key} » absente du manifeste`);
+  }
+  if (manifest.display !== 'standalone') throw new Error('l’application ne s’ouvrirait pas en plein écran');
+  if (!manifest.start_url.startsWith('/touma/')) throw new Error('start_url hors de la place de marché');
+  // Une icône déclarée mais absente produit une vignette grise sur l'écran
+  // d'accueil : on vérifie que chaque fichier existe vraiment.
+  for (const icon of manifest.icons) {
+    const img = await page.request.get(`${BASE.replace('/touma', '')}${icon.src}`);
+    if (!img.ok()) throw new Error(`icône manquante : ${icon.src}`);
+    if (!/image\/png/.test(img.headers()['content-type'] ?? '')) throw new Error(`icône non PNG : ${icon.src}`);
+  }
+  if (!manifest.icons.some((i) => i.purpose === 'maskable')) {
+    throw new Error('aucune icône « maskable » : Android rognerait la marque');
+  }
+  // Le lien doit être dans la coquille, sinon le navigateur ne le lit jamais.
+  await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  if ((await page.locator('link[rel="manifest"]').count()) !== 1) throw new Error('lien du manifeste absent de la page');
+});
+
+await step('service worker : enregistré, et l’API jamais mise en cache', async () => {
+  await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  const registered = await page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.getRegistration('/touma/');
+    return !!reg;
+  });
+  if (!registered) throw new Error('aucun service worker enregistré sur /touma/');
+
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(800);
+
+  const caches = await page.evaluate(async () => {
+    const names = await window.caches.keys();
+    const entries = [];
+    for (const name of names) {
+      const cache = await window.caches.open(name);
+      for (const req of await cache.keys()) entries.push(req.url);
+    }
+    return { names, entries };
+  });
+  // La règle qui compte : aucun prix, aucun stock, aucun état de commande ne
+  // doit pouvoir être servi depuis une copie locale.
+  const api = caches.entries.filter((url) => new URL(url).pathname.startsWith('/api/'));
+  if (api.length) throw new Error(`des réponses de l’API sont en cache : ${api.slice(0, 3).join(', ')}`);
+  if (!caches.entries.some((url) => url.includes('/touma/touma.js'))) {
+    throw new Error('la coquille n’est pas mise en cache : aucune tolérance au réseau');
+  }
+});
+
+await step('hors ligne : une page qui l’explique, pas un écran blanc', async () => {
+  const offline = watch(await browser.newPage({ viewport: { width: 390, height: 844 } }), ' (hors ligne)');
+  await offline.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await offline.evaluate(() => navigator.serviceWorker.ready);
+  await offline.waitForTimeout(500);
+
+  offlineExpected = true;
+  await offline.context().setOffline(true);
+  await offline.goto(`${BASE}/produits`, { waitUntil: 'domcontentloaded' });
+  await offline.waitForTimeout(600);
+  const texte = (await offline.textContent('body')) ?? '';
+  if (!/TOUMA/i.test(texte)) throw new Error('la coquille ne survit pas à la coupure réseau');
+  await offline.screenshot({ path: `${OUT}/40-hors-ligne.png` });
+
+  await offline.context().setOffline(false);
+  offlineExpected = false;
+  await offline.close();
 });
 
 // ── Largeurs cibles : aucun débordement horizontal, menu mobile fonctionnel ──

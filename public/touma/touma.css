@@ -748,6 +748,29 @@ tbody tr:hover { background: var(--surface-sunken); }
   .thread-scroll { overflow-y: auto; flex: 1 1 auto; padding-right: var(--space-2); }
 }
 
+/* ── Invitation à installer l'application ──────────────────────────────── */
+/* Posée au-dessus de la navigation basse sur mobile : elle ne doit jamais
+   recouvrir le panier ni le bouton de commande. */
+.install-bar {
+  position: fixed; left: var(--space-3); right: var(--space-3);
+  bottom: calc(var(--bottom-nav-height, 64px) + var(--space-3));
+  z-index: 60;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(23, 33, 33, 0.18));
+}
+.install-bar strong { display: block; }
+.install-bar span { font-size: var(--text-sm); color: var(--text-muted); }
+.install-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
+@media (min-width: 900px) {
+  .install-bar { left: auto; right: var(--space-5); bottom: var(--space-5); max-width: 26rem; }
+}
+
+/* Page servie par le service worker quand le réseau manque. */
+.offline-page { max-width: 34rem; padding-block: var(--space-8); }
+
 @media print {
   /* Ne survit à l'impression que le document lui-même. */
   .header, .footer, .bottom-nav, .drawer, .drawer-backdrop,

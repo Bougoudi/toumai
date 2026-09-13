@@ -4,8 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0B5D5E" />
-    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="icon" href="/touma/img/icon-192.png" type="image/png" />
+    <link rel="manifest" href="/touma/manifest.webmanifest" />
+    <!-- iOS n'implémente pas le manifeste : l'icône et le mode plein écran
+         passent par ces trois balises, sans quoi « Sur l'écran d'accueil »
+         produit une vignette grise qui rouvre Safari. -->
+    <link rel="apple-touch-icon" href="/touma/img/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TOUMA" />
     <!-- Métadonnées injectées par le serveur selon la page (voir src/touma/seo.ts). -->
     <!--touma:meta-->
     <link rel="preload" href="/touma/tokens.css" as="style" />

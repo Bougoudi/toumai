@@ -15,6 +15,7 @@
     "start:prod": "node dist/src/index.js",
     "db:deploy": "prisma db push --skip-generate",
     "icons": "node scripts/make-icons.mjs",
+    "icons:touma": "node scripts/make-touma-icons.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
