@@ -72,6 +72,18 @@ export class TestApi {
   patch = <T = any>(path: string, body?: unknown, token?: string) => this.request<T>('PATCH', path, { body, token });
   put = <T = any>(path: string, body?: unknown, token?: string) => this.request<T>('PUT', path, { body, token });
   delete = <T = any>(path: string, token?: string) => this.request<T>('DELETE', path, { token });
+
+  /** Envoi d'un fichier en corps brut (pièces jointes de la messagerie). */
+  upload = <T = any>(path: string, content: Buffer, fileName: string, token?: string, caption?: string) =>
+    this.request<T>('POST', path, {
+      raw: content,
+      token,
+      headers: {
+        'content-type': 'application/octet-stream',
+        'x-file-name': fileName,
+        ...(caption ? { 'x-caption': caption } : {}),
+      },
+    });
 }
 
 /** Adresse e-mail unique par test (aucune collision entre exécutions). */

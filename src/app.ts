@@ -73,6 +73,9 @@ export function createApp() {
   // Import de catalogue : le corps est du CSV brut, pas du JSON. Monté avant
   // express.json() qui le rejetterait comme malformé.
   app.use(express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }));
+  // Pièces jointes de la messagerie : corps brut. Le type réel est déduit du
+  // contenu par le service, jamais de l'en-tête envoyé par le navigateur.
+  app.use(express.raw({ type: 'application/octet-stream', limit: process.env.TOUMA_ATTACHMENT_MAX_BYTES ? `${process.env.TOUMA_ATTACHMENT_MAX_BYTES}b` : '10mb' }));
 
   // Corps JSON limité (anti-abus).
   app.use(express.json({ limit: '1mb' }));

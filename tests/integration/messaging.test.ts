@@ -73,29 +73,41 @@ describe('Conversations acheteur ↔ vendeur', () => {
     assert.equal(write.status, 404);
   });
 
-  it('contrôle le type et la taille des pièces jointes', async () => {
-    const badType = await api.post(
+  it('refuse les pièces jointes déclarées par le client (contrat V13 retiré)', async () => {
+    // Une URL, un type et une taille annoncés par le navigateur ne sont
+    // vérifiables en rien : le format V13 est refusé explicitement, pas ignoré.
+    const declared = await api.post(
       `/api/v1/conversations/${conversationId}/messages`,
-      { body: 'Voici le fichier', attachments: [{ url: 'https://f.touma.test/x.exe', name: 'x.exe', mimeType: 'application/x-msdownload', sizeBytes: 1000 }] },
+      { body: 'Voici le fichier', attachments: [{ url: 'https://f.touma.test/x.exe', name: 'x.exe', mimeType: 'image/jpeg', sizeBytes: 10 }] },
       buyer.accessToken,
     );
-    assert.equal(badType.status, 400);
-    assert.match(badType.body.error, /non autorisé/i);
+    assert.equal(declared.status, 400);
+    assert.match(JSON.stringify(declared.body), /corps brut/i);
+  });
 
-    const tooBig = await api.post(
-      `/api/v1/conversations/${conversationId}/messages`,
-      { body: 'Photo', attachments: [{ url: 'https://f.touma.test/p.jpg', name: 'p.jpg', mimeType: 'image/jpeg', sizeBytes: 9 * 1024 * 1024 }] },
-      buyer.accessToken,
-    );
-    assert.equal(tooBig.status, 400);
+  it('accepte un fichier réel, reconnu par son contenu', async () => {
+    const png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(512, 7),
+    ]);
+    const sent = await api.upload(`/api/v1/conversations/${conversationId}/attachments`, png, 'lot.png', seller.accessToken, 'Photo du lot');
+    assert.equal(sent.status, 201);
+    assert.equal(sent.body.attachments.length, 1);
+    assert.equal(sent.body.attachments[0].mimeType, 'image/png');
+    // Le fichier n'est jamais exposé par son chemin de stockage.
+    assert.match(sent.body.attachments[0].url, /^\/api\/v1\/attachments\/[\w-]+\?expires=\d+&signature=[a-f0-9]{64}$/);
+  });
 
-    const ok = await api.post(
-      `/api/v1/conversations/${conversationId}/messages`,
-      { body: 'Voici la photo du lot', attachments: [{ url: 'https://f.touma.test/lot.jpg', name: 'lot.jpg', mimeType: 'image/jpeg', sizeBytes: 240_000 }] },
-      seller.accessToken,
-    );
-    assert.equal(ok.status, 201);
-    assert.equal(ok.body.attachments.length, 1);
+  it('refuse un exécutable déguisé en image', async () => {
+    const exe = Buffer.concat([Buffer.from([0x4d, 0x5a]), Buffer.alloc(256, 0)]);
+    const rejected = await api.upload(`/api/v1/conversations/${conversationId}/attachments`, exe, 'photo.png', buyer.accessToken);
+    assert.equal(rejected.status, 400);
+  });
+
+  it('refuse un contenu dont le format n’est pas reconnu', async () => {
+    const noise = Buffer.from('ceci n’est ni une image ni un PDF', 'utf8');
+    const rejected = await api.upload(`/api/v1/conversations/${conversationId}/attachments`, noise, 'facture.pdf', buyer.accessToken);
+    assert.equal(rejected.status, 400);
   });
 
   it('refuse un message vide ou démesuré', async () => {

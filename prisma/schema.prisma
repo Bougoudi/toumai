@@ -223,6 +223,12 @@ model User {
   negotiationMessages ToumaNegotiationMessage[]
   conversations       ToumaConversationParticipant[]
   messages            ToumaMessage[]
+  conversationsOpened ToumaConversation[]            @relation("ConversationCreator")
+  messageReports      ToumaMessageReport[]
+  blocksMade          ToumaUserBlock[]               @relation("BlockAuthor")
+  blocksReceived      ToumaUserBlock[]               @relation("BlockTarget")
+  savedReplies        ToumaSavedReply[]
+  notificationPrefs   ToumaNotificationPreference[]
 
   returnRequests    ToumaReturnRequest[]
   refundsInitiated  ToumaRefund[]           @relation("RefundInitiator")
@@ -1571,6 +1577,7 @@ model ToumaNotification {
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([userId, readAt])
   @@map("touma_notifications")
 }
 
@@ -1791,6 +1798,8 @@ model ToumaBusinessProfile {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  conversationSeats ToumaConversationParticipant[]
+
   legalName      String
   registrationNo String?
   taxId          String?
@@ -1832,9 +1841,10 @@ model ToumaRfq {
   /// Date limite de réception des offres.
   deadline      DateTime?
 
-  items       ToumaRfqItem[]
-  quotes      ToumaQuote[]
-  invitations ToumaRfqInvitation[]
+  items         ToumaRfqItem[]
+  quotes        ToumaQuote[]
+  invitations   ToumaRfqInvitation[]
+  conversations ToumaConversation[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1896,8 +1906,9 @@ model ToumaQuote {
   orderGroupId String?
   orderGroup   ToumaOrderGroup? @relation(fields: [orderGroupId], references: [id], onDelete: SetNull)
 
-  items        ToumaQuoteItem[]
-  negotiations ToumaNegotiationMessage[]
+  items         ToumaQuoteItem[]
+  negotiations  ToumaNegotiationMessage[]
+  conversations ToumaConversation[]
 
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -1933,37 +1944,108 @@ model ToumaQuoteItem {
 /// Échange de négociation sur une offre : message, contre-proposition, décision.
 /// L'historique complet est conservé — il fait foi en cas de litige.
 model ToumaNegotiationMessage {
-  id            String          @id @default(cuid())
-  quoteId       String
-  quote         ToumaQuote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  authorId      String
-  author        User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  kind          NegotiationKind @default(MESSAGE)
-  body          String
-  /// Total proposé par l'auteur lors d'une contre-proposition.
-  proposedTotal Decimal?        @db.Decimal(18, 4)
+  id                   String          @id @default(cuid())
+  quoteId              String
+  quote                ToumaQuote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  authorId             String
+  author               User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  kind                 NegotiationKind @default(MESSAGE)
+  body                 String
+  /// Total proposé par l'auteur lors d'une contre-proposition. Toujours
+  /// recalculé par le serveur : le client propose des quantités et des prix
+  /// unitaires, jamais un total.
+  proposedTotal        Decimal?        @db.Decimal(18, 4)
+  /// Détail de la proposition, pour que la carte d'offre soit vérifiable.
+  proposedItemsTotal   Decimal?        @db.Decimal(18, 4)
+  proposedShipping     Decimal?        @db.Decimal(18, 4)
+  proposedLeadTimeDays Int?
+  /// Lignes proposées (nom, quantité, unité, prix unitaire, total de ligne).
+  proposedItems        Json?
+  /// Validité propre à cette proposition ; au-delà, elle ne peut plus être acceptée.
+  expiresAt            DateTime?
+
+  /// Message de la conversation qui porte cette offre (carte affichée dans le fil).
+  message ToumaMessage?
 
   createdAt DateTime @default(now())
 
   @@index([quoteId])
+  @@index([quoteId, createdAt])
   @@map("touma_negotiation_messages")
 }
 
 // ── Messagerie ───────────────────────────────────────────────────────────────
 
 enum ConversationKind {
-  /// Acheteur ↔ vendeur, éventuellement rattachée à une commande.
+  /// Acheteur ↔ vendeur, hors contexte particulier (« DIRECT »).
   BUYER_SELLER
-  /// Négociation d'un appel d'offres.
+  /// Négociation autour d'un appel d'offres, un fil par fournisseur.
   RFQ
+  /// Négociation d'une offre précise.
+  QUOTE
+  /// Suivi d'une commande passée.
+  ORDER
   /// Assistance TOUMA.
   SUPPORT
 }
 
+enum ConversationStatus {
+  ACTIVE
+  /// Rangée par un participant : elle reste lisible et peut revenir.
+  ARCHIVED
+  /// Close : lecture seule (appel d'offres attribué, commande terminée).
+  CLOSED
+  /// Bloquée après signalement ou blocage mutuel : plus aucun message.
+  BLOCKED
+}
+
+/// Nature d'un message. Seul le serveur produit SYSTEM, OFFER et COUNTER_OFFER.
+enum MessageType {
+  TEXT
+  SYSTEM
+  OFFER
+  COUNTER_OFFER
+  QUOTE
+  ORDER_UPDATE
+  ATTACHMENT
+}
+
+enum MessageReportReason {
+  SPAM
+  FRAUD
+  ABUSE
+  OFF_PLATFORM_PAYMENT
+  PROHIBITED_CONTENT
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWED
+  ACTIONED
+  DISMISSED
+}
+
+/// Catégorie d'un signal de risque détecté dans un message.
+enum RiskFlagCategory {
+  OFF_PLATFORM_PAYMENT
+  CONTACT_EXCHANGE
+  SUSPICIOUS_LINK
+  FLOOD
+  REPEATED_CONTENT
+}
+
+enum RiskFlagStatus {
+  OPEN
+  CLEARED
+  CONFIRMED
+}
+
 /// Fil de discussion entre participants identifiés.
 model ToumaConversation {
-  id      String           @id @default(cuid())
-  kind    ConversationKind @default(BUYER_SELLER)
+  id      String             @id @default(cuid())
+  kind    ConversationKind   @default(BUYER_SELLER)
+  status  ConversationStatus @default(ACTIVE)
   subject String?
 
   /// Rattachements facultatifs, qui donnent son contexte à la conversation.
@@ -1972,35 +2054,55 @@ model ToumaConversation {
   orderId String?
   order   ToumaOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
   rfqId   String?
+  rfq     ToumaRfq?   @relation(fields: [rfqId], references: [id], onDelete: SetNull)
+  quoteId String?
+  quote   ToumaQuote? @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+
+  /// Qui a ouvert le fil (utile pour l'anti-spam et l'audit).
+  createdById String?
+  createdBy   User?   @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   lastMessageAt DateTime @default(now())
 
   participants ToumaConversationParticipant[]
   messages     ToumaMessage[]
+  reports      ToumaMessageReport[]
+  riskFlags    ToumaRiskFlag[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([storeId])
   @@index([lastMessageAt])
+  @@index([rfqId])
+  @@index([quoteId])
+  @@index([orderId])
   @@map("touma_conversations")
 }
 
 /// Participation à une conversation : c'est elle qui autorise l'accès au fil.
 model ToumaConversationParticipant {
-  id             String            @id @default(cuid())
-  conversationId String
-  conversation   ToumaConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  userId         String
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  /// Rôle tenu dans ce fil : BUYER | SELLER | ADMIN.
-  role           String            @default("BUYER")
-  lastReadAt     DateTime?
+  id                String                @id @default(cuid())
+  conversationId    String
+  conversation      ToumaConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Rôle tenu dans ce fil : BUYER | SELLER | ADMIN | SUPPORT.
+  role              String                @default("BUYER")
+  lastReadAt        DateTime?
+  /// Entreprise au nom de laquelle le participant écrit, s'il en a une.
+  businessProfileId String?
+  business          ToumaBusinessProfile? @relation(fields: [businessProfileId], references: [id], onDelete: SetNull)
+  /// Notifications coupées pour ce fil (le fil reste lisible).
+  mutedAt           DateTime?
+  /// Rangé par ce participant seulement : l'autre le voit toujours.
+  archivedAt        DateTime?
 
   createdAt DateTime @default(now())
 
   @@unique([conversationId, userId])
   @@index([userId])
+  @@index([userId, lastReadAt])
   @@map("touma_conversation_participants")
 }
 
@@ -2008,27 +2110,151 @@ model ToumaMessage {
   id             String            @id @default(cuid())
   conversationId String
   conversation   ToumaConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  authorId       String
-  author         User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  /// Nul pour un message système : il n'émane d'aucun utilisateur.
+  authorId       String?
+  author         User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  type           MessageType       @default(TEXT)
   body           String
+  /// Contexte structuré du message (carte d'offre, mise à jour de commande).
+  metadata       Json              @default("{}")
+
+  /// Message cité (fil de réponse).
+  replyToId String?
+  replyTo   ToumaMessage?  @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   ToumaMessage[] @relation("MessageReply")
+
+  /// Offre commerciale portée par ce message : la source de vérité financière.
+  negotiationMessageId String?                  @unique
+  negotiation          ToumaNegotiationMessage? @relation(fields: [negotiationMessageId], references: [id], onDelete: SetNull)
 
   attachments ToumaMessageAttachment[]
+  reports     ToumaMessageReport[]
+  riskFlags   ToumaRiskFlag[]
+
+  createdAt DateTime  @default(now())
+  /// Dernière modification par l'auteur (fenêtre courte, puis immuable).
+  editedAt  DateTime?
+  /// Suppression douce : le fil garde sa trace, le contenu n'est plus affiché.
+  deletedAt DateTime?
+
+  @@index([conversationId])
+  @@index([conversationId, createdAt])
+  @@index([authorId, createdAt])
+  @@map("touma_messages")
+}
+
+/// Signalement d'un message par un participant.
+model ToumaMessageReport {
+  id             String            @id @default(cuid())
+  conversationId String
+  conversation   ToumaConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String
+  message        ToumaMessage      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reporterId     String
+  reporter       User              @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+
+  reason       MessageReportReason
+  details      String              @default("")
+  status       ReportStatus        @default(OPEN)
+  /// Décision de l'administration.
+  resolution   String?
+  reviewedById String?
+  reviewedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  /// Un même utilisateur ne signale un message qu'une fois.
+  @@unique([messageId, reporterId])
+  @@index([status])
+  @@map("touma_message_reports")
+}
+
+/// Signal de risque détecté automatiquement. N'entraîne jamais de suppression :
+/// il attire l'attention, l'humain tranche.
+model ToumaRiskFlag {
+  id             String            @id @default(cuid())
+  conversationId String
+  conversation   ToumaConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?
+  message        ToumaMessage?     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  category RiskFlagCategory
+  /// 0 à 100 : plus le score est élevé, plus le signal est net.
+  score    Int              @default(0)
+  /// Extrait déclencheur (jamais le message entier : confidentialité).
+  excerpt  String           @default("")
+  status   RiskFlagStatus   @default(OPEN)
 
   createdAt DateTime @default(now())
 
   @@index([conversationId])
-  @@map("touma_messages")
+  @@index([status, createdAt])
+  @@map("touma_risk_flags")
+}
+
+/// Blocage d'un utilisateur par un autre : plus aucun fil ne peut être ouvert
+/// ni alimenté entre eux.
+model ToumaUserBlock {
+  id        String @id @default(cuid())
+  blockerId String
+  blocker   User   @relation("BlockAuthor", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User   @relation("BlockTarget", fields: [blockedId], references: [id], onDelete: Cascade)
+  reason    String @default("")
+
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+  @@map("touma_user_blocks")
+}
+
+/// Réponse type enregistrée par un vendeur ou un acheteur professionnel.
+model ToumaSavedReply {
+  id      String @id @default(cuid())
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title   String
+  content String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@map("touma_saved_replies")
+}
+
+/// Préférences de notification par catégorie et par canal.
+model ToumaNotificationPreference {
+  id       String  @id @default(cuid())
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// MESSAGES | NEGOTIATION | RFQ | ORDERS | MARKETING
+  category String
+  inApp    Boolean @default(true)
+  email    Boolean @default(false)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, category])
+  @@map("touma_notification_preferences")
 }
 
 /// Pièce jointe d'un message. Le type et la taille sont contrôlés au dépôt.
 model ToumaMessageAttachment {
-  id        String       @id @default(cuid())
-  messageId String
-  message   ToumaMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  url       String
-  name      String
-  mimeType  String
-  sizeBytes Int          @default(0)
+  id         String       @id @default(cuid())
+  messageId  String
+  message    ToumaMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  /// Clé de stockage non devinable. Le fichier n'est jamais servi depuis une
+  /// URL publique : il passe par une redirection signée, réservée aux participants.
+  storageKey String?      @unique
+  /// URL externe (contenu hébergé ailleurs, historique V13).
+  url        String?
+  name       String
+  mimeType   String
+  sizeBytes  Int          @default(0)
+  /// Empreinte SHA-256 du contenu reçu : détecte les doublons et prouve l'intégrité.
+  checksum   String?
 
   createdAt DateTime @default(now())
 

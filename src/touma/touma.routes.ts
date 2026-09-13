@@ -18,8 +18,8 @@ import { notificationRouter } from './notifications/notification.routes.js';
 import { aiRouter } from './ai/ai.routes.js';
 import { adminRouter } from './admin/admin.routes.js';
 import { sellerRouter } from './seller/seller.routes.js';
-import { businessRouter, quoteRouter, rfqRouter } from './b2b/b2b.routes.js';
-import { conversationRouter } from './messaging/messaging.routes.js';
+import { businessRouter, negotiationRouter, quoteRouter, rfqRouter } from './b2b/b2b.routes.js';
+import { attachmentRouter, conversationRouter, messageRouter, messagingRouter } from './messaging/messaging.routes.js';
 import { pickupPointRouter } from './logistics/pickup.routes.js';
 import { returnRouter } from './returns/return.routes.js';
 import { supportRouter } from './support/support.routes.js';
@@ -73,6 +73,9 @@ toumaV1Router.get('/', (_req, res) =>
       rfqs: '/api/v1/rfqs',
       quotes: '/api/v1/quotes',
       conversations: '/api/v1/conversations',
+      messages: '/api/v1/messages',
+      messaging: '/api/v1/messaging',
+      negotiations: '/api/v1/negotiations',
       pickupPoints: '/api/v1/pickup-points',
       returns: '/api/v1/returns',
       support: '/api/v1/support',
@@ -108,6 +111,10 @@ toumaV1Router.use('/business', businessRouter);
 toumaV1Router.use('/rfqs', rfqRouter);
 toumaV1Router.use('/quotes', quoteRouter);
 toumaV1Router.use('/conversations', conversationRouter);
+toumaV1Router.use('/messages', messageRouter);
+toumaV1Router.use('/attachments', attachmentRouter);
+toumaV1Router.use('/messaging', messagingRouter);
+toumaV1Router.use('/negotiations', negotiationRouter);
 toumaV1Router.use('/pickup-points', pickupPointRouter);
 toumaV1Router.use('/returns', returnRouter);
 toumaV1Router.use('/support', supportRouter);

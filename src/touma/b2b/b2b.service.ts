@@ -3,10 +3,13 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { audit } from '../lib/audit.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
-import { assertSameCurrency, sum } from '../lib/money.js';
+import { applyRate, assertSameCurrency, sum } from '../lib/money.js';
 import { notify } from '../lib/notifications.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import { documentService } from '../documents/document.service.js';
+import { env } from '../../config/env.js';
+import { systemMessaging } from '../messaging/messaging.service.js';
+import { assertQuoteTransition, expireStaleQuotes, isTerminal, negotiationService } from './negotiation.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import type { CreateQuoteInput, CreateRfqInput, InviteSuppliersInput, ListRfqsQuery } from './b2b.schema.js';
 
@@ -321,17 +324,38 @@ export const b2bService = {
       return created;
     });
 
+    // L'offre ouvre sa propre conversation : acheteur et fournisseur y
+    // négocient, et la carte d'offre y figure comme premier message.
+    const conversation = await negotiationService.conversationForQuote(quote.id);
+    const card = await systemMessaging.post({
+      conversationId: conversation.id,
+      type: 'QUOTE',
+      authorId: user.id,
+      body: input.message?.trim() || `Offre ${quote.reference} : ${quote.total.toString()} ${quote.currency}, livraison sous ${quote.leadTimeDays} jours.`,
+      metadata: {
+        quoteId: quote.id,
+        reference: quote.reference,
+        currency: quote.currency,
+        itemsTotal: quote.itemsTotal.toString(),
+        shipping: quote.shippingTotal.toString(),
+        total: quote.total.toString(),
+        leadTimeDays: quote.leadTimeDays,
+        validUntil: quote.validUntil.toISOString(),
+      },
+    });
+    await systemMessaging.announce(conversation.id, 'offer.created', { messageId: card.id, quoteId: quote.id });
+
     await Promise.all([
       notify({
         userId: rfq.buyerId,
-        type: 'ORDER_STATUS_CHANGED',
+        type: 'OFFER_RECEIVED',
         title: 'Nouvelle offre reçue',
         body: `${store.name} a répondu à votre appel d’offres ${rfq.reference}.`,
-        data: { rfqId: rfq.id, quoteId: quote.id },
+        data: { rfqId: rfq.id, quoteId: quote.id, conversationId: conversation.id },
       }),
       audit({ actorId: user.id, action: 'quote.create', entity: 'ToumaQuote', entityId: quote.id, metadata: { rfqId: rfq.id } }),
     ]);
-    return serializeQuote(quote);
+    return { ...serializeQuote(quote), conversationId: conversation.id };
   },
 
   /** Offres émises par les boutiques du vendeur connecté. */
@@ -361,7 +385,7 @@ export const b2bService = {
     const isBuyer = quote.rfq.buyerId === user.id;
     const isSeller = quote.sellerId === user.id;
     if (!isBuyer && !isSeller && user.role !== 'ADMIN') throw notFound('Offre introuvable.');
-    if (['ACCEPTED', 'REJECTED', 'WITHDRAWN'].includes(quote.status)) throw conflict('Cette offre est close : la négociation est terminée.');
+    if (isTerminal(quote.status)) throw conflict('Cette offre est close : la négociation est terminée.');
     if (quote.validUntil.getTime() < Date.now()) throw conflict('Cette offre a expiré.');
 
     const message = await prisma.$transaction(async (tx) => {
@@ -375,27 +399,39 @@ export const b2bService = {
         },
       });
       if (input.kind === 'COUNTER_OFFER') {
-        // Une contre-proposition du **vendeur** ajuste le prix de son offre.
-        // Une contre-proposition de l'acheteur reste une demande à accepter.
-        await tx.toumaQuote.update({
-          where: { id: quote.id },
-          data: {
-            status: 'COUNTERED',
-            ...(isSeller && input.proposedTotal
-              ? { total: new Prisma.Decimal(input.proposedTotal), itemsTotal: new Prisma.Decimal(input.proposedTotal).minus(quote.shippingTotal) }
-              : {}),
-          },
-        });
+        // Une contre-proposition est enregistrée comme telle ; elle ne réécrit
+        // **jamais** les totaux de l'offre. En V13, le total du vendeur était
+        // recopié sans toucher aux lignes : la somme des lignes ne valait plus
+        // le sous-total, et la commande produite héritait de l'écart. Réviser
+        // une offre passe désormais par `/negotiations/:id/counter`, qui
+        // recalcule lignes et totaux ensemble.
+        assertQuoteTransition(quote.status, 'COUNTERED');
+        await tx.toumaQuote.update({ where: { id: quote.id }, data: { status: 'COUNTERED' } });
       }
       return created;
     });
 
+    // Le message rejoint la conversation de l'offre : une seule histoire.
+    const thread = await negotiationService.conversationForQuote(quote.id);
+    const posted = await systemMessaging.post({
+      conversationId: thread.id,
+      type: input.kind === 'COUNTER_OFFER' ? 'COUNTER_OFFER' : 'TEXT',
+      authorId: user.id,
+      body: input.body,
+      negotiationMessageId: message.id,
+      metadata: { quoteId: quote.id },
+    });
+    await systemMessaging.announce(thread.id, input.kind === 'COUNTER_OFFER' ? 'offer.created' : 'message.created', {
+      messageId: posted.id,
+      quoteId: quote.id,
+    });
+
     await notify({
       userId: isBuyer ? quote.sellerId : quote.rfq.buyerId,
-      type: 'ORDER_STATUS_CHANGED',
+      type: input.kind === 'COUNTER_OFFER' ? 'COUNTER_OFFER_RECEIVED' : 'MESSAGE_RECEIVED',
       title: input.kind === 'COUNTER_OFFER' ? 'Contre-proposition reçue' : 'Nouveau message sur une offre',
       body: `Offre ${quote.reference} — ${input.body.slice(0, 120)}`,
-      data: { quoteId: quote.id, rfqId: quote.rfqId },
+      data: { quoteId: quote.id, rfqId: quote.rfqId, conversationId: thread.id },
     });
     return {
       id: message.id,
@@ -420,8 +456,12 @@ export const b2bService = {
     if (!quote) throw notFound('Offre introuvable.');
     if (quote.rfq.buyerId !== user.id) throw forbidden('Seul l’auteur de l’appel d’offres peut accepter une offre.');
     if (quote.status === 'ACCEPTED') throw conflict('Cette offre a déjà été acceptée.');
-    if (['REJECTED', 'WITHDRAWN', 'EXPIRED'].includes(quote.status)) throw conflict('Cette offre n’est plus valable.');
-    if (quote.validUntil.getTime() < Date.now()) throw conflict('Cette offre a expiré : demandez au fournisseur de la renouveler.');
+    if (isTerminal(quote.status)) throw conflict('Cette offre n’est plus valable.');
+    if (quote.validUntil.getTime() < Date.now()) {
+      await expireStaleQuotes();
+      throw conflict('Cette offre a expiré : demandez au fournisseur de la renouveler.');
+    }
+    assertQuoteTransition(quote.status, 'ACCEPTED');
 
     const address = await prisma.toumaAddress.findFirst({ where: { id: addressId, userId: user.id }, include: { country: true } });
     if (!address) throw notFound('Adresse de livraison introuvable.');
@@ -453,7 +493,9 @@ export const b2bService = {
         },
       });
 
-      const commissionRate = new Prisma.Decimal(String(process.env.TOUMA_COMMISSION_RATE ?? 0.05));
+      // Commission lue au même endroit que le checkout : deux chemins de
+      // commande, un seul calcul.
+      const commissionTotal = applyRate(quote.itemsTotal, env.touma.commissionRate, quote.currency);
       const order = await tx.toumaOrder.create({
         data: {
           orderNumber: reference('TM'),
@@ -463,7 +505,7 @@ export const b2bService = {
           currency: quote.currency,
           subtotal: quote.itemsTotal,
           shippingTotal: quote.shippingTotal,
-          commissionTotal: quote.itemsTotal.times(commissionRate).toDecimalPlaces(4),
+          commissionTotal,
           total: quote.total,
           shippingAddressId: address.id,
           shippingSnapshot: shippingSnapshot as object,
@@ -484,10 +526,13 @@ export const b2bService = {
         },
       });
 
-      await tx.toumaQuote.update({
-        where: { id: quote.id },
+      // Mise à jour **conditionnelle** : deux acceptations simultanées ne
+      // peuvent pas produire deux commandes pour une seule offre.
+      const claimed = await tx.toumaQuote.updateMany({
+        where: { id: quote.id, status: { in: ['SUBMITTED', 'COUNTERED'] } },
         data: { status: 'ACCEPTED', acceptedAt: new Date(), orderGroupId: group.id },
       });
+      if (claimed.count === 0) throw conflict('Cette offre vient d’être tranchée par ailleurs.');
       // Les offres concurrentes sont refusées : l'appel d'offres est attribué.
       await tx.toumaQuote.updateMany({
         where: { rfqId: quote.rfqId, id: { not: quote.id }, status: { in: ['SUBMITTED', 'COUNTERED'] } },
@@ -504,13 +549,35 @@ export const b2bService = {
     // Bon de commande : il émane de l'acheteur, qui est celui qui commande.
     await documentService.issuePurchaseOrderForQuote(quote.id);
 
+    // La négociation se clôt par un fait, écrit dans son fil ; le suivi se
+    // poursuit dans la conversation de la commande.
+    await negotiationService.postSystem(quote.id, `Offre acceptée : commande ${created.order.orderNumber} créée, en attente de paiement.`);
+    const orderThread = await systemMessaging.ensureConversation({
+      kind: 'ORDER',
+      subject: `Commande ${created.order.orderNumber}`,
+      storeId: quote.storeId,
+      orderId: created.order.id,
+      createdById: user.id,
+      participants: [
+        { userId: user.id, role: 'BUYER' },
+        { userId: quote.sellerId, role: 'SELLER' },
+      ],
+    });
+    const orderMessage = await systemMessaging.post({
+      conversationId: orderThread.id,
+      type: 'ORDER_UPDATE',
+      body: `Commande ${created.order.orderNumber} créée à partir de l'offre ${quote.reference} — ${created.group.total.toString()} ${created.group.currency}.`,
+      metadata: { orderId: created.order.id, quoteId: quote.id, status: 'PENDING' },
+    });
+    await systemMessaging.announce(orderThread.id, 'offer.accepted', { messageId: orderMessage.id, orderId: created.order.id });
+
     await Promise.all([
       notify({
         userId: quote.sellerId,
-        type: 'NEW_ORDER_FOR_SELLER',
+        type: 'OFFER_ACCEPTED',
         title: 'Offre acceptée',
         body: `Votre offre ${quote.reference} a été acceptée : commande ${created.order.orderNumber} en attente de paiement.`,
-        data: { quoteId: quote.id, orderId: created.order.id },
+        data: { quoteId: quote.id, orderId: created.order.id, conversationId: orderThread.id },
       }),
       audit({
         actorId: user.id,
@@ -526,6 +593,7 @@ export const b2bService = {
       orderGroupId: created.group.id,
       orderId: created.order.id,
       orderNumber: created.order.orderNumber,
+      conversationId: orderThread.id,
       total: created.group.total.toString(),
       currency: created.group.currency,
     };
@@ -562,16 +630,37 @@ export const b2bService = {
         data: fresh.map((s) => ({ rfqId: rfq.id, storeId: s.id, invitedById: user.id, message: input.message })),
         skipDuplicates: true,
       });
+      // Chaque fournisseur sollicité reçoit **son** fil : l'acheteur négocie en
+      // parallèle sans que les concurrents se croisent.
+      const business = await prisma.toumaBusinessProfile.findUnique({ where: { userId: user.id }, select: { id: true } });
       await Promise.all(
-        fresh.map((store) =>
-          notify({
+        fresh.map(async (store) => {
+          const thread = await systemMessaging.ensureConversation({
+            kind: 'RFQ',
+            subject: `Appel d'offres — ${rfq.title}`,
+            storeId: store.id,
+            rfqId: rfq.id,
+            createdById: user.id,
+            participants: [
+              { userId: user.id, role: 'BUYER', businessProfileId: business?.id ?? null },
+              { userId: store.ownerId, role: 'SELLER' },
+            ],
+          });
+          const posted = await systemMessaging.post({
+            conversationId: thread.id,
+            type: 'SYSTEM',
+            body: `${rfq.title} — vous êtes sollicité pour proposer une offre (${rfq.reference}).${input.message ? ` « ${input.message} »` : ''}`,
+            metadata: { rfqId: rfq.id, reference: rfq.reference },
+          });
+          await systemMessaging.announce(thread.id, 'message.created', { messageId: posted.id, rfqId: rfq.id });
+          await notify({
             userId: store.ownerId,
-            type: 'NEW_ORDER_FOR_SELLER',
+            type: 'RFQ_UPDATE',
             title: 'Un acheteur vous sollicite',
             body: `${rfq.title} — vous êtes invité à proposer une offre (${rfq.reference}).`,
-            data: { rfqId: rfq.id, reference: rfq.reference, storeId: store.id },
-          }),
-        ),
+            data: { rfqId: rfq.id, reference: rfq.reference, storeId: store.id, conversationId: thread.id },
+          });
+        }),
       );
       await audit({
         actorId: user.id,
@@ -594,27 +683,12 @@ export const b2bService = {
     };
   },
 
-  /** Refus explicite d'une offre par l'acheteur. */
+  /**
+   * Refus explicite d'une offre. Délégué au moteur de négociation pour qu'il
+   * n'existe qu'un seul chemin de refus, transactionnel et tracé.
+   */
   async rejectQuote(user: ToumaRequestUser, quoteId: string, reason?: string) {
-    const quote = await prisma.toumaQuote.findUnique({ where: { id: quoteId }, include: { rfq: true } });
-    if (!quote) throw notFound('Offre introuvable.');
-    if (quote.rfq.buyerId !== user.id) throw forbidden('Seul l’auteur de l’appel d’offres peut refuser une offre.');
-    if (['ACCEPTED', 'REJECTED'].includes(quote.status)) throw conflict('Cette offre est déjà tranchée.');
-
-    const updated = await prisma.$transaction(async (tx) => {
-      const q = await tx.toumaQuote.update({ where: { id: quote.id }, data: { status: 'REJECTED' } });
-      await tx.toumaNegotiationMessage.create({
-        data: { quoteId: quote.id, authorId: user.id, kind: 'REJECT', body: reason ?? 'Offre non retenue.' },
-      });
-      return q;
-    });
-    await notify({
-      userId: quote.sellerId,
-      type: 'ORDER_STATUS_CHANGED',
-      title: 'Offre non retenue',
-      body: `Votre offre ${quote.reference} n’a pas été retenue.`,
-      data: { quoteId: quote.id },
-    });
-    return { id: updated.id, status: updated.status };
+    const result = await negotiationService.reject(user, quoteId, reason);
+    return { id: result.quoteId, status: result.status };
   },
 };

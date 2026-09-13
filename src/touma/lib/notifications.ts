@@ -18,7 +18,51 @@ export type NotificationType =
   | 'VERIFICATION_REJECTED'
   | 'DISPUTE_OPENED'
   | 'DISPUTE_RESOLVED'
-  | 'NEW_ORDER_FOR_SELLER';
+  | 'NEW_ORDER_FOR_SELLER'
+  // ── Messagerie et négociation (V14) ──────────────────────────────────────
+  | 'MESSAGE_RECEIVED'
+  | 'MESSAGE_REPLY'
+  | 'ATTACHMENT_RECEIVED'
+  | 'OFFER_RECEIVED'
+  | 'COUNTER_OFFER_RECEIVED'
+  | 'OFFER_ACCEPTED'
+  | 'OFFER_REJECTED'
+  | 'NEGOTIATION_EXPIRING'
+  | 'NEGOTIATION_EXPIRED'
+  | 'RFQ_UPDATE'
+  | 'ORDER_UPDATE';
+
+/**
+ * Catégories de préférence. Elles regroupent les types : un utilisateur coupe
+ * « les messages », pas « MESSAGE_REPLY ».
+ */
+export type NotificationCategory = 'MESSAGES' | 'NEGOTIATION' | 'RFQ' | 'ORDERS' | 'MARKETING';
+
+const CATEGORY_BY_TYPE: Partial<Record<NotificationType, NotificationCategory>> = {
+  MESSAGE_RECEIVED: 'MESSAGES',
+  MESSAGE_REPLY: 'MESSAGES',
+  ATTACHMENT_RECEIVED: 'MESSAGES',
+  OFFER_RECEIVED: 'NEGOTIATION',
+  COUNTER_OFFER_RECEIVED: 'NEGOTIATION',
+  OFFER_ACCEPTED: 'NEGOTIATION',
+  OFFER_REJECTED: 'NEGOTIATION',
+  NEGOTIATION_EXPIRING: 'NEGOTIATION',
+  NEGOTIATION_EXPIRED: 'NEGOTIATION',
+  RFQ_UPDATE: 'RFQ',
+  ORDER_CREATED: 'ORDERS',
+  ORDER_STATUS_CHANGED: 'ORDERS',
+  ORDER_UPDATE: 'ORDERS',
+  NEW_ORDER_FOR_SELLER: 'ORDERS',
+  PAYMENT_SUCCEEDED: 'ORDERS',
+  PAYMENT_FAILED: 'ORDERS',
+  SHIPMENT_CREATED: 'ORDERS',
+  SHIPMENT_UPDATED: 'ORDERS',
+};
+
+/** Catégorie d'un type de notification (par défaut : ORDERS, jamais MARKETING). */
+export function categoryOf(type: NotificationType): NotificationCategory {
+  return CATEGORY_BY_TYPE[type] ?? 'ORDERS';
+}
 
 export interface NotificationInput {
   userId: string;
@@ -50,7 +94,29 @@ export function registerNotificationChannel(channel: NotificationChannel): void 
  * métier qui a déclenché la notification.
  */
 export async function notify(input: NotificationInput): Promise<void> {
-  const requested = input.channels?.length ? input.channels : ['IN_APP'];
+  const category = categoryOf(input.type);
+  // Préférences : l'absence d'enregistrement vaut « in-app oui, e-mail non ».
+  let preference: { inApp: boolean; email: boolean } | null = null;
+  try {
+    preference = await prisma.toumaNotificationPreference.findUnique({
+      where: { userId_category: { userId: input.userId, category } },
+      select: { inApp: true, email: true },
+    });
+  } catch (err) {
+    logger.warn('Préférences de notification illisibles', { err: err instanceof Error ? err.message : String(err) });
+  }
+
+  const inApp = preference?.inApp ?? true;
+  const email = preference?.email ?? false;
+  const requested = input.channels?.length ? input.channels : [...(inApp ? ['IN_APP'] : []), ...(email ? ['EMAIL'] : [])];
+  if (requested.length === 0) return;
+
+  if (!inApp && !input.channels?.length) {
+    // Canal in-app coupé : on ne persiste pas, on laisse les autres canaux faire.
+    await deliverToChannels(requested, input);
+    return;
+  }
+
   try {
     await prisma.toumaNotification.create({
       data: {
@@ -66,6 +132,11 @@ export async function notify(input: NotificationInput): Promise<void> {
     logger.error('Notification non enregistrée', { type: input.type, err: err instanceof Error ? err.message : String(err) });
   }
 
+  await deliverToChannels(requested, input);
+}
+
+/** Transmet aux canaux enregistrés ; un canal en échec n'annule jamais le métier. */
+async function deliverToChannels(requested: string[], input: NotificationInput): Promise<void> {
   await Promise.all(
     channels
       .filter((c) => requested.includes(c.code) && c.supports(input))

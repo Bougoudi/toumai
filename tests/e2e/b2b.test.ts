@@ -147,30 +147,75 @@ describe('TOUMA Business — de l’appel d’offres à la commande', () => {
     assert.ok(Number(asBuyer.body.quotes[0].total) <= Number(asBuyer.body.quotes[1].total));
   });
 
-  it('7. l’acheteur négocie et le fournisseur ajuste son offre', async () => {
+  it('7. l’acheteur négocie et le fournisseur révise son offre, lignes comprises', async () => {
+    // L'acheteur demande : sa contre-proposition ne modifie pas l'offre.
     const ask = await api.post(
-      `/api/v1/quotes/${quoteCm.id}/messages`,
-      { kind: 'COUNTER_OFFER', body: 'Pouvez-vous descendre à 1 400 000 XAF tout compris ?', proposedTotal: '1400000' },
+      `/api/v1/negotiations/${quoteCm.id}/counter`,
+      {
+        items: [{ name: 'Fèves de cacao', quantity: 500, unit: 'kg', unitPrice: '2700' }],
+        shippingTotal: '50000',
+        leadTimeDays: 21,
+        note: 'Pouvez-vous descendre à 2 700 XAF le kilo ?',
+      },
       buyer.accessToken,
     );
     assert.equal(ask.status, 201);
+    assert.equal(ask.body.total, '1400000', 'le serveur calcule le total : 500 × 2 700 + 50 000');
+    assert.equal(ask.body.appliedToQuote, false, 'une demande de l’acheteur ne réécrit pas l’offre');
 
+    const untouched = await prisma.toumaQuote.findUniqueOrThrow({ where: { id: quoteCm.id } });
+    assert.equal(untouched.total.toString(), quoteCm.total, 'l’offre du fournisseur est intacte');
+
+    // Le fournisseur révise : lignes, sous-total et total bougent ensemble.
     const answer = await api.post(
-      `/api/v1/quotes/${quoteCm.id}/messages`,
-      { kind: 'COUNTER_OFFER', body: 'Accord pour 1 420 000 XAF livré.', proposedTotal: '1420000' },
+      `/api/v1/negotiations/${quoteCm.id}/counter`,
+      {
+        items: [{ name: 'Fèves de cacao', quantity: 500, unit: 'kg', unitPrice: '2740' }],
+        shippingTotal: '50000',
+        leadTimeDays: 21,
+        note: 'Accord pour 2 740 XAF le kilo, livré.',
+      },
       sellerCm.accessToken,
     );
     assert.equal(answer.status, 201);
+    assert.equal(answer.body.total, '1420000');
+    assert.equal(answer.body.appliedToQuote, true);
 
-    const quote = await prisma.toumaQuote.findUniqueOrThrow({ where: { id: quoteCm.id } });
+    const quote = await prisma.toumaQuote.findUniqueOrThrow({ where: { id: quoteCm.id }, include: { items: true } });
     assert.equal(quote.status, 'COUNTERED');
-    assert.equal(quote.total.toString(), '1420000', 'la contre-proposition du vendeur ajuste le prix');
+    assert.equal(quote.total.toString(), '1420000', 'la révision du vendeur ajuste le prix');
+    // L'invariant que la V13 violait : la somme des lignes vaut le sous-total.
+    const linesTotal = quote.items.reduce((acc, i) => acc + Number(i.lineTotal), 0);
+    assert.equal(linesTotal, Number(quote.itemsTotal), 'la somme des lignes vaut le sous-total');
+    assert.equal(Number(quote.itemsTotal) + Number(quote.shippingTotal), Number(quote.total));
+  });
+
+  it('7 bis. la négociation vit dans une conversation, avec sa chronologie', async () => {
+    const view = await api.get(`/api/v1/negotiations/${quoteCm.id}`, buyer.accessToken);
+    assert.equal(view.status, 200);
+    assert.ok(view.body.conversationId, 'l’offre a son fil de discussion');
+    assert.ok(view.body.timeline.length >= 2, 'chaque proposition laisse une trace');
+    assert.equal(view.body.permissions.canAccept, true);
+
+    const thread = await api.get(`/api/v1/conversations/${view.body.conversationId}/messages`, sellerCm.accessToken);
+    assert.equal(thread.status, 200);
+    const offerCards = thread.body.items.filter((m: any) => m.offer);
+    assert.ok(offerCards.length >= 2, 'les propositions apparaissent comme des cartes d’offre');
+    assert.equal(offerCards.at(-1).offer.total, '1420000');
   });
 
   it('8. un tiers ne peut ni lire ni écrire dans la négociation', async () => {
     const intruder = await registerUser(api, { name: 'Curieux', email: uniqueEmail('curieux'), role: 'BUYER', countryCode: 'TD' });
     const res = await api.post(`/api/v1/quotes/${quoteCm.id}/messages`, { body: 'Bonjour' }, intruder.accessToken);
     assert.equal(res.status, 404, 'réponse identique à « inexistant » : aucune fuite');
+    const view = await api.get(`/api/v1/negotiations/${quoteCm.id}`, intruder.accessToken);
+    assert.equal(view.status, 404);
+    const counter = await api.post(
+      `/api/v1/negotiations/${quoteCm.id}/counter`,
+      { items: [{ name: 'Cacao', quantity: 10, unit: 'kg', unitPrice: '1' }], shippingTotal: '0', leadTimeDays: 5 },
+      intruder.accessToken,
+    );
+    assert.equal(counter.status, 404);
   });
 
   it('9. l’acceptation crée une vraie commande payable', async () => {
@@ -215,6 +260,17 @@ describe('TOUMA Business — de l’appel d’offres à la commande', () => {
   it('11. une offre acceptée ne peut plus être renégociée', async () => {
     const res = await api.post(`/api/v1/quotes/${quoteCm.id}/messages`, { body: 'Encore une remise ?' }, buyer.accessToken);
     assert.equal(res.status, 409);
+
+    // La machine d'état refuse la transition, quel que soit le chemin emprunté.
+    const counter = await api.post(
+      `/api/v1/negotiations/${quoteCm.id}/counter`,
+      { items: [{ name: 'Fèves de cacao', quantity: 500, unit: 'kg', unitPrice: '2600' }], shippingTotal: '50000', leadTimeDays: 21 },
+      buyer.accessToken,
+    );
+    assert.equal(counter.status, 409);
+
+    const reAccept = await api.post(`/api/v1/quotes/${quoteCm.id}/accept`, { addressId: buyer.addressId }, buyer.accessToken);
+    assert.equal(reAccept.status, 409, 'une offre acceptée ne se réaccepte pas');
   });
 
   it('12. le fournisseur retrouve son offre et la commande gagnée', async () => {
