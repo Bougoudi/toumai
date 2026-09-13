@@ -149,7 +149,7 @@ y figure, et aucune issue ne revient en arrière.
 
 ## Ce qui est garanti par les tests
 
-**378 tests** au total (88 unitaires, 257 d'intégration, 33 de bout en bout), 19
+**379 tests** au total (89 unitaires, 257 d'intégration, 33 de bout en bout), 20
 ajoutés par cette version.
 
 - une preuve déclarée par URL est **refusée** (400) ;
@@ -169,7 +169,9 @@ ajoutés par cette version.
 - rejouer le balayage n'escalade pas deux fois ;
 - l'instantané de résolution contient l'empreinte des pièces retenues ;
 - une résolution ne se réécrit pas (409), et personne ne tranche son propre
-  litige (403).
+  litige (403) ;
+- la machine d'état des retours déclare une transition pour **chaque** statut, et
+  aucune issue ne repart en arrière.
 
 ---
 
