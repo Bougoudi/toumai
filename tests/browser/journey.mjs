@@ -17,7 +17,21 @@
  * Les captures sont écrites dans SCR (défaut : ./.captures).
  */
 import { mkdir } from 'node:fs/promises';
-import { chromium } from 'playwright';
+
+// Playwright est installé à la demande : sans lui, Node ne renvoie qu'une trace
+// « ERR_MODULE_NOT_FOUND » qui n'apprend rien. Autant dire quoi faire.
+let chromium;
+try {
+  ({ chromium } = await import('playwright'));
+} catch {
+  console.error(
+    'Playwright est absent. Installez-le puis relancez :\n' +
+      '  npm i -D playwright && npx playwright install chromium\n' +
+      "  npm run dev            # l'application doit tourner dans un autre terminal\n" +
+      '  npm run test:browser',
+  );
+  process.exit(1);
+}
 
 const BASE = (process.env.TOUMA_URL ?? 'http://127.0.0.1:3000/touma/').replace(/\/$/, '');
 const OUT = process.env.SCR ?? '.captures';
