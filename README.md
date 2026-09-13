@@ -34,9 +34,22 @@ uniquement) : `admin@touma.dev`, `vendeur.td@touma.dev`, `vendeur.cm@touma.dev`,
 `acheteur@touma.dev`.
 
 ```bash
-npm test              # 234 tests : unitaires, intégration et parcours complet (Node ≥ 22)
+npm test              # 322 tests : unitaires, intégration et parcours complet (Node ≥ 22)
 npm run typecheck     # TypeScript strict
+npm run test:browser  # 56 vérifications navigateur, de 360 à 1440 px (Chromium)
 ```
+
+## Mettre TOUMA en ligne
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Trois chemins détaillés — Render en un clic, Docker Compose sur un VPS, ou Node
+sans conteneur — avec les secrets à générer, le HTTPS, les sauvegardes et les
+deux pièges qui coûtent cher (les pièces jointes qui ne survivent pas à un
+redéploiement, la sonde de santé branchée sur la mauvaise route) :
+**[`docs/touma-mise-en-ligne.md`](docs/touma-mise-en-ligne.md)**.
 
 📘 **Documentation complète de la place de marché :
 [`docs/touma-marketplace.md`](docs/touma-marketplace.md)** — architecture,
@@ -293,6 +306,7 @@ les commandes des canaux connectés toutes les 5 minutes.
 - [`docs/architecture.md`](docs/architecture.md) — architecture, modèle de données, algorithmes
 - [`docs/api.md`](docs/api.md) — référence complète des endpoints
 - [`docs/user-flow.md`](docs/user-flow.md) — flux utilisateur principal
+- [`docs/touma-mise-en-ligne.md`](docs/touma-mise-en-ligne.md) — mettre la place de marché en ligne
 
 ## Scripts npm
 

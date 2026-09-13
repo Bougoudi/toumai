@@ -1,82 +1,124 @@
-# Blueprint Render — déploiement en un clic de Toumai (serveur + PostgreSQL).
-# Sur https://dashboard.render.com : « New » → « Blueprint » → connecte ce dépôt.
-# Render lit ce fichier, crée la base et le service, et te demande les valeurs
-# marquées « sync: false » (URL publique, e-mail admin, clés Stripe...).
+# Blueprint Render — mise en ligne de TOUMA en un clic (serveur + PostgreSQL).
+#
+# Sur https://dashboard.render.com : « New » → « Blueprint » → connecter ce dépôt.
+# Render lit ce fichier, crée la base et le service, et demande les valeurs
+# marquées « sync: false » (URL publique, compte administrateur…).
+#
+# Trois choses à savoir avant de cliquer :
+#
+#   • Le disque persistant n'est pas un confort. Sans lui, les pièces jointes de
+#     la messagerie — factures, photos de lots, listes de prix — disparaissent au
+#     redéploiement suivant. Deux solutions, une seule à choisir : le disque
+#     ci-dessous, ou un stockage compatible S3 (S3_ENDPOINT & co.), auquel cas le
+#     disque ne sert plus à rien.
+#   • La sonde de santé pointe sur /ready, pas sur /health : /health répond « je
+#     suis debout », /ready répond « la base me répond ». Déployer sur la
+#     première mettrait en ligne un service incapable de servir une page.
+#   • Aucune donnée de démonstration n'est créée. Le premier administrateur naît
+#     de ADMIN_EMAIL / ADMIN_PASSWORD, au tout premier démarrage, et seulement si
+#     la base est encore vide.
 
 databases:
-  - name: toumai-db
-    databaseName: toumai
-    user: toumai
-    plan: basic-256mb # « free » pour tester (expire après 30 j) ; « basic » pour la prod
+  - name: touma-db
+    databaseName: touma
+    user: touma
+    plan: basic-256mb # « free » pour essayer (expire après 30 j) ; « basic » en réel
 
 services:
   - type: web
-    name: toumai
+    name: touma
     runtime: docker
-    plan: starter # ~7 $/mois, toujours actif (nécessaire pour le pilote automatique)
-    healthCheckPath: /health
+    plan: starter # ~7 $/mois, toujours actif
+    healthCheckPath: /ready
     autoDeploy: true
+    disk:
+      name: touma-fichiers
+      mountPath: /data
+      sizeGB: 5
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: toumai-db
+          name: touma-db
           property: connectionString
       - key: NODE_ENV
         value: production
-      # Mode RÉEL : aucune donnée simulée. Seules les vraies ventes / paiements /
-      # sources connectées alimentent l'appli. (Mettre "true" pour re-tester en démo.)
-      - key: DEMO_MODE
-        value: "false"
-      # Devise par défaut (Turquie : TRY). Modifiable dans le tableau de bord.
-      - key: DEFAULT_CURRENCY
-        value: TRY
-      # Secrets générés automatiquement par Render (longs et aléatoires).
+      - key: PORT
+        value: "3000"
+
+      # ── Secrets, générés par Render (longs et aléatoires) ──────────────────
       - key: JWT_SECRET
         generateValue: true
       - key: ENCRYPTION_KEY
         generateValue: true
-      # Place de marché Touma : secrets distincts pour les jetons d'accès et de
-      # rafraîchissement, et pour la signature des webhooks de paiement.
       - key: JWT_ACCESS_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: TOUMA_PAYMENT_WEBHOOK_SECRET
         generateValue: true
+
+      # ── Place de marché ────────────────────────────────────────────────────
+      # Corridor pilote Tchad ↔ Cameroun : les deux pays partagent le franc CFA
+      # d'Afrique centrale. Aucune conversion entre devises n'est faite tant
+      # qu'aucun taux officiel n'est raccordé.
+      - key: TOUMA_DEFAULT_CURRENCY
+        value: XAF
       # Commission de la place de marché (0.05 = 5 %), ajustable sans redéploiement.
       - key: TOUMA_COMMISSION_RATE
         value: "0.05"
-      # À renseigner dans le tableau de bord Render :
-      - key: PUBLIC_URL # ex. https://toumai.onrender.com (puis ton domaine)
+      # Pièces jointes sur le disque persistant monté ci-dessus.
+      - key: TOUMA_ATTACHMENT_DIR
+        value: /data/touma-attachments
+
+      # Le pilote automatique du logiciel d'automatisation historique reste éteint.
+      - key: ENABLE_SCHEDULER
+        value: "false"
+      - key: AUTOPILOT_RUN_ON_START
+        value: "false"
+      - key: DEMO_MODE
+        value: "false"
+
+      # ── À renseigner dans le tableau de bord Render ────────────────────────
+      - key: PUBLIC_URL # ex. https://touma.onrender.com, puis votre domaine
         sync: false
-      - key: ADMIN_EMAIL # ton e-mail (crée le compte admin au 1er démarrage)
+      - key: ADMIN_EMAIL # crée le compte administrateur au 1er démarrage
         sync: false
-      - key: ADMIN_PASSWORD # ton mot de passe admin (≥ 10 caractères)
+      - key: ADMIN_PASSWORD # ≥ 10 caractères
         sync: false
-      # Paiement carte — iyzico (Turquie). Commence en sandbox (gratuit) :
-      #   IYZICO_URI = https://sandbox-api.iyzipay.com  (puis https://api.iyzipay.com en réel)
-      - key: IYZICO_API_KEY
+
+      # ── Identité légale portée sur les reçus de paiement ───────────────────
+      # Tant qu'elle n'est pas renseignée, le document le dit plutôt que
+      # d'inventer une raison sociale ou un numéro d'immatriculation.
+      - key: TOUMA_COMPANY_NAME
         sync: false
-      - key: IYZICO_SECRET_KEY
+      - key: TOUMA_COMPANY_LEGAL_NAME
         sync: false
-      - key: IYZICO_URI
+      - key: TOUMA_COMPANY_REGISTRATION_NO
         sync: false
-      # Paiement carte — Stripe (Europe, facultatif) :
-      - key: STRIPE_SECRET_KEY
+      - key: TOUMA_COMPANY_TAX_ID
         sync: false
-      - key: STRIPE_WEBHOOK_SECRET
+      - key: TOUMA_COMPANY_ADDRESS
         sync: false
-      # Connexions marketplaces (facultatif) :
-      - key: ETSY_API_KEY
+      - key: TOUMA_COMPANY_COUNTRY
         sync: false
-      - key: EBAY_CLIENT_ID
+      - key: TOUMA_COMPANY_EMAIL
         sync: false
-      - key: EBAY_CLIENT_SECRET
+
+      # ── Stockage objet compatible S3 (facultatif) ──────────────────────────
+      # Renseigné, il remplace le disque local pour les pièces jointes. Le bucket
+      # doit rester PRIVÉ : TOUMA lit les fichiers côté serveur et les sert
+      # derrière sa propre URL signée, jamais par une URL présignée.
+      - key: S3_ENDPOINT
         sync: false
-      # Recherche de produits AliExpress (« Trouver des produits ») :
-      - key: ALIEXPRESS_APP_KEY
+      - key: S3_BUCKET
         sync: false
-      - key: ALIEXPRESS_APP_SECRET
+      - key: S3_ACCESS_KEY
         sync: false
-      - key: ALIEXPRESS_TRACKING_ID
+      - key: S3_SECRET_KEY
+        sync: false
+
+      # ── Envoi d'e-mails (facultatif) ───────────────────────────────────────
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
         sync: false
