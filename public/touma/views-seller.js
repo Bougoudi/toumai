@@ -356,7 +356,7 @@ export async function productForm(params) {
 export async function orders(_params, query) {
   const status = query.get('statut');
   const result = await api(`/orders?scope=seller&limit=50${status ? `&status=${status}` : ''}`);
-  const filters = ['', 'PAID', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'COMPLETED'];
+  const filters = ['', 'PAID', 'PROCESSING', 'READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'COMPLETED'];
 
   return `
     <h1 style="font-size:var(--text-xl)">Commandes reçues</h1>
@@ -442,9 +442,14 @@ export async function order(params) {
                </div>
                <button class="btn btn-block" data-update-shipment="${esc(shipment.id)}">Mettre à jour le suivi</button>
                <div class="mt-6">${trackingTimeline(shipment.events)}</div>`
-            : ['PAID', 'CONFIRMED', 'PROCESSING'].includes(o.status)
+            : ['PAID', 'CONFIRMED', 'PROCESSING', 'READY_TO_SHIP'].includes(o.status)
               ? `<p class="small muted">TOUMA interroge les transporteurs, génère l'étiquette et le numéro de suivi.</p>
-                 <button class="btn btn-accent btn-block" data-create-shipment="${esc(o.id)}">Créer l'expédition</button>`
+                 <button class="btn btn-accent btn-block" data-create-shipment="${esc(o.id)}">Créer l'expédition</button>
+                 ${
+                   o.status === 'READY_TO_SHIP'
+                     ? '<p class="small muted mt-4">Colis signalé prêt : l’acheteur sait que vous attendez le transporteur.</p>'
+                     : `<button class="btn btn-secondary btn-block mt-4" data-order-ready="${esc(o.id)}">Colis prêt, transporteur pas encore passé</button>`
+                 }`
               : '<p class="small muted">L’expédition sera possible une fois la commande payée.</p>'}
         </section>
       </aside>

@@ -716,8 +716,17 @@ document.addEventListener('click', (event) => {
   }
   if (d.completeOrder) {
     return run(async () => {
-      await api(`/orders/${d.completeOrder}/status`, { method: 'PATCH', body: { status: 'COMPLETED' } });
+      // Action nommée : « je confirme avoir reçu » se relit dans le journal,
+      // « statut = COMPLETED » demande d'y réfléchir.
+      await api(`/orders/${d.completeOrder}/confirm-delivery`, { method: 'POST', body: {} });
       toast('Réception confirmée. Merci !', 'success');
+      await render();
+    });
+  }
+  if (d.orderReady) {
+    return run(async () => {
+      await api(`/orders/${d.orderReady}/ready-to-ship`, { method: 'POST', body: {} });
+      toast('Colis signalé prêt : l’acheteur voit que vous attendez le transporteur.', 'success');
       await render();
     });
   }

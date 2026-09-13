@@ -91,7 +91,15 @@ son colis mais dont le transporteur passait le lendemain n'avait que deux choix 
 rester en « préparation » (l'acheteur croit que rien n'avance) ou déclarer
 « expédié » (c'est faux, et ça fait courir le délai de livraison).
 
-`READY_TO_SHIP` s'intercale. Les transitions en arrière restent refusées, en 409.
+`READY_TO_SHIP` s'intercale — et la machine l'accepte depuis `PAID` comme depuis
+`PROCESSING`. C'est le parcours navigateur qui l'a imposé : le bouton s'affichait
+sur une commande payée, et le serveur répondait 409. Un vendeur qui emballe tout
+de suite ne doit pas cliquer trois fois pour le dire. Vers l'avant la machine est
+permissive, vers l'arrière elle ne cède jamais.
+
+Côté vendeur, le bouton « Colis prêt, transporteur pas encore passé » apparaît
+dans le détail de la commande, à côté de la création d'expédition — et disparaît
+une fois l'état atteint plutôt que de proposer une action sans effet.
 
 ## 4. Paliers de prix B2B
 

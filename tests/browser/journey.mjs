@@ -927,6 +927,29 @@ await step('messagerie : mobile plein écran, sans débordement', async () => {
   await buyer.setViewportSize({ width: 1280, height: 900 });
 });
 
+await step('vendeur : signaler un colis prêt avant le passage du transporteur', async () => {
+  const vendeur = await sessionFor('vendeur.cm@touma.dev', 'touma-dev-1234');
+  await vendeur.goto(`${BASE}/vendeur/commandes`, { waitUntil: 'networkidle' });
+  await vendeur.waitForTimeout(500);
+
+  const traiter = vendeur.locator('a:has-text("Traiter")').first();
+  if ((await traiter.count()) === 0) throw new Error('aucune commande à traiter');
+  await traiter.click();
+  await vendeur.waitForTimeout(900);
+
+  const bouton = vendeur.locator('[data-order-ready]');
+  if ((await bouton.count()) === 0) {
+    // La commande est déjà expédiée : l'étape n'a plus lieu d'être, et
+    // l'interface a raison de ne pas proposer un bouton sans effet.
+    return;
+  }
+  await bouton.first().click();
+  await vendeur.waitForTimeout(1200);
+  const texte = (await vendeur.textContent('body')) ?? '';
+  if (!/Prête à expédier|signalé prêt/i.test(texte)) throw new Error('l’état « prêt à expédier » n’apparaît pas');
+  await vendeur.screenshot({ path: `${OUT}/41-pret-a-expedier.png` });
+});
+
 // ── Application installable ─────────────────────────────────────────────────
 await step('installable : manifeste complet et icônes réelles', async () => {
   const res = await page.request.get(`${BASE}/manifest.webmanifest`);

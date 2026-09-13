@@ -16,8 +16,11 @@ import type { ListOrdersQuery } from './order.schema.js';
  */
 const TRANSITIONS: Record<ToumaOrderStatus, ToumaOrderStatus[]> = {
   PENDING: ['PAID', 'CANCELLED'],
-  PAID: ['CONFIRMED', 'PROCESSING', 'CANCELLED', 'REFUNDED', 'DISPUTED'],
-  CONFIRMED: ['PROCESSING', 'CANCELLED', 'DISPUTED'],
+  // Vers l'avant, la machine est permissive : un vendeur qui emballe tout de
+  // suite ne doit pas cliquer trois fois pour le dire. Vers l'arrière, elle ne
+  // cède jamais.
+  PAID: ['CONFIRMED', 'PROCESSING', 'READY_TO_SHIP', 'CANCELLED', 'REFUNDED', 'DISPUTED'],
+  CONFIRMED: ['PROCESSING', 'READY_TO_SHIP', 'CANCELLED', 'DISPUTED'],
   // Le colis peut partir directement, ou attendre le passage du transporteur.
   PROCESSING: ['READY_TO_SHIP', 'SHIPPED', 'CANCELLED', 'DISPUTED'],
   READY_TO_SHIP: ['SHIPPED', 'CANCELLED', 'DISPUTED'],
