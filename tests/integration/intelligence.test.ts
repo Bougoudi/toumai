@@ -104,6 +104,30 @@ describe('Tableau de bord Intelligence', () => {
     assert.ok(res.body.demand.topSearches.every((s: any) => s.averageResults !== undefined));
   });
 
+  it('garde la demande la plus récente quand tous les termes ont le même volume', async () => {
+    // Le tableau est borné à 20 termes. Si tous sont cherchés une seule fois —
+    // le cas normal d'une demande non servie — il faut un second critère, sinon
+    // la base départage comme elle veut et la liste change à chaque appel.
+    const older = Date.now() - 3 * 24 * 3600 * 1000;
+    await prisma.toumaSearchQuery.createMany({
+      data: Array.from({ length: 25 }, (_, i) => ({
+        term: `ancien-${keyword}-${i}`,
+        rawTerm: `ancien-${keyword}-${i}`,
+        resultCount: 0,
+        countryCode: 'TD',
+        createdAt: new Date(older + i * 1000),
+      })),
+    });
+    const frais = `tout-frais-${keyword}`;
+    await api.get(`/api/v1/products?q=${frais}`, buyer.accessToken);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    const res = await api.get('/api/v1/admin/intelligence?days=30', admin.accessToken);
+    const empty = res.body.demand.emptySearches.map((s: any) => s.term);
+    assert.ok(empty.includes(frais), 'la recherche la plus récente reste visible');
+    assert.ok(empty.length <= 20, 'la liste reste bornée');
+  });
+
   it('signale les appels d’offres restés sans réponse', async () => {
     const rfq = await api.post(
       '/api/v1/rfqs',

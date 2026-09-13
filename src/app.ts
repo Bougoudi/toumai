@@ -32,6 +32,7 @@ import { toumaV1Router } from './touma/touma.routes.js';
 import { paymentWebhookRouter } from './touma/payments/payment.routes.js';
 import { toumaOpenApiDocument } from './touma/openapi.js';
 import { readiness } from './touma/health.js';
+import { initAttachmentStorage } from './touma/messaging/attachments.js';
 import { createMarketplaceHandler, robotsTxt, sitemapXml } from './touma/seo.js';
 
 /**
@@ -50,6 +51,9 @@ const publicDir = resolvePublicDir();
 
 export function createApp() {
   const app = express();
+
+  // Stockage des pièces jointes : S3 si l'environnement le décrit, local sinon.
+  initAttachmentStorage();
 
   // Derrière un proxy (HTTPS, load balancer) : nécessaire pour un rate-limit correct par IP.
   app.set('trust proxy', 1);

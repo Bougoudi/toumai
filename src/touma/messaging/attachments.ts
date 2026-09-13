@@ -1,8 +1,11 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '../../config/env.js';
 import { badRequest } from '../lib/errors.js';
+import { attachmentStorage, setAttachmentStorage } from './storage.js';
+import { s3StorageFromEnv } from './s3-storage.js';
+
+export { assertStorageKey, attachmentStorage, setAttachmentStorage, type AttachmentStorage } from './storage.js';
 
 /**
  * Pièces jointes de la messagerie.
@@ -91,46 +94,13 @@ export interface StoredAttachment {
 }
 
 /**
- * Stockage de fichiers privés. L'implémentation locale écrit hors du dossier
- * servi statiquement : aucun fichier envoyé n'est accessible par URL directe.
- * Un adaptateur S3 se branche ici sans toucher au reste.
+ * Choisit le stockage au démarrage : S3 si l'environnement le décrit, local
+ * sinon. Appelé une fois par `createApp()` — une configuration S3 incomplète
+ * doit faire échouer le démarrage, pas la première pièce jointe envoyée.
  */
-export interface AttachmentStorage {
-  readonly code: string;
-  put(key: string, content: Buffer): Promise<void>;
-  get(key: string): Promise<Buffer>;
-}
-
-class LocalPrivateStorage implements AttachmentStorage {
-  readonly code = 'local';
-  private readonly root = path.resolve(process.env.TOUMA_ATTACHMENT_DIR ?? 'var/touma-attachments');
-
-  private resolve(key: string): string {
-    // La clé est générée par nous ; on refuse malgré tout toute remontée.
-    if (!/^[\w/-]+\.[a-z0-9]{1,5}$/i.test(key) || key.includes('..')) throw badRequest('Clé de stockage invalide.');
-    return path.join(this.root, key);
-  }
-
-  async put(key: string, content: Buffer): Promise<void> {
-    const target = this.resolve(key);
-    await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, content, { mode: 0o600 });
-  }
-
-  async get(key: string): Promise<Buffer> {
-    return readFile(this.resolve(key));
-  }
-}
-
-let storage: AttachmentStorage = new LocalPrivateStorage();
-
-/** Remplace le stockage (adaptateur S3, tests). */
-export function setAttachmentStorage(next: AttachmentStorage): void {
-  storage = next;
-}
-
-export function attachmentStorage(): AttachmentStorage {
-  return storage;
+export function initAttachmentStorage(): void {
+  const s3 = s3StorageFromEnv();
+  if (s3) setAttachmentStorage(s3);
 }
 
 /** Nom de fichier sûr pour l'affichage : ni chemin, ni caractère de contrôle. */
@@ -159,14 +129,14 @@ export async function storeAttachment(content: Buffer, declaredName: string): Pr
   const checksum = createHash('sha256').update(content).digest('hex');
   const now = new Date();
   const key = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${randomBytes(16).toString('hex')}.${ACCEPTED[mimeType]}`;
-  await storage.put(key, content);
+  await attachmentStorage().put(key, content);
 
   return { storageKey: key, name, mimeType, sizeBytes: content.length, checksum };
 }
 
 /** Lit un contenu stocké. */
 export async function readAttachment(key: string): Promise<Buffer> {
-  return storage.get(key);
+  return attachmentStorage().get(key);
 }
 
 // ── URL signées ──────────────────────────────────────────────────────────────

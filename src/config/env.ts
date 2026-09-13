@@ -168,6 +168,14 @@ export const env = {
     accessKey: process.env.S3_ACCESS_KEY ?? '',
     secretKey: process.env.S3_SECRET_KEY ?? '',
     region: process.env.S3_REGION ?? 'auto',
+    /** Préfixe des objets, pour cohabiter avec d'autres usages du même bucket. */
+    keyPrefix: (process.env.S3_KEY_PREFIX ?? '').replace(/^\/+|\/+$/g, '') ? `${(process.env.S3_KEY_PREFIX ?? '').replace(/^\/+|\/+$/g, '')}/` : '',
+    /**
+     * Adressage par chemin (`endpoint/bucket/clé`). C'est le mode accepté
+     * partout ; l'adressage par sous-domaine se réserve aux services qui
+     * l'exigent.
+     */
+    forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
     get enabled() {
       return !!process.env.S3_ENDPOINT && !!process.env.S3_BUCKET;
     },

@@ -161,9 +161,37 @@ Le nouveau chemin :
 
 Formats : PDF, JPEG, PNG, WebP, XLSX, CSV. Taille par défaut : 10 Mo.
 
-Le stockage est derrière l'interface `AttachmentStorage`. L'implémentation
-livrée écrit sur disque local ; un adaptateur S3 se branche là, sans toucher au
-métier.
+Le stockage est derrière l'interface `AttachmentStorage` (`storage.ts`). Deux
+implémentations sont livrées :
+
+- **disque local** (`LocalPrivateStorage`), par défaut, hors du dossier servi
+  statiquement, fichiers en `0600` ;
+- **service objet compatible S3** (`s3-storage.ts`) — MinIO, Cloudflare R2,
+  Scaleway, Wasabi, Backblaze B2, AWS S3 — actif dès que `S3_ENDPOINT`,
+  `S3_BUCKET`, `S3_ACCESS_KEY` et `S3_SECRET_KEY` sont renseignés.
+
+La signature AWS V4 est calculée dans le fichier, sans SDK : quelques HMAC
+suffisent, et la dérivation de la clé est confrontée au vecteur d'exemple publié
+par AWS dans les tests unitaires.
+
+Trois points méritent d'être dits, parce qu'ils sont faciles à rater :
+
+1. **Aucune URL présignée S3 n'est remise au navigateur.** Le serveur lit
+   l'objet, vérifie d'abord que le demandeur participe au fil, puis sert le
+   contenu derrière sa propre URL signée. Une URL présignée court-circuiterait
+   ce contrôle : recopiée, elle ouvrirait la pièce jointe à n'importe qui
+   pendant toute sa durée de validité.
+2. **Aucun objet n'est écrit en accès public.** La configuration du bucket
+   (accès bloqué, chiffrement au repos) relève de l'exploitant ; le code ne la
+   contredit jamais.
+3. **Une configuration S3 incomplète fait échouer le démarrage.** Retomber
+   silencieusement sur le disque local donnerait un service qui a l'air de
+   marcher, avec des fichiers là où personne ne les cherchera.
+
+La clé d'un objet est validée au même endroit pour les deux adaptateurs
+(`assertStorageKey`) : ni chemin absolu, ni remontée, ni segment vide — un
+chemin n'a pas le même effet sur un disque et sur un service objet, et aucun des
+deux n'est acceptable.
 
 ---
 
@@ -315,8 +343,10 @@ Total : **311 tests** automatisés + 49 étapes navigateur.
 
 - **Aucun canal e-mail réel.** L'interface `NotificationChannel` attend une
   implémentation ; aucune n'est livrée, et l'interface l'annonce.
-- **Stockage S3.** L'interface `AttachmentStorage` est en place, l'adaptateur
-  local est utilisé. Le jour où un bucket est fourni, c'est une classe à écrire.
+- **Stockage S3 : écrit, non éprouvé contre un service réel.** L'adaptateur est
+  livré et couvert par des tests unitaires (signature, adressage, erreurs), mais
+  aucun bucket n'a été raccordé ici : la première mise en service demande une
+  vérification de bout en bout avec les identifiants de l'exploitant.
 - **Bus temps réel partagé.** Le flux fonctionne sur un processus. Plusieurs
   instances demanderaient Redis pub/sub dans `events.ts`.
 - **OpenSearch.** La recherche de messages s'appuie sur PostgreSQL

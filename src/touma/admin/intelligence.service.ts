@@ -154,19 +154,25 @@ export const intelligenceService = {
     const from = since(days);
 
     const [searches, emptySearches, emptyByCountry, rfqs] = await Promise.all([
+      // Le classement se fait à égalité de volume très souvent : sans second
+      // critère, PostgreSQL départage comme il veut et la liste change d'un
+      // appel à l'autre. La recherche la plus récente l'emporte — une demande
+      // exprimée hier vaut mieux qu'une demande d'il y a trois semaines.
       prisma.toumaSearchQuery.groupBy({
         by: ['term'],
         where: { createdAt: { gte: from } },
         _count: { _all: true },
         _avg: { resultCount: true },
-        orderBy: { _count: { term: 'desc' } },
+        _max: { createdAt: true },
+        orderBy: [{ _count: { term: 'desc' } }, { _max: { createdAt: 'desc' } }],
         take: 20,
       }),
       prisma.toumaSearchQuery.groupBy({
         by: ['term'],
         where: { createdAt: { gte: from }, resultCount: 0 },
         _count: { _all: true },
-        orderBy: { _count: { term: 'desc' } },
+        _max: { createdAt: true },
+        orderBy: [{ _count: { term: 'desc' } }, { _max: { createdAt: 'desc' } }],
         take: 20,
       }),
       prisma.toumaSearchQuery.groupBy({
