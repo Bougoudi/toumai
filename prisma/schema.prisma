@@ -646,6 +646,9 @@ enum ToumaOrderStatus {
   PAID
   CONFIRMED
   PROCESSING
+  /// Colis prêt, transporteur pas encore passé. Sans cet état, un vendeur doit
+  /// choisir entre mentir (« expédié ») et laisser croire que rien n'avance.
+  READY_TO_SHIP
   SHIPPED
   IN_TRANSIT
   DELIVERED
@@ -1001,6 +1004,7 @@ model ToumaProduct {
   keywords       String        @default("")
 
   images     ToumaProductImage[]
+  priceTiers ToumaPriceTier[]
   variants   ToumaProductVariant[]
   inventory  ToumaInventory[]
   cartItems  ToumaCartItem[]
@@ -1020,6 +1024,35 @@ model ToumaProduct {
 }
 
 /// Image d'un produit.
+/// Palier de prix B2B : au-delà d'une quantité, le prix unitaire baisse.
+///
+/// C'est la base du commerce de gros, et jusqu'ici TOUMA ne savait pas
+/// l'exprimer : un produit avait un prix, un seul, qu'on en achète dix ou dix
+/// mille. Le palier retenu est **toujours choisi par le serveur** à partir de la
+/// quantité commandée — un client qui réclamerait un palier est ignoré.
+model ToumaPriceTier {
+  id        String       @id @default(cuid())
+  productId String
+  product   ToumaProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// Variante concernée, ou toutes les variantes du produit si vide.
+  variantId String?
+  variant   ToumaProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  /// Quantité à partir de laquelle ce prix s'applique (incluse).
+  minQuantity Int
+  unitPrice   Decimal @db.Decimal(18, 4)
+  currency    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Un seul palier par quantité et par variante : deux prix pour « à partir de
+  /// 100 » seraient une ambiguïté que le serveur devrait trancher au hasard.
+  @@unique([productId, variantId, minQuantity])
+  @@index([productId])
+  @@map("touma_price_tiers")
+}
+
 model ToumaProductImage {
   id        String       @id @default(cuid())
   productId String
@@ -1048,6 +1081,7 @@ model ToumaProductVariant {
   inventory  ToumaInventory?
   cartItems  ToumaCartItem[]
   orderItems ToumaOrderItem[]
+  priceTiers ToumaPriceTier[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1219,6 +1253,10 @@ model ToumaOrderItem {
   quantity        Int
   lineTotal       Decimal @db.Decimal(18, 4)
   currency        String
+  /// Trace de ce qui a déterminé le prix : palier appliqué, prix catalogue
+  /// d'origine. Sans elle, personne ne peut expliquer six mois plus tard
+  /// pourquoi cette ligne a été facturée à ce prix-là.
+  metadata        Json?
 
   returnItems ToumaReturnItem[]
 
@@ -1685,9 +1723,30 @@ enum DeliveryMethod {
   SELLER_PICKUP
 }
 
+/// Origine d'une commande globale.
+enum OrderSourceType {
+  /// Panier classique.
+  CART
+  /// Acceptation d'une offre issue d'un appel d'offres.
+  RFQ
+  /// Commande créée directement (assistance, reprise de commande hors ligne).
+  DIRECT
+  /// Recommande à l'identique.
+  REORDER
+}
+
+/// Statut de la commande globale. Il n'est jamais écrit à la main : il est
+/// **déduit** des sous-commandes (voir `orders/group-status.ts`). Une commande à
+/// trois vendeurs dont un seul a livré ne peut pas afficher « livrée », et ne
+/// doit pas afficher « payée » non plus.
 enum OrderGroupStatus {
   PENDING
   PAID
+  PROCESSING
+  PARTIALLY_SHIPPED
+  SHIPPED
+  PARTIALLY_DELIVERED
+  DELIVERED
   PARTIALLY_FULFILLED
   COMPLETED
   CANCELLED
@@ -1716,6 +1775,15 @@ model ToumaOrderGroup {
   checkoutKey      String?
   /// Vrai dès qu'au moins une sous-commande franchit une frontière.
   crossBorder      Boolean @default(false)
+
+  /// D'où vient la commande. Une commande née d'un appel d'offres n'a pas la
+  /// même histoire qu'un panier : elle porte un prix négocié, et l'assistance
+  /// doit pouvoir remonter à la négociation sans jouer aux devinettes.
+  /// L'offre acceptée est déjà rattachée dans l'autre sens
+  /// (`ToumaQuote.orderGroupId`) : on n'ajoute ici que ce qui manquait.
+  sourceType OrderSourceType @default(CART)
+  rfqId      String?
+  rfq        ToumaRfq?       @relation(fields: [rfqId], references: [id], onDelete: SetNull)
 
   orders        ToumaOrder[]
   payments      ToumaPayment[]
@@ -1854,6 +1922,9 @@ model ToumaRfq {
   @@index([status])
   @@index([countryCode])
   @@map("touma_rfqs")
+
+  /// Commandes nées de cet appel d'offres.
+  orderGroups ToumaOrderGroup[]
 }
 
 /// Ligne d'un appel d'offres (produit recherché et quantité).

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { asyncHandler, parseBody, parseQuery } from '../../middleware/validate.js';
 import { auditRequest } from '../lib/audit.js';
 import { authenticate, currentUser, optionalAuth, requireRole } from '../middleware/toumaAuth.js';
-import { createProductSchema, listProductsSchema, updateProductSchema } from './product.schema.js';
+import { createProductSchema, listProductsSchema, priceTiersSchema, updateProductSchema } from './product.schema.js';
 import { productService } from './product.service.js';
 import { facetsService } from './facets.service.js';
 import { intelligenceService } from '../admin/intelligence.service.js';
@@ -94,6 +94,24 @@ productRouter.patch(
     const product = await productService.update(req.params.id, currentUser(req), input);
     await auditRequest(req, 'product.update', 'ToumaProduct', product.id, { fields: Object.keys(input) });
     res.json(product);
+  }),
+);
+
+/** Grille de paliers : lecture publique, écriture réservée au vendeur. */
+productRouter.get(
+  '/:id/paliers',
+  asyncHandler(async (req, res) => res.json(await productService.priceTiers(req.params.id))),
+);
+
+productRouter.put(
+  '/:id/paliers',
+  authenticate,
+  requireRole('SELLER', 'ADMIN'),
+  asyncHandler(async (req, res) => {
+    const input = parseBody(priceTiersSchema, req);
+    const result = await productService.setPriceTiers(req.params.id, currentUser(req), input.tiers);
+    await auditRequest(req, 'product.price_tiers.set', 'ToumaProduct', result.productId, { paliers: input.tiers.length });
+    res.json(result);
   }),
 );
 

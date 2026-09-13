@@ -1,5 +1,6 @@
 import { Prisma, type PaymentStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { refreshGroupStatus } from '../orders/group-status.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { audit } from '../lib/audit.js';
@@ -97,6 +98,10 @@ async function applySuccess(paymentId: string, providerRef: string | null, metad
         where: { id: payment.orderGroup.id },
         data: { status: 'PAID', paidAt: new Date() },
       });
+      // Puis on laisse le calcul faire autorité : si une sous-commande avait
+      // déjà été annulée, le groupe ne doit pas prétendre être simplement
+      // « payé ».
+      await refreshGroupStatus(payment.orderGroup.id, tx);
     }
 
     return { payment: updated, orders, alreadyApplied: false };

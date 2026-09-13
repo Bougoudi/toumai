@@ -9,6 +9,8 @@ import { logisticsService } from '../logistics/logistics.service.js';
 import { couponService, type BasketStoreLine } from '../promotions/coupon.service.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
+import { loadTiers, resolveUnitPrice, tiersFor } from '../catalog/pricing.js';
+import { sweepReservations } from './reservation.js';
 import type { CheckoutInput } from './order.schema.js';
 
 /** Numéro de commande lisible et non devinable. */
@@ -68,6 +70,11 @@ export const checkoutService = {
       },
     });
     if (!cart || cart.items.length === 0) throw badRequest('Votre panier est vide.');
+
+    // 4 bis. Les réservations périmées sont libérées avant de contrôler le
+    // stock : sans cela, un panier abandonné il y a une heure bloquerait
+    // encore l'acheteur qui paie maintenant.
+    await sweepReservations();
 
     // 5. Adresse : doit appartenir à l'acheteur (anti-IDOR) et pointer un pays desservi.
     const address = await prisma.toumaAddress.findFirst({ where: { id: input.addressId, userId: user.id }, include: { country: true } });
@@ -143,6 +150,20 @@ export const checkoutService = {
       shippingByStore.set(storeId, { quoteId: cheapest.id, amount: new Prisma.Decimal(cheapest.amount) });
     }
 
+    // 5 ter. Paliers de prix B2B. Le palier est choisi par le serveur à partir
+    // de la quantité réellement commandée : un palier réclamé par le client
+    // n'existe pas. Chargés en une requête pour tout le panier.
+    const tiersByProduct = await loadTiers(cart.items.map((i) => i.productId));
+    /** Prix unitaire retenu pour chaque ligne, et sa justification. */
+    const priceByItem = new Map<string, ReturnType<typeof resolveUnitPrice>>();
+    for (const item of cart.items) {
+      const listPrice = item.product.price.plus(item.variant?.priceDelta ?? 0);
+      priceByItem.set(
+        item.id,
+        resolveUnitPrice(listPrice, item.currency, item.quantity, tiersFor(tiersByProduct.get(item.productId), item.variantId)),
+      );
+    }
+
     // 6 bis. Remises : code de réduction puis points de fidélité.
     //
     // Le sous-total par boutique est calculé ici avec la MÊME formule que dans
@@ -152,7 +173,7 @@ export const checkoutService = {
     for (const [storeId, items] of groups) {
       subtotalByStore.set(
         storeId,
-        sum(items.map((i) => i.product.price.plus(i.variant?.priceDelta ?? 0).times(i.quantity))),
+        sum(items.map((i) => priceByItem.get(i.id)!.unitPrice.times(i.quantity))),
       );
     }
     const basketLines: BasketStoreLine[] = [...groups.keys()].map((storeId) => ({
@@ -274,7 +295,7 @@ export const checkoutService = {
         const lines = items.map((item) => {
           // 3. Le prix de la commande est TOUJOURS relu depuis le produit :
           //    un prix envoyé par le client n'a aucune valeur.
-          const unitPrice = item.product.price.plus(item.variant?.priceDelta ?? 0);
+          const unitPrice = priceByItem.get(item.id)!.unitPrice;
           return {
             item,
             unitPrice,
@@ -349,6 +370,11 @@ export const checkoutService = {
               quantity: item.quantity,
               lineTotal: line.lineTotal,
               currency,
+              // Pourquoi ce prix-là : sans cette trace, personne ne peut
+              // l'expliquer six mois plus tard.
+              metadata: priceByItem.get(item.id)!.appliedTier
+                ? { appliedTier: priceByItem.get(item.id)!.appliedTier, listPrice: priceByItem.get(item.id)!.listPrice.toString() }
+                : undefined,
             },
           });
         }

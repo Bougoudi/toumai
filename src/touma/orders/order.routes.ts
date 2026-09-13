@@ -4,6 +4,7 @@ import { auditRequest } from '../lib/audit.js';
 import { authenticate, currentUser } from '../middleware/toumaAuth.js';
 import { checkoutService } from './checkout.service.js';
 import { checkoutSchema, listOrdersSchema, updateOrderStatusSchema } from './order.schema.js';
+import type { ToumaOrderStatus } from '@prisma/client';
 import { orderService } from './order.service.js';
 
 export const orderRouter = Router();
@@ -75,6 +76,49 @@ orderRouter.get(
 );
 
 orderRouter.get('/:id', asyncHandler(async (req, res) => res.json(await orderService.get(currentUser(req), req.params.id))));
+
+/**
+ * Actions nommées du vendeur (§17) et de l'acheteur (§18).
+ *
+ * Elles ne contournent pas la machine d'état : chacune demande une transition
+ * précise au même service, qui vérifie le rôle, la propriété et la légalité du
+ * passage. Leur intérêt est ailleurs — « prêt à expédier » se lit dans le
+ * journal d'audit, `PATCH status=READY_TO_SHIP` demande d'y réfléchir.
+ */
+const ACTIONS: Record<string, { status: ToumaOrderStatus; audit: string }> = {
+  confirm: { status: 'CONFIRMED', audit: 'order.confirm' },
+  process: { status: 'PROCESSING', audit: 'order.process' },
+  'ready-to-ship': { status: 'READY_TO_SHIP', audit: 'order.ready' },
+  ship: { status: 'SHIPPED', audit: 'order.ship' },
+  deliver: { status: 'DELIVERED', audit: 'order.deliver' },
+  cancel: { status: 'CANCELLED', audit: 'order.cancel' },
+  /** L'acheteur accuse réception : c'est ce qui clôt la commande. */
+  'confirm-delivery': { status: 'COMPLETED', audit: 'order.confirm_delivery' },
+};
+
+for (const [action, { status, audit }] of Object.entries(ACTIONS)) {
+  orderRouter.post(
+    `/:id/${action}`,
+    asyncHandler(async (req, res) => {
+      const raison = typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 500) : undefined;
+      const order = await orderService.updateStatus(currentUser(req), req.params.id, status, raison);
+      await auditRequest(req, audit, 'ToumaOrder', req.params.id, { status });
+      res.json(order);
+    }),
+  );
+}
+
+/**
+ * Suivi d'une commande : les expéditions et leurs événements, du plus récent au
+ * plus ancien. Une commande multi-vendeurs a plusieurs expéditions — ne jamais
+ * supposer qu'une commande égale un colis.
+ */
+orderRouter.get(
+  '/:id/tracking',
+  asyncHandler(async (req, res) => {
+    res.json(await orderService.tracking(currentUser(req), req.params.id));
+  }),
+);
 
 orderRouter.patch(
   '/:id/status',

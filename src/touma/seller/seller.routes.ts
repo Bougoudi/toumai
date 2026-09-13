@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { prisma } from '../../db/prisma.js';
-import { asyncHandler } from '../../middleware/validate.js';
+import { asyncHandler, parseQuery } from '../../middleware/validate.js';
 import { forbidden, notFound } from '../lib/errors.js';
 import { authenticate, currentUser, requireRole } from '../middleware/toumaAuth.js';
 import { analyticsService } from '../admin/analytics.service.js';
 import { importService } from '../catalog/import.service.js';
+import { listOrdersSchema } from '../orders/order.schema.js';
+import { orderService } from '../orders/order.service.js';
 
 /** Espace vendeur (Seller Center) : agrégats prêts à afficher. */
 export const sellerRouter = Router();
@@ -74,6 +76,27 @@ sellerRouter.get(
 );
 
 /** Articles dont le stock est bas (réapprovisionnement). */
+/**
+ * Commandes du vendeur (§17).
+ *
+ * Alias explicite de `GET /orders`, qui filtre déjà sur les boutiques du
+ * demandeur. Deux chemins, un seul service : un vendeur cherche ses commandes
+ * dans son espace, pas dans la liste générale — mais dupliquer la logique de
+ * filtrage serait le meilleur moyen de laisser fuiter la commande d'autrui le
+ * jour où l'une des deux copies évolue.
+ */
+sellerRouter.get(
+  '/orders',
+  asyncHandler(async (req, res) => {
+    res.json(await orderService.list(currentUser(req), parseQuery(listOrdersSchema, req)));
+  }),
+);
+
+sellerRouter.get(
+  '/orders/:id',
+  asyncHandler(async (req, res) => res.json(await orderService.get(currentUser(req), req.params.id))),
+);
+
 sellerRouter.get(
   '/inventory/low-stock',
   asyncHandler(async (req, res) => {

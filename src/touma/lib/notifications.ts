@@ -30,7 +30,15 @@ export type NotificationType =
   | 'NEGOTIATION_EXPIRING'
   | 'NEGOTIATION_EXPIRED'
   | 'RFQ_UPDATE'
-  | 'ORDER_UPDATE';
+  | 'ORDER_UPDATE'
+  // ── Exécution des commandes (V15) ────────────────────────────────────────
+  | 'SELLER_ORDER_CREATED'
+  | 'SELLER_ORDER_CONFIRMED'
+  | 'ORDER_READY_TO_SHIP'
+  | 'ORDER_IN_TRANSIT'
+  | 'DELIVERY_CONFIRMED'
+  | 'RESERVATION_EXPIRED'
+  | 'PAYOUT_ELIGIBLE';
 
 /**
  * Catégories de préférence. Elles regroupent les types : un utilisateur coupe
@@ -57,6 +65,13 @@ const CATEGORY_BY_TYPE: Partial<Record<NotificationType, NotificationCategory>> 
   PAYMENT_FAILED: 'ORDERS',
   SHIPMENT_CREATED: 'ORDERS',
   SHIPMENT_UPDATED: 'ORDERS',
+  SELLER_ORDER_CREATED: 'ORDERS',
+  SELLER_ORDER_CONFIRMED: 'ORDERS',
+  ORDER_READY_TO_SHIP: 'ORDERS',
+  ORDER_IN_TRANSIT: 'ORDERS',
+  DELIVERY_CONFIRMED: 'ORDERS',
+  RESERVATION_EXPIRED: 'ORDERS',
+  PAYOUT_ELIGIBLE: 'ORDERS',
 };
 
 /** Catégorie d'un type de notification (par défaut : ORDERS, jamais MARKETING). */

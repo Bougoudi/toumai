@@ -1,5 +1,6 @@
 import { Prisma, type ToumaOrderStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { refreshGroupStatus } from './group-status.js';
 import { conflict, forbidden, notFound } from '../lib/errors.js';
 import { notify } from '../lib/notifications.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
@@ -17,7 +18,9 @@ const TRANSITIONS: Record<ToumaOrderStatus, ToumaOrderStatus[]> = {
   PENDING: ['PAID', 'CANCELLED'],
   PAID: ['CONFIRMED', 'PROCESSING', 'CANCELLED', 'REFUNDED', 'DISPUTED'],
   CONFIRMED: ['PROCESSING', 'CANCELLED', 'DISPUTED'],
-  PROCESSING: ['SHIPPED', 'CANCELLED', 'DISPUTED'],
+  // Le colis peut partir directement, ou attendre le passage du transporteur.
+  PROCESSING: ['READY_TO_SHIP', 'SHIPPED', 'CANCELLED', 'DISPUTED'],
+  READY_TO_SHIP: ['SHIPPED', 'CANCELLED', 'DISPUTED'],
   SHIPPED: ['IN_TRANSIT', 'DELIVERED', 'DISPUTED'],
   IN_TRANSIT: ['DELIVERED', 'DISPUTED', 'CANCELLED'],
   DELIVERED: ['COMPLETED', 'DISPUTED', 'REFUNDED'],
@@ -28,7 +31,7 @@ const TRANSITIONS: Record<ToumaOrderStatus, ToumaOrderStatus[]> = {
 };
 
 /** Qui a le droit de demander cette transition ? */
-const SELLER_ALLOWED: ToumaOrderStatus[] = ['CONFIRMED', 'PROCESSING', 'SHIPPED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'];
+const SELLER_ALLOWED: ToumaOrderStatus[] = ['CONFIRMED', 'PROCESSING', 'READY_TO_SHIP', 'SHIPPED', 'IN_TRANSIT', 'DELIVERED', 'CANCELLED'];
 const BUYER_ALLOWED: ToumaOrderStatus[] = ['COMPLETED', 'CANCELLED'];
 
 const orderInclude = {
@@ -189,6 +192,54 @@ export const orderService = {
    * Change le statut d'une commande en respectant les transitions autorisées et
    * le rôle du demandeur. Une annulation restitue le stock réservé.
    */
+  /**
+   * Suivi d'une commande : ses expéditions et leurs événements.
+   *
+   * Une commande multi-vendeurs a plusieurs colis, qui n'avancent pas au même
+   * rythme. On rend donc une liste, jamais un objet unique — supposer « une
+   * commande, un colis » est exactement l'erreur que la V15 corrige.
+   */
+  async tracking(user: ToumaRequestUser, orderId: string) {
+    const order = await prisma.toumaOrder.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        buyerId: true,
+        store: { select: { id: true, name: true, ownerId: true } },
+        shipments: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            providerCode: true,
+            trackingNumber: true,
+            status: true,
+            originCountry: true,
+            destinationCountry: true,
+            etaMinDays: true,
+            etaMaxDays: true,
+            shippedAt: true,
+            deliveredAt: true,
+            events: { orderBy: { occurredAt: 'desc' }, select: { status: true, label: true, location: true, occurredAt: true } },
+          },
+        },
+      },
+    });
+    // Anti-IDOR : la commande d'autrui est « introuvable », jamais « interdite ».
+    if (!order || (order.buyerId !== user.id && order.store.ownerId !== user.id && user.role !== 'ADMIN')) {
+      throw notFound('Commande introuvable.');
+    }
+
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      store: { id: order.store.id, name: order.store.name },
+      shipments: order.shipments,
+    };
+  },
+
   async updateStatus(user: ToumaRequestUser, orderId: string, status: ToumaOrderStatus, reason?: string) {
     const order = await prisma.toumaOrder.findUnique({ where: { id: orderId }, include: { store: true, items: true } });
     if (!order) throw notFound('Commande introuvable.');
@@ -221,7 +272,7 @@ export const orderService = {
           });
         }
       }
-      return tx.toumaOrder.update({
+      const saved = await tx.toumaOrder.update({
         where: { id: order.id },
         data: {
           status,
@@ -232,6 +283,12 @@ export const orderService = {
           completedAt: status === 'COMPLETED' ? new Date() : order.completedAt,
         },
       });
+
+      // La commande globale suit ses sous-commandes. Dans la même transaction :
+      // un groupe qui annoncerait un état que ses sous-commandes ne portent pas
+      // encore serait pire que pas d'état du tout.
+      await refreshGroupStatus(order.groupId, tx);
+      return saved;
     });
 
     // Les points de fidélité se gagnent à la livraison, pas au paiement : une

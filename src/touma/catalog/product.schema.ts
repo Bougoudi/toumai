@@ -68,3 +68,21 @@ export const listProductsSchema = z.object({
 export type CreateProductInput = z.infer<typeof createProductSchema>;
 export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type ListProductsQuery = z.infer<typeof listProductsSchema>;
+
+/**
+ * Grille de paliers. Le vendeur envoie la grille complète : modifier un palier
+ * isolé dans une grille tarifaire est une source d'erreurs, et une grille se
+ * relit d'un coup d'œil.
+ */
+export const priceTiersSchema = z.object({
+  tiers: z
+    .array(
+      z.object({
+        /** Un palier commence forcément au-dessus de l'unité. */
+        minQuantity: z.number().int().min(2),
+        /** Montant en texte : jamais un flottant pour de l'argent. */
+        unitPrice: z.string().regex(/^\d+(\.\d{1,4})?$/, 'Montant invalide.'),
+      }),
+    )
+    .max(10, 'Dix paliers suffisent : au-delà, la grille devient illisible.'),
+});

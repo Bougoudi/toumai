@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { replaceTiers } from './pricing.js';
 import { env } from '../../config/env.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { uniqueSlug } from '../lib/slug.js';
@@ -185,6 +186,45 @@ export const productService = {
   },
 
   /** Produits d'une boutique du vendeur (vue privée : tous statuts). */
+  /**
+   * Grille de paliers d'un produit. Lecture publique : un acheteur de gros doit
+   * pouvoir voir à partir de quelle quantité le prix baisse — c'est une
+   * information commerciale, pas un secret.
+   */
+  async priceTiers(idOrSlug: string) {
+    const product = await prisma.toumaProduct.findFirst({
+      where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
+      select: { id: true, currency: true, price: true },
+    });
+    if (!product) throw notFound('Produit introuvable.');
+
+    const tiers = await prisma.toumaPriceTier.findMany({
+      where: { productId: product.id },
+      orderBy: { minQuantity: 'asc' },
+      select: { minQuantity: true, unitPrice: true, currency: true, variantId: true },
+    });
+
+    return {
+      productId: product.id,
+      listPrice: product.price.toString(),
+      currency: product.currency,
+      tiers: tiers.map((t) => ({ ...t, unitPrice: t.unitPrice.toString() })),
+    };
+  },
+
+  /** Remplace la grille de paliers. Réservé au propriétaire de la boutique. */
+  async setPriceTiers(idOrSlug: string, user: ToumaRequestUser, tiers: { minQuantity: number; unitPrice: string }[]) {
+    const product = await prisma.toumaProduct.findFirst({
+      where: { OR: [{ id: idOrSlug }, { slug: idOrSlug }] },
+      select: { id: true, currency: true, store: { select: { ownerId: true } } },
+    });
+    if (!product) throw notFound('Produit introuvable.');
+    if (product.store.ownerId !== user.id && user.role !== 'ADMIN') throw notFound('Produit introuvable.');
+
+    const saved = await replaceTiers(product.id, product.currency, tiers);
+    return { productId: product.id, tiers: saved.map((t) => ({ ...t, unitPrice: t.unitPrice.toString() })) };
+  },
+
   async listForSeller(user: ToumaRequestUser, query: { storeId?: string; status?: string; page: number; limit: number }) {
     const page: PageParams = { page: query.page, limit: query.limit, skip: (query.page - 1) * query.limit };
     const where: Prisma.ToumaProductWhereInput = {
