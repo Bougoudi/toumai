@@ -1,6 +1,7 @@
 import { Prisma, type PaymentStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { refreshGroupStatus } from '../orders/group-status.js';
+import { recordSale } from '../finance/ledger.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { audit } from '../lib/audit.js';
@@ -78,6 +79,15 @@ async function applySuccess(paymentId: string, providerRef: string | null, metad
       if (order.status === 'PENDING') {
         await tx.toumaOrder.update({ where: { id: order.id }, data: { status: 'PAID', paidAt: new Date() } });
       }
+      // Registre : la vente et la commission laissent chacune leur ligne. Écrit
+      // dans la même transaction que le paiement — un mouvement d'argent qui
+      // n'apparaîtrait pas au registre serait exactement le trou qu'on cherche
+      // à éviter.
+      await recordSale(
+        { id: order.id, storeId: order.storeId, total: order.total, commissionTotal: order.commissionTotal, currency: order.currency },
+        tx,
+      );
+
       // Commission plateforme : enregistrée une seule fois par commande.
       const existingCommission = await tx.toumaCommission.count({ where: { orderId: order.id } });
       if (existingCommission === 0) {

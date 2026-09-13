@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
+import { evidenceService } from './evidence.service.js';
+import { computePriority, deadlineFrom, sweepDisputes } from './escalation.js';
+import { entriesFor, holdForDispute, releaseHold } from '../finance/ledger.js';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
 import { audit, auditRequest } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
@@ -19,7 +22,18 @@ const openSchema = z.object({
   orderId: z.string().cuid(),
   reason: z.enum(['NOT_RECEIVED', 'DAMAGED', 'NOT_AS_DESCRIBED', 'WRONG_ITEM', 'OTHER']),
   details: z.string().trim().max(2000).optional(),
-  evidence: z.array(z.object({ kind: z.string().trim().max(60), url: z.string().trim().url().max(500), note: z.string().trim().max(300).optional() })).max(10).default([]),
+  category: z
+    .enum(['NON_DELIVERY', 'LATE_DELIVERY', 'DAMAGED_ITEM', 'WRONG_ITEM', 'NOT_AS_DESCRIBED', 'QUALITY', 'MISSING_QUANTITY', 'PAYMENT', 'REFUND', 'FRAUD', 'OTHER'])
+    .default('OTHER'),
+  /**
+   * Les preuves ne s'envoient plus ici. Une URL déclarée par un navigateur ne
+   * prouve rien : le fichier vit chez un tiers, personne ne l'a vérifié, et son
+   * déposant peut le remplacer après la décision. Elles passent désormais par
+   * `POST /disputes/:id/evidence`, en corps brut.
+   */
+  evidence: z
+    .never({ invalid_type_error: 'Versez les pièces via POST /disputes/:id/evidence (corps brut).' })
+    .optional(),
 });
 
 const messageSchema = z.object({ body: z.string().trim().min(1).max(2000), internal: z.boolean().default(false) });
@@ -28,9 +42,22 @@ const resolveSchema = z.object({
   decision: z.enum(['RESOLVED_BUYER', 'RESOLVED_SELLER', 'REJECTED', 'CLOSED']),
   resolution: z.string().trim().max(2000),
   refundAmount: z.string().regex(/^\d+(\.\d{1,4})?$/).optional(),
+  resolutionType: z
+    .enum(['BUYER_REFUND_FULL', 'BUYER_REFUND_PARTIAL', 'RETURN_AND_REFUND', 'REPLACEMENT', 'NO_REFUND', 'SELLER_FAVOR', 'BUYER_FAVOR', 'MUTUAL_AGREEMENT', 'OTHER'])
+    .optional(),
 });
 
 disputeRouter.use(authenticate);
+
+// Les délais dépassés sont constatés côté serveur, sur le chemin de la
+// consultation : une escalade qui dépendrait d'un onglet ouvert n'arriverait
+// jamais pour celui qui a fermé le sien.
+disputeRouter.use(
+  asyncHandler(async (_req, _res, next) => {
+    await sweepDisputes();
+    next();
+  }),
+);
 
 /** Accès : acheteur, vendeur concerné ou administration. */
 async function loadDispute(id: string, user: { id: string; role: string }) {
@@ -79,17 +106,40 @@ disputeRouter.post(
       throw conflict('Un litige est déjà ouvert sur cette commande.');
     }
 
+    // Priorité : un ordre de passage pour l'assistance, jamais une décision.
+    const litigesPrecedents = await prisma.toumaDispute.count({
+      where: { order: { storeId: order.storeId }, status: { notIn: ['REJECTED', 'CLOSED'] } },
+    });
+    const priority = computePriority({
+      amount: order.total,
+      category: input.category,
+      previousDisputesOnStore: litigesPrecedents,
+    });
+    const ouvertParAcheteur = order.buyerId === user.id;
+
     const dispute = await prisma.$transaction(async (tx) => {
       const created = await tx.toumaDispute.create({
         data: {
           orderId: order.id,
           openedById: user.id,
           reason: input.reason,
+          category: input.category,
+          priority,
           details: input.details ?? null,
-          evidence: { create: input.evidence.map((e) => ({ kind: e.kind, url: e.url, note: e.note ?? null })) },
+          // La balle est dans le camp de l'autre partie, avec un délai. Le
+          // silence n'est plus une échappatoire : passé ce terme, un balayage
+          // serveur porte le dossier devant l'assistance — sans rien trancher.
+          status: ouvertParAcheteur ? 'SELLER_RESPONSE_REQUIRED' : 'BUYER_RESPONSE_REQUIRED',
+          sellerResponseDeadline: ouvertParAcheteur ? deadlineFrom() : null,
+          buyerResponseDeadline: ouvertParAcheteur ? null : deadlineFrom(),
+
         },
       });
       await tx.toumaOrder.update({ where: { id: order.id }, data: { status: 'DISPUTED' } });
+      // Les fonds de cette commande ne doivent plus partir tant que le dossier
+      // n'est pas tranché. Ce n'est pas une sanction : c'est l'argent qui reste
+      // en place le temps qu'un humain regarde.
+      await holdForDispute(order.id, created.id, tx);
       return created;
     });
 
@@ -129,6 +179,73 @@ disputeRouter.post(
   }),
 );
 
+/**
+ * Mouvements d'argent d'un litige : la vente, la commission, les
+ * remboursements, et ce qui est retenu. C'est la réponse à « où est passé mon
+ * argent », que ni l'acheteur ni le vendeur ne pouvaient obtenir jusqu'ici.
+ */
+disputeRouter.get(
+  '/:id/ledger',
+  asyncHandler(async (req, res) => {
+    const dispute = await loadDispute(req.params.id, currentUser(req));
+    res.json({ items: await entriesFor('ToumaOrder', dispute.orderId) });
+  }),
+);
+
+/** Décode un en-tête encodé par le client (`encodeURIComponent`). */
+function decodeHeader(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * Verse une pièce au dossier. Corps **brut** : le type réel est déduit du
+ * contenu, jamais de l'en-tête. C'est le même mécanisme que les pièces jointes
+ * de la messagerie, et pour la même raison — sauf qu'ici, une pièce non vérifiée
+ * ne coûte pas un malentendu mais une décision d'argent prise sur du vent.
+ */
+disputeRouter.post(
+  '/:id/evidence',
+  asyncHandler(async (req, res) => {
+    const content = req.body;
+    if (!Buffer.isBuffer(content) || content.length === 0) {
+      throw badRequest('Envoyez la pièce en corps brut (content-type: application/octet-stream).');
+    }
+    const filename = decodeHeader(req.get('x-file-name')) ?? 'preuve';
+    const note = decodeHeader(req.get('x-note'));
+    const kind = (req.get('x-evidence-kind') ?? 'PHOTO') as never;
+
+    const evidence = await evidenceService.add(currentUser(req), { disputeId: req.params.id }, content, { filename, kind, note });
+    await auditRequest(req, 'dispute.evidence.upload', 'ToumaDispute', req.params.id, { evidenceId: evidence.id });
+    res.status(201).json(evidence);
+  }),
+);
+
+disputeRouter.get(
+  '/:id/evidence',
+  asyncHandler(async (req, res) => res.json(await evidenceService.list(currentUser(req), { disputeId: req.params.id }))),
+);
+
+/**
+ * Écarte une pièce. Réservé à l'administration, et la pièce n'est pas
+ * supprimée : elle est marquée écartée, avec son motif. On ne retire pas une
+ * pièce d'un dossier après coup — on note qu'elle a été écartée.
+ */
+disputeRouter.post(
+  '/evidence/:evidenceId/remove',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason : '';
+    const result = await evidenceService.remove(currentUser(req), req.params.evidenceId, reason);
+    await auditRequest(req, 'dispute.evidence.remove', 'ToumaDisputeEvidence', req.params.evidenceId, {});
+    res.json(result);
+  }),
+);
+
 /** Décision d'administration : auditée, avec remboursement éventuel. */
 disputeRouter.post(
   '/:id/resolve',
@@ -142,15 +259,42 @@ disputeRouter.post(
       throw conflict('Ce litige est déjà tranché.');
     }
 
+    // Les pièces encore au dossier au moment de la décision : c'est sur
+    // celles-là que la décision a été prise, et sur aucune autre.
+    const piecesRetenues = await prisma.toumaDisputeEvidence.findMany({
+      where: { disputeId: dispute.id, removedAt: null },
+      select: { id: true, checksum: true, filename: true },
+    });
+
     const updated = await prisma.toumaDispute.update({
       where: { id: dispute.id },
       data: {
         status: input.decision,
         resolution: input.resolution,
         refundAmount: input.refundAmount ? new Prisma.Decimal(input.refundAmount) : null,
+        resolutionType: input.resolutionType ?? null,
+        // Instantané figé de la décision. Sans lui, une résolution se réécrit
+        // en silence — et six mois plus tard, personne ne sait sur quoi elle
+        // reposait. On y met ce qui a été décidé, par qui, et sur quelles
+        // pièces : les empreintes, pas les fichiers.
+        resolutionSnapshot: {
+          decidedAt: new Date().toISOString(),
+          decidedBy: admin.id,
+          decision: input.decision,
+          resolutionType: input.resolutionType ?? null,
+          amount: input.refundAmount ?? null,
+          currency: dispute.order.currency,
+          notes: input.resolution,
+          evidence: piecesRetenues.map((e) => ({ id: e.id, checksum: e.checksum, filename: e.filename })),
+        } as object,
         resolvedAt: new Date(),
       },
     });
+
+    // Les fonds retenus par ce litige sont libérés : la ligne n'est pas
+    // réécrite, elle est datée. L'historique doit pouvoir dire « ces fonds ont
+    // été retenus du 3 au 17 ».
+    await releaseHold(dispute.id);
 
     await audit({
       actorId: admin.id,

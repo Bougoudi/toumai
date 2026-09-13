@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { recordRefund } from '../finance/ledger.js';
 import { env } from '../../config/env.js';
 import { audit } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
@@ -180,10 +181,12 @@ export const refundService = {
       // Contre-passation de la commission, au prorata du montant remboursé.
       const commissions = await tx.toumaCommission.findMany({ where: { orderId: order.id } });
       const netCommission = commissions.reduce((acc, c) => acc.plus(c.amount), new Prisma.Decimal(0));
+      let commissionReversed = new Prisma.Decimal(0);
       if (netCommission.greaterThan(0)) {
         const share = order.total.greaterThan(0) ? amount.dividedBy(order.total) : new Prisma.Decimal(0);
         const reversal = roundTo(netCommission.times(share), order.currency);
         const capped = reversal.greaterThan(netCommission) ? netCommission : reversal;
+        commissionReversed = capped;
         if (capped.greaterThan(0)) {
           await tx.toumaCommission.create({
             data: {
@@ -196,6 +199,14 @@ export const refundService = {
           });
         }
       }
+
+      // Registre : le remboursement part de la boutique, la commission lui
+      // revient. Deux lignes de sens opposé — les fondre en une seule
+      // masquerait l'un des deux mouvements.
+      await recordRefund(
+        { id: done.id, storeId: order.storeId, amount, commissionReversed, currency: order.currency },
+        tx,
+      );
 
       if (orderFullyRefunded && order.status !== 'REFUNDED') {
         await tx.toumaOrder.update({ where: { id: order.id }, data: { status: 'REFUNDED' } });

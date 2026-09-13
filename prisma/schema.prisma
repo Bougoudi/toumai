@@ -217,6 +217,8 @@ model User {
   reviewedVerifications ToumaSellerVerification[] @relation("VerificationReviewer")
 
   orderGroups         ToumaOrderGroup[]
+  evidenceUploaded    ToumaDisputeEvidence[] @relation("EvidenceAuthor")
+  disputesAssigned    ToumaDispute[]         @relation("DisputeAssignee")
   businessProfile     ToumaBusinessProfile?
   rfqs                ToumaRfq[]
   quotes              ToumaQuote[]                   @relation("QuoteSeller")
@@ -679,9 +681,51 @@ enum ShipmentStatus {
   CANCELLED
 }
 
+/// Catégorie d'un litige. Elle sert à orienter le dossier et à mesurer ce qui
+/// casse vraiment sur le corridor — pas à décider à la place d'un humain.
+enum DisputeCategory {
+  NON_DELIVERY
+  LATE_DELIVERY
+  DAMAGED_ITEM
+  WRONG_ITEM
+  NOT_AS_DESCRIBED
+  QUALITY
+  MISSING_QUANTITY
+  PAYMENT
+  REFUND
+  FRAUD
+  OTHER
+}
+
+/// Ordre de passage, calculé. Jamais une décision.
+enum DisputePriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+/// Issue d'un litige, telle qu'elle est figée dans l'instantané de résolution.
+enum DisputeResolutionType {
+  BUYER_REFUND_FULL
+  BUYER_REFUND_PARTIAL
+  RETURN_AND_REFUND
+  REPLACEMENT
+  NO_REFUND
+  SELLER_FAVOR
+  BUYER_FAVOR
+  MUTUAL_AGREEMENT
+  OTHER
+}
+
 enum DisputeStatus {
   OPEN
+  /// En attente d'une réponse de la partie nommée, avec un délai.
+  SELLER_RESPONSE_REQUIRED
+  BUYER_RESPONSE_REQUIRED
   UNDER_REVIEW
+  MEDIATION
+  ESCALATED
   RESOLVED_BUYER
   RESOLVED_SELLER
   REJECTED
@@ -703,14 +747,28 @@ enum AddressKind {
 
 // ── Après-vente : retours, remboursements, assistance ────────────────────────
 
+/// État d'un article retourné, constaté par le vendeur à réception.
+enum ReturnCondition {
+  UNOPENED
+  OPENED
+  DAMAGED
+  USED
+  UNKNOWN
+}
+
 enum ReturnStatus {
   REQUESTED
+  /// Le vendeur ou l'assistance examine la demande.
+  UNDER_REVIEW
   APPROVED
   REJECTED
   IN_TRANSIT
   RECEIVED
+  /// Retour reçu, remboursement pas encore exécuté.
+  REFUND_PENDING
   REFUNDED
   CANCELLED
+  CLOSED
 }
 
 /// Motif déclaré par l'acheteur. Détermine qui supporte les frais de retour.
@@ -721,6 +779,20 @@ enum ReturnReason {
   MISSING_PARTS
   NOT_DELIVERED
   CHANGED_MIND
+  /// Le produit ne correspond pas à la qualité attendue.
+  QUALITY
+  /// Taille ou dimension inadaptée.
+  SIZE
+  /// Le produit ne fonctionne pas.
+  DOES_NOT_WORK
+  /// B2B : il manque des unités par rapport à la quantité commandée. Sur un
+  /// lot de mille sacs, c'est le motif le plus fréquent — et il ne se confond
+  /// pas avec « pièce manquante ».
+  QUANTITY_SHORTAGE
+  /// B2B : la marchandise ne correspond pas au cahier des charges.
+  SPECIFICATION_MISMATCH
+  /// B2B : dommage survenu pendant le transport.
+  DELIVERY_DAMAGE
   OTHER
 }
 
@@ -907,6 +979,7 @@ model ToumaStore {
   documents      ToumaDocument[]
   reputation     ToumaStoreReputation?
   rfqInvitations ToumaRfqInvitation[]
+  ledger         ToumaLedgerEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1344,6 +1417,72 @@ model ToumaCommission {
 }
 
 /// Versement au vendeur (net de commission).
+/// Registre comptable interne, **append-only**.
+///
+/// Chaque mouvement d'argent y laisse une ligne : la vente, la commission
+/// prélevée, le remboursement, la contre-passation. Rien n'est jamais modifié
+/// ni supprimé — une correction est une nouvelle ligne de sens inverse, comme
+/// en comptabilité.
+///
+/// Ce que ce registre permet, et que le dépôt ne savait pas faire : répondre à
+/// « combien cette boutique a-t-elle réellement gagné, et combien ne doit pas
+/// encore partir ». Le solde est **calculé**, jamais stocké — un solde stocké
+/// finit toujours par diverger de ses mouvements.
+///
+/// Ce qu'il n'est PAS : une comptabilité légale. Il ne remplace ni un livre
+/// comptable, ni un expert-comptable, ni les obligations fiscales d'un vendeur.
+model ToumaLedgerEntry {
+  id      String     @id @default(cuid())
+  storeId String?
+  store   ToumaStore? @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  type      LedgerEntryType
+  /// Sens du mouvement du point de vue de la boutique : ce qu'elle gagne
+  /// (CREDIT) ou ce qui lui est retiré (DEBIT).
+  direction LedgerDirection
+
+  amount   Decimal @db.Decimal(18, 4)
+  currency String
+
+  /// Ce à quoi la ligne se rattache : « ToumaOrder », « ToumaRefund »…
+  referenceType String
+  referenceId   String
+
+  /// Retenu tant qu'un litige est ouvert sur la référence.
+  heldByDisputeId String?
+  heldByDispute   ToumaDispute? @relation(fields: [heldByDisputeId], references: [id], onDelete: SetNull)
+  releasedAt      DateTime?
+
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([referenceType, referenceId, type])
+  @@index([storeId, currency])
+  @@index([referenceType, referenceId])
+  @@index([heldByDisputeId])
+  @@map("touma_ledger_entries")
+}
+
+enum LedgerEntryType {
+  /// Montant de la vente revenant à la boutique.
+  SALE
+  /// Commission retenue par TOUMA.
+  COMMISSION
+  /// Remboursement versé à l'acheteur.
+  REFUND
+  /// Commission rendue à la boutique au prorata d'un remboursement.
+  COMMISSION_REVERSAL
+  /// Versement effectué à la boutique (aucun n'est créé tant qu'aucun
+  /// prestataire n'est raccordé — voir la documentation).
+  PAYOUT
+  ADJUSTMENT
+}
+
+enum LedgerDirection {
+  CREDIT
+  DEBIT
+}
+
 model ToumaSellerPayout {
   id        String       @id @default(cuid())
   storeId   String
@@ -1497,13 +1636,34 @@ model ToumaDispute {
   reason       String
   details      String?
   status       DisputeStatus @default(OPEN)
+  category     DisputeCategory @default(OTHER)
+  /// Priorité **calculée** (montant, récidive, catégorie). Ce n'est pas une
+  /// décision : c'est un ordre de passage. Le §18 le dit, et le code aussi.
+  priority     DisputePriority @default(NORMAL)
+
+  /// Agent d'assistance en charge, s'il y en a un.
+  assignedToId String?
+  assignedTo   User?  @relation("DisputeAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  /// Délais de réponse. Passés, le litige est escaladé par un balayage serveur —
+  /// jamais par le navigateur. Un vendeur qui ne répond jamais ne doit pas
+  /// pouvoir bloquer un acheteur indéfiniment, et réciproquement.
+  sellerResponseDeadline DateTime?
+  buyerResponseDeadline  DateTime?
+  escalatedAt            DateTime?
+
   /// Décision de l'administrateur (auditée dans ToumaAuditLog).
-  resolution   String?
+  resolution     String?
+  resolutionType DisputeResolutionType?
+  /// Instantané figé de la décision : montant, devise, preuves retenues,
+  /// agent, horodatage. Une résolution ne se réécrit pas en silence.
+  resolutionSnapshot Json?
   refundAmount Decimal?      @db.Decimal(18, 4)
   resolvedAt   DateTime?
 
-  messages ToumaDisputeMessage[]
-  evidence ToumaDisputeEvidence[]
+  messages    ToumaDisputeMessage[]
+  evidence    ToumaDisputeEvidence[]
+  heldEntries ToumaLedgerEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1531,18 +1691,58 @@ model ToumaDisputeMessage {
 }
 
 /// Preuve jointe à un litige (photo, facture…). Stockage privé.
+/// Preuve versée à un litige ou à un retour.
+///
+/// C'est la pièce sur laquelle un arbitre décide qui garde l'argent. Elle ne
+/// peut donc pas être une URL déclarée par un navigateur : le fichier est reçu
+/// en corps brut, son type est reconnu à ses octets, il est empreinté et rangé
+/// sous une clé non devinable dans le stockage privé — le même que celui des
+/// pièces jointes de la messagerie.
+///
+/// Une preuve ne se modifie jamais. Son retrait est un acte d'administration
+/// qui la **marque** retirée : on ne supprime pas une pièce d'un dossier après
+/// qu'une décision a été prise dessus.
 model ToumaDisputeEvidence {
-  id        String       @id @default(cuid())
-  disputeId String
-  dispute   ToumaDispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
-  kind      String
-  url       String
-  note      String?
+  id        String        @id @default(cuid())
+  disputeId String?
+  dispute   ToumaDispute? @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  /// Une preuve peut appartenir à un retour avant qu'un litige n'existe.
+  returnRequestId String?
+  returnRequest   ToumaReturnRequest? @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
+
+  kind EvidenceKind @default(PHOTO)
+
+  /// Qui l'a déposée. Sans cela, une preuve n'engage personne.
+  uploadedById String
+  uploadedBy   User   @relation("EvidenceAuthor", fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  /// Contenu réel, vérifié.
+  storageKey String  @unique
+  filename   String
+  mimeType   String
+  sizeBytes  Int
+  checksum   String
+  note       String?
+
+  /// Retrait tracé, jamais effacement.
+  removedAt     DateTime?
+  removedById   String?
+  removalReason String?
 
   createdAt DateTime @default(now())
 
   @@index([disputeId])
+  @@index([returnRequestId])
   @@map("touma_dispute_evidence")
+}
+
+enum EvidenceKind {
+  PHOTO
+  VIDEO
+  DOCUMENT
+  INVOICE
+  TRACKING
+  OTHER
 }
 
 // ── Risque & fraude ──────────────────────────────────────────────────────────
@@ -2377,8 +2577,9 @@ model ToumaReturnRequest {
   refundedAt  DateTime?
   closedAt    DateTime?
 
-  items   ToumaReturnItem[]
-  refunds ToumaRefund[]
+  items    ToumaReturnItem[]
+  refunds  ToumaRefund[]
+  evidenceFiles ToumaDisputeEvidence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2404,7 +2605,11 @@ model ToumaReturnItem {
   lineTotal     Decimal @db.Decimal(18, 4)
   currency      String
   /// État constaté à réception (renseigné par le vendeur).
-  condition     String?
+  condition        String?
+  conditionGrade   ReturnCondition?
+  /// Motif propre à la ligne : un colis peut contenir un article cassé et un
+  /// article simplement en trop.
+  lineReason       ReturnReason?
 
   createdAt DateTime @default(now())
 

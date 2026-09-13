@@ -73,8 +73,19 @@ export class TestApi {
   put = <T = any>(path: string, body?: unknown, token?: string) => this.request<T>('PUT', path, { body, token });
   delete = <T = any>(path: string, token?: string) => this.request<T>('DELETE', path, { token });
 
-  /** Envoi d'un fichier en corps brut (pièces jointes de la messagerie). */
-  upload = <T = any>(path: string, content: Buffer, fileName: string, token?: string, caption?: string) =>
+  /**
+   * Envoi d'un fichier en corps brut : pièces jointes de la messagerie, et
+   * preuves versées à un litige ou à un retour. `extra` permet d'ajouter les
+   * en-têtes propres au dossier (`x-evidence-kind`, `x-note`).
+   */
+  upload = <T = any>(
+    path: string,
+    content: Buffer,
+    fileName: string,
+    token?: string,
+    caption?: string,
+    extra?: Record<string, string>,
+  ) =>
     this.request<T>('POST', path, {
       raw: content,
       token,
@@ -82,6 +93,7 @@ export class TestApi {
         'content-type': 'application/octet-stream',
         'x-file-name': encodeURIComponent(fileName),
         ...(caption ? { 'x-caption': encodeURIComponent(caption) } : {}),
+        ...Object.fromEntries(Object.entries(extra ?? {}).map(([k, v]) => [k, encodeURIComponent(v)])),
       },
     });
 }

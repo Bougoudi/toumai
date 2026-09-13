@@ -38,7 +38,22 @@ export type NotificationType =
   | 'ORDER_IN_TRANSIT'
   | 'DELIVERY_CONFIRMED'
   | 'RESERVATION_EXPIRED'
-  | 'PAYOUT_ELIGIBLE';
+  | 'PAYOUT_ELIGIBLE'
+  // ── Confiance après-vente (V16) ──────────────────────────────────────────
+  | 'RETURN_REQUESTED'
+  | 'RETURN_APPROVED'
+  | 'RETURN_REJECTED'
+  | 'RETURN_RECEIVED'
+  | 'REFUND_REQUESTED'
+  | 'REFUND_PROCESSING'
+  | 'REFUND_COMPLETED'
+  | 'REFUND_FAILED'
+  | 'DISPUTE_RESPONSE_REQUIRED'
+  | 'DISPUTE_ESCALATED'
+  | 'DISPUTE_RESOLVED'
+  | 'EVIDENCE_ADDED'
+  | 'FUNDS_HELD'
+  | 'FUNDS_RELEASED';
 
 /**
  * Catégories de préférence. Elles regroupent les types : un utilisateur coupe
@@ -72,6 +87,20 @@ const CATEGORY_BY_TYPE: Partial<Record<NotificationType, NotificationCategory>> 
   DELIVERY_CONFIRMED: 'ORDERS',
   RESERVATION_EXPIRED: 'ORDERS',
   PAYOUT_ELIGIBLE: 'ORDERS',
+  RETURN_REQUESTED: 'ORDERS',
+  RETURN_APPROVED: 'ORDERS',
+  RETURN_REJECTED: 'ORDERS',
+  RETURN_RECEIVED: 'ORDERS',
+  REFUND_REQUESTED: 'ORDERS',
+  REFUND_PROCESSING: 'ORDERS',
+  REFUND_COMPLETED: 'ORDERS',
+  REFUND_FAILED: 'ORDERS',
+  DISPUTE_RESPONSE_REQUIRED: 'ORDERS',
+  DISPUTE_ESCALATED: 'ORDERS',
+  DISPUTE_RESOLVED: 'ORDERS',
+  EVIDENCE_ADDED: 'ORDERS',
+  FUNDS_HELD: 'ORDERS',
+  FUNDS_RELEASED: 'ORDERS',
 };
 
 /** Catégorie d'un type de notification (par défaut : ORDERS, jamais MARKETING). */
