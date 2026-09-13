@@ -69,14 +69,32 @@ async function sessionFor(email, password = 'touma-dev-1234') {
 }
 
 const step = async (name, fn) => {
+  if (rateLimited) {
+    // Fenêtre de la limitation de débit : une minute.
+    rateLimited = false;
+    await page.waitForTimeout(62_000);
+  }
   try {
-    if (rateLimited) {
-      // Fenêtre de la limitation de débit : une minute.
-      rateLimited = false;
-      await page.waitForTimeout(62_000);
-    }
     await fn();
     console.log(`✓ ${name}`);
+    return;
+  } catch (e) {
+    // Une étape peut heurter la limitation **pendant** son déroulement : ce
+    // n'est pas un défaut du produit, c'est la protection qui fonctionne. On
+    // laisse la fenêtre se refermer et on rejoue l'étape une fois.
+    if (!rateLimited) {
+      console.log(`✗ ${name} → ${e.message}`);
+      errors.push(`${name}: ${e.message}`);
+      return;
+    }
+    console.log(`… ${name} (limitation de débit atteinte, nouvelle tentative)`);
+  }
+
+  rateLimited = false;
+  await page.waitForTimeout(62_000);
+  try {
+    await fn();
+    console.log(`✓ ${name} (au second essai)`);
   } catch (e) {
     console.log(`✗ ${name} → ${e.message}`);
     errors.push(`${name}: ${e.message}`);
@@ -701,6 +719,190 @@ await step('après-vente : pages privées sur mobile', async () => {
     await page.screenshot({ path: `${OUT}/21-apres-vente-${width}.png` });
   }
   await page.setViewportSize({ width: 1280, height: 900 });
+});
+
+// ── Messagerie commerciale et négociation (V14) ─────────────────────────────
+let demoThreadUrl = '';
+let negotiationUrl = '';
+
+await step('messagerie : boîte de réception avec contexte', async () => {
+  const buyer = await sessionFor('acheteur@touma.dev');
+  await buyer.goto(`${BASE}/messages`, { waitUntil: 'networkidle' });
+  await buyer.waitForSelector('.conv-row');
+  const rows = await buyer.locator('.conv-row').count();
+  if (rows < 3) throw new Error(`la boîte de réception de démonstration est vide (${rows} fils)`);
+
+  // Chaque ligne annonce son contexte commercial : c'est ce qui distingue
+  // TOUMA d'une application de discussion.
+  const contexts = await buyer.locator('.conv-row-context').allTextContents();
+  if (!contexts.some((t) => /Offre|Appel d’offres|Commande/.test(t))) {
+    throw new Error('aucune conversation n’affiche son contexte commercial');
+  }
+  await buyer.screenshot({ path: `${OUT}/35-messagerie.png` });
+});
+
+await step('messagerie : filtrer et chercher', async () => {
+  const buyer = await sessionFor('acheteur@touma.dev');
+  await buyer.click('.chip-row a[href*="filter=QUOTE"]');
+  await buyer.waitForTimeout(1200);
+  if (!buyer.url().includes('filter=QUOTE')) throw new Error('le filtre n’est pas dans l’URL');
+  if ((await buyer.locator('.conv-row').count()) === 0) throw new Error('aucun fil d’offre trouvé');
+
+  await buyer.fill('#conv-q', 'cacao');
+  await buyer.click('#conv-search button[type="submit"]');
+  await buyer.waitForTimeout(1200);
+  if (!buyer.url().includes('q=cacao')) throw new Error('la recherche n’est pas dans l’URL');
+});
+
+await step('messagerie : carte d’offre dans le fil', async () => {
+  const buyer = await sessionFor('acheteur@touma.dev');
+  await buyer.goto(`${BASE}/messages?filter=QUOTE`, { waitUntil: 'networkidle' });
+  // On vise la négociation de démonstration, encore ouverte : celle que le
+  // parcours vient d'accepter est close, et n'offrirait plus aucune action.
+  const demo = buyer.locator('.conv-row', { hasText: 'DÉMO' }).first();
+  if ((await demo.count()) === 0) throw new Error('la conversation de démonstration est absente (seed V14)');
+  await demo.click();
+  await buyer.waitForSelector('.thread-head');
+  demoThreadUrl = buyer.url();
+
+  // L'offre est lisible comme un devis : lignes, sous-total, délai, total.
+  await buyer.waitForSelector('.offer-card');
+  const figures = await buyer.locator('.offer-figures dt').allTextContents();
+  if (!figures.some((t) => /Total/i.test(t))) throw new Error('la carte d’offre n’affiche pas de total');
+
+  const bar = await buyer.locator('.negotiation-bar').count();
+  if (bar === 0) throw new Error('le bandeau de négociation est absent : la prochaine action n’est pas visible');
+  await buyer.screenshot({ path: `${OUT}/36-fil-offre.png` });
+});
+
+await step('messagerie : envoyer, citer, modifier, supprimer', async () => {
+  const buyer = await sessionFor('acheteur@touma.dev');
+  await buyer.goto(demoThreadUrl, { waitUntil: 'networkidle' });
+  await buyer.waitForSelector('#m-body');
+
+  const before = await buyer.locator('.msg').count();
+  await buyer.fill('#m-body', 'Quelle est votre disponibilité pour une livraison en mars ?');
+  await buyer.click('#message-form button[type="submit"]');
+  await buyer.waitForTimeout(1800);
+  if ((await buyer.locator('.msg').count()) <= before) throw new Error('le message n’apparaît pas dans le fil');
+
+  // Répondre en citant : la citation doit apparaître dans le nouveau message.
+  await buyer.locator('.msg').last().hover();
+  await buyer.locator('.msg').last().locator('[data-action="reply-message"]').click();
+  if (await buyer.locator('#reply-banner').isHidden()) throw new Error('le bandeau de réponse ne s’affiche pas');
+  await buyer.fill('#m-body', 'Je précise : livraison à N’Djamena.');
+  await buyer.click('#message-form button[type="submit"]');
+  await buyer.waitForTimeout(1800);
+  if ((await buyer.locator('.msg-quote').count()) === 0) throw new Error('le message cité n’est pas affiché');
+
+  // Modifier son dernier message, puis le supprimer : la trace reste.
+  await buyer.locator('.msg').last().hover();
+  await buyer.locator('.msg').last().locator('[data-action="edit-message"]').click();
+  await buyer.fill('#m-body', 'Je précise : livraison à N’Djamena, sous 15 jours.');
+  await buyer.click('#message-form button[type="submit"]');
+  await buyer.waitForTimeout(1800);
+  const texts = await buyer.locator('.msg-body').allTextContents();
+  if (!texts.some((t) => /sous 15 jours/.test(t))) throw new Error('la modification n’est pas prise en compte');
+
+  await buyer.locator('.msg').last().hover();
+  await buyer.locator('.msg').last().locator('[data-action="delete-message"]').click();
+  await buyer.waitForSelector('.modal');
+  await buyer.click('.modal [data-action="confirm"]');
+  await buyer.waitForTimeout(1800);
+  if ((await buyer.locator('.msg-deleted').count()) === 0) throw new Error('le message supprimé ne laisse pas sa trace');
+});
+
+await step('négociation : chronologie et contre-offre calculée par le serveur', async () => {
+  const buyer = await sessionFor('acheteur@touma.dev');
+  await buyer.goto(demoThreadUrl, { waitUntil: 'networkidle' });
+  await buyer.click('.chip[href*="/negociations/"]');
+  await buyer.waitForSelector('.timeline');
+  negotiationUrl = buyer.url();
+
+  const entries = await buyer.locator('.timeline-entry').count();
+  if (entries === 0) throw new Error('la chronologie de négociation est vide');
+
+  // Le total affiché pendant la saisie doit refléter les lignes.
+  await buyer.waitForSelector('#counter-form');
+  await buyer.fill('.cl-qty', '400');
+  await buyer.fill('.cl-price', '2700');
+  await buyer.fill('#c-shipping', '40000');
+  await buyer.waitForTimeout(400);
+  const estimate = await buyer.locator('#counter-total').textContent();
+  if (!/1[\s\u202f]?120[\s\u202f]?000/.test(estimate.replace(/\u00a0/g, ' '))) {
+    throw new Error(`total estimé incorrect : ${estimate}`);
+  }
+
+  await buyer.fill('#c-note', 'Proposition pour 400 kg.');
+  await buyer.click('#counter-form button[type="submit"]');
+  await buyer.waitForTimeout(2200);
+  const after = await buyer.locator('.timeline-entry').count();
+  if (after <= entries) throw new Error('la contre-proposition n’apparaît pas dans la chronologie');
+  await buyer.screenshot({ path: `${OUT}/37-negociation.png` });
+});
+
+await step('négociation : le fournisseur entérine depuis son espace', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(negotiationUrl.replace('/touma/negociations/', '/touma/vendeur/negociations/'), { waitUntil: 'networkidle' });
+  await seller.waitForSelector('.timeline');
+
+  const apply = seller.locator('[data-action="apply-proposal"]').first();
+  if ((await apply.count()) === 0) throw new Error('le fournisseur ne peut pas entériner la contre-proposition');
+  await apply.click();
+  await seller.waitForTimeout(2200);
+
+  const total = await seller.locator('.offer-figures .offer-total dd').textContent();
+  if (!/1[\s\u202f]?120[\s\u202f]?000/.test(total.replace(/\u00a0/g, ' '))) {
+    throw new Error(`l’offre n’a pas été alignée sur la contre-proposition : ${total}`);
+  }
+  await seller.screenshot({ path: `${OUT}/38-negociation-vendeur.png` });
+});
+
+await step('messagerie vendeur : onglet dédié', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur/messages`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('.conv-row');
+  if ((await seller.locator('.conv-row').count()) === 0) throw new Error('le vendeur ne voit aucune conversation');
+  const tabs = await seller.locator('.tabs a').allTextContents();
+  if (!tabs.some((t) => /Messagerie/.test(t))) throw new Error('l’onglet Messagerie manque à l’espace vendeur');
+});
+
+await step('préférences de messagerie', async () => {
+  const buyer = await sessionFor('acheteur@touma.dev');
+  await buyer.goto(`${BASE}/messages/reglages`, { waitUntil: 'networkidle' });
+  await buyer.waitForSelector('#template-form');
+  if ((await buyer.locator('[data-action="set-preference"]').count()) < 5) throw new Error('les catégories de notification sont incomplètes');
+
+  await buyer.fill('#t-title', 'Délai N’Djamena');
+  await buyer.fill('#t-content', 'Le délai vers N’Djamena est de 12 jours, transport inclus.');
+  await buyer.click('#template-form button[type="submit"]');
+  await buyer.waitForTimeout(1600);
+  const saved = await buyer.locator('[data-action="delete-template"]').count();
+  if (saved === 0) throw new Error('la réponse enregistrée n’apparaît pas');
+});
+
+await step('messagerie : mobile plein écran, sans débordement', async () => {
+  const buyer = await sessionFor('acheteur@touma.dev');
+  for (const [width, height] of [
+    [360, 780],
+    [390, 844],
+    [430, 932],
+  ]) {
+    await buyer.setViewportSize({ width, height });
+    for (const path of ['/messages', demoThreadUrl.replace(BASE, ''), negotiationUrl.replace(BASE, '')]) {
+      await buyer.goto(`${BASE}${path}`, { waitUntil: 'networkidle' });
+      await buyer.waitForTimeout(600);
+      const overflow = await buyer.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+      if (overflow) throw new Error(`débordement horizontal sur ${path} à ${width}px`);
+    }
+    // Sur mobile, la liste ne doit pas voler la place de la conversation.
+    await buyer.goto(demoThreadUrl, { waitUntil: 'networkidle' });
+    await buyer.waitForTimeout(500);
+    if (await buyer.locator('.messaging-side').isVisible()) throw new Error(`la liste latérale reste affichée à ${width}px`);
+    if (!(await buyer.locator('.thread-back').isVisible())) throw new Error(`le retour vers la liste est absent à ${width}px`);
+    await buyer.screenshot({ path: `${OUT}/39-messagerie-${width}.png` });
+  }
+  await buyer.setViewportSize({ width: 1280, height: 900 });
 });
 
 // ── Largeurs cibles : aucun débordement horizontal, menu mobile fonctionnel ──

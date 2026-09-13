@@ -8,6 +8,7 @@ import { breadcrumb, statCard } from './components.js';
 const TABS = [
   ['/touma/business', "Vue d'ensemble"],
   ['/touma/business/appels-offres', "Mes appels d'offres"],
+  ['/touma/business/messages', 'Messagerie'],
   ['/touma/business/appels-offres/nouveau', 'Publier une demande'],
   ['/touma/sourcing', 'Sourcing'],
   ['/touma/business/profil', 'Profil entreprise'],
@@ -365,6 +366,11 @@ function quoteCard(q, rfqData, me) {
     </p>
     ${q.message ? `<p class="small">« ${esc(q.message)} »</p>` : ''}
 
+    <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3)">
+      <a class="btn btn-secondary btn-sm" href="/touma/negociations/${esc(q.id)}" data-link>${svg('chart')} Ouvrir la négociation</a>
+      ${q.conversationId ? `<a class="btn btn-ghost btn-sm" href="/touma/messages/${esc(q.conversationId)}" data-link>${svg('inbox')} Discuter</a>` : ''}
+    </div>
+
     ${q.negotiations.length
       ? `<details style="margin-top:var(--space-3)">
           <summary class="small strong">Négociation (${q.negotiations.length})</summary>
@@ -462,6 +468,10 @@ export async function myQuotes() {
                     <strong>${money(q.total, q.currency)}</strong>
                     <span class="status status-${esc(q.status)}">${esc(QUOTE_STATUS[q.status] ?? q.status)}</span>
                   </div>
+                </div>
+                <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3)">
+                  <a class="btn btn-secondary btn-sm" href="/touma/vendeur/negociations/${esc(q.id)}" data-link>${svg('chart')} Négociation</a>
+                  ${q.orderGroupId ? `<a class="btn btn-ghost btn-sm" href="/touma/vendeur/commandes" data-link>${svg('box')} Commande gagnée</a>` : ''}
                 </div>
               </article>`,
             )

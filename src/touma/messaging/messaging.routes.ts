@@ -28,6 +28,16 @@ import {
   sendMessageSchema,
 } from './messaging.schema.js';
 
+/** Décode un en-tête encodé par le client (`encodeURIComponent`). */
+function decodeHeader(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export const conversationRouter = Router();
 export const messageRouter = Router();
 export const attachmentRouter = Router();
@@ -98,8 +108,11 @@ conversationRouter.post(
     if (!Buffer.isBuffer(content) || content.length === 0) {
       throw badRequest('Envoyez le fichier en corps brut (content-type: application/octet-stream).');
     }
-    const fileName = String(req.get('x-file-name') ?? 'fichier');
-    const caption = req.get('x-caption') ? String(req.get('x-caption')) : undefined;
+    // Un en-tête HTTP ne transporte que des octets latin-1 : « échantillon.png »
+    // n'y tient pas tel quel. Le client encode, le serveur décode — et tolère
+    // une valeur non encodée plutôt que de perdre le fichier.
+    const fileName = decodeHeader(req.get('x-file-name')) ?? 'fichier';
+    const caption = decodeHeader(req.get('x-caption'));
     res.status(201).json(await messagingService.attach(currentUser(req), req.params.id, content, fileName, caption));
   }),
 );

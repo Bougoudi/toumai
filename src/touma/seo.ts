@@ -56,10 +56,16 @@ async function metaForPath(pathname: string, canonical: string): Promise<PageMet
 
   // Les espaces privés ne doivent jamais être indexés.
   if (
-    ['panier', 'checkout', 'commandes', 'compte', 'vendeur', 'admin', 'connexion', 'inscription', 'messages', 'retours', 'aide', 'promotions', 'documents'].includes(
+    ['panier', 'checkout', 'commandes', 'compte', 'vendeur', 'admin', 'connexion', 'inscription', 'messages', 'negociations', 'retours', 'aide', 'promotions', 'documents'].includes(
       segments[0] ?? '',
     )
   ) {
+    return { ...defaultMeta(canonical), noIndex: true, title: `${SITE_NAME} — espace personnel` };
+  }
+
+  // Une conversation ou une négociation n'est jamais publique, même sous
+  // « business », dont la vitrine reste indexable.
+  if (segments[0] === 'business' && ['messages', 'negociations'].includes(segments[1] ?? '')) {
     return { ...defaultMeta(canonical), noIndex: true, title: `${SITE_NAME} — espace personnel` };
   }
 

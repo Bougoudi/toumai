@@ -80,8 +80,8 @@ export class TestApi {
       token,
       headers: {
         'content-type': 'application/octet-stream',
-        'x-file-name': fileName,
-        ...(caption ? { 'x-caption': caption } : {}),
+        'x-file-name': encodeURIComponent(fileName),
+        ...(caption ? { 'x-caption': encodeURIComponent(caption) } : {}),
       },
     });
 }

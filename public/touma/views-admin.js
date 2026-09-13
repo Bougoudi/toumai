@@ -36,6 +36,7 @@ const SECTIONS = [
       ['/touma/admin/verifications', 'Vérifications', 'shield'],
       ['/touma/admin/litiges', 'Litiges', 'alert'],
       ['/touma/admin/assistance', 'Assistance', 'inbox'],
+      ['/touma/admin/moderation', 'Modération', 'shield'],
       ['/touma/admin/risque', 'Risque', 'spark'],
       ['/touma/admin/audit', 'Audit', 'inbox'],
     ],
@@ -520,4 +521,109 @@ export async function intelligence(_params, query) {
     </section>`;
 
   return layout('/touma/admin/intelligence', 'TOUMA Intelligence', content);
+}
+
+// ── Modération de la messagerie ────────────────────────────────────────────
+const REPORT_REASON = {
+  SPAM: 'Message indésirable',
+  FRAUD: 'Tentative de fraude',
+  ABUSE: 'Propos abusifs',
+  OFF_PLATFORM_PAYMENT: 'Paiement hors plateforme',
+  PROHIBITED_CONTENT: 'Contenu interdit',
+  OTHER: 'Autre',
+};
+
+const RISK_CATEGORY = {
+  OFF_PLATFORM_PAYMENT: 'Paiement hors plateforme',
+  CONTACT_EXCHANGE: 'Échange de coordonnées',
+  SUSPICIOUS_LINK: 'Lien suspect',
+  FLOOD: 'Inondation de messages',
+  REPEATED_CONTENT: 'Messages répétés',
+};
+
+/**
+ * File de modération.
+ *
+ * Deux listes volontairement distinctes : ce qu'un **humain** a signalé, et ce
+ * qu'une règle a **repéré**. La seconde n'a aucun pouvoir : elle attire
+ * l'attention, l'administration tranche.
+ */
+export async function moderation(_params, searchParams) {
+  const status = searchParams?.get('statut') ?? 'OPEN';
+  const [reports, flags] = await Promise.all([
+    api(`/messaging/reports?status=${encodeURIComponent(status)}`),
+    api('/messaging/risk-flags?status=OPEN'),
+  ]);
+
+  const content = `
+    <div class="chip-row" style="margin-bottom:var(--space-4)">
+      ${['OPEN', 'REVIEWED', 'ACTIONED', 'DISMISSED']
+        .map(
+          (s) =>
+            `<a class="chip${s === status ? ' chip-active' : ''}" href="/touma/admin/moderation?statut=${s}" data-link>${esc(
+              { OPEN: 'À traiter', REVIEWED: 'Examinés', ACTIONED: 'Sanctionnés', DISMISSED: 'Classés sans suite' }[s],
+            )}</a>`,
+        )
+        .join('')}
+    </div>
+
+    <section class="card">
+      <h2 style="font-size:var(--text-base)">Signalements (${reports.total})</h2>
+      ${reports.items.length
+        ? `<div class="stack" style="gap:var(--space-3)">
+            ${reports.items
+              .map(
+                (r) => `<article class="notif-item">
+                  <div class="row-between">
+                    <strong>${esc(REPORT_REASON[r.reason] ?? r.reason)}</strong>
+                    <span class="xs muted">${formatDate(r.createdAt, true)}</span>
+                  </div>
+                  <p class="small">Signalé par ${esc(r.reporter.name)} · auteur du message : ${esc(r.message.author?.name ?? 'TOUMA')}</p>
+                  <blockquote class="msg-quote"><span>${esc(r.message.excerpt)}</span></blockquote>
+                  ${r.details ? `<p class="small muted">« ${esc(r.details)} »</p>` : ''}
+                  ${r.status === 'OPEN'
+                    ? `<div class="row" style="gap:var(--space-2);flex-wrap:wrap">
+                        <button class="btn btn-sm" data-action="resolve-report" data-id="${esc(r.id)}" data-status="ACTIONED">Sanctionner et clore le fil</button>
+                        <button class="btn btn-secondary btn-sm" data-action="resolve-report" data-id="${esc(r.id)}" data-status="REVIEWED">Examiné, sans suite immédiate</button>
+                        <button class="btn btn-ghost btn-sm" data-action="resolve-report" data-id="${esc(r.id)}" data-status="DISMISSED">Classer sans suite</button>
+                      </div>`
+                    : `<span class="badge">${esc(r.status)}</span>`}
+                </article>`,
+              )
+              .join('')}
+          </div>`
+        : '<p class="muted small">Aucun signalement dans cet état.</p>'}
+    </section>
+
+    <section class="card">
+      <h2 style="font-size:var(--text-base)">Signaux automatiques (${flags.total})</h2>
+      <p class="small muted">
+        Détectés par règle, sans effet automatique : aucun compte n’est suspendu, aucune réputation n’est abaissée.
+        Seul un extrait du message est conservé.
+      </p>
+      ${flags.items.length
+        ? `<div class="table-wrap"><table class="table-compact">
+            <thead><tr><th>Catégorie</th><th>Score</th><th>Extrait</th><th>Date</th><th></th></tr></thead>
+            <tbody>
+              ${flags.items
+                .map(
+                  (f) => `<tr>
+                    <td>${esc(RISK_CATEGORY[f.category] ?? f.category)}</td>
+                    <td><strong>${esc(String(f.score))}</strong></td>
+                    <td class="small">${esc(f.excerpt)}</td>
+                    <td class="xs muted">${formatDate(f.createdAt, true)}</td>
+                    <td>
+                      <button class="link-btn xs" data-action="resolve-risk" data-id="${esc(f.id)}" data-status="CONFIRMED">Confirmer</button>
+                      ·
+                      <button class="link-btn xs" data-action="resolve-risk" data-id="${esc(f.id)}" data-status="CLEARED">Écarter</button>
+                    </td>
+                  </tr>`,
+                )
+                .join('')}
+            </tbody>
+          </table></div>`
+        : '<p class="muted small">Aucun signal ouvert.</p>'}
+    </section>`;
+
+  return layout('/touma/admin/moderation', 'Modération de la messagerie', content);
 }

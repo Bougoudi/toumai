@@ -204,12 +204,16 @@ export const systemMessaging = {
     },
     tx: PrismaTx | typeof prisma = prisma,
   ): Promise<{ id: string; created: boolean }> {
+    // Le contexte ne suffit pas à identifier un fil : deux acheteurs peuvent
+    // discuter avec la même boutique. Les participants font partie de la clé,
+    // sans quoi le second acheteur récupérerait le fil du premier.
     const where: Prisma.ToumaConversationWhereInput = {
       kind: input.kind,
       storeId: input.storeId ?? null,
       orderId: input.orderId ?? null,
       rfqId: input.rfqId ?? null,
       quoteId: input.quoteId ?? null,
+      AND: input.participants.map((p) => ({ participants: { some: { userId: p.userId } } })),
     };
     const existing = await tx.toumaConversation.findFirst({ where, select: { id: true } });
     if (existing) return { id: existing.id, created: false };
@@ -666,12 +670,14 @@ export const messagingService = {
     if (!message) throw notFound('Message introuvable.');
     await requireParticipant(user, message.conversationId);
 
-    const isAuthor = message.authorId === user.id;
-    if (!isAuthor && user.role !== 'ADMIN') throw forbidden('Seul l’auteur peut supprimer son message.');
-    if (message.deletedAt) return { id: message.id, deleted: true };
+    // L'immuabilité prime sur la qualité d'auteur : une offre, une
+    // contre-offre ou un fait système ne s'effacent pour personne.
     if (message.type !== 'TEXT' && message.type !== 'ATTACHMENT') {
       throw conflict('Les messages financiers et système sont conservés : ils font foi en cas de litige.');
     }
+    const isAuthor = message.authorId === user.id;
+    if (!isAuthor && user.role !== 'ADMIN') throw forbidden('Seul l’auteur peut supprimer son message.');
+    if (message.deletedAt) return { id: message.id, deleted: true };
 
     await prisma.toumaMessage.update({ where: { id: message.id }, data: { deletedAt: new Date() } });
     await audit({

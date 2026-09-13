@@ -358,8 +358,9 @@ async function main() {
   });
 
   const existingRfq = await prisma.toumaRfq.findFirst({ where: { buyerId: buyer.id } });
-  if (!existingRfq) {
-    await prisma.toumaRfq.create({
+  const demoRfq =
+    existingRfq ??
+    (await prisma.toumaRfq.create({
       data: {
         reference: 'RFQ-DEMO-0001',
         buyerId: buyer.id,
@@ -378,8 +379,9 @@ async function main() {
           ],
         },
       },
-    });
-  }
+    }));
+
+  await seedMessaging({ buyer, sellerCm, storeCm, business, rfq: demoRfq });
 
   const [countries, cats, products] = await Promise.all([
     prisma.country.count(),
@@ -395,6 +397,165 @@ async function main() {
   console.log(`   • Vendeur Camer. : ${sellerCm.email}`);
   console.log(`   • Acheteur       : ${buyer.email}`);
   console.log(`   • Mot de passe   : ${DEV_PASSWORD}  (développement uniquement)\n`);
+}
+
+/**
+ * Messagerie et négociation de démonstration (V14).
+ *
+ * Cinq fils, un par nature : échange direct, appel d'offres, offre,
+ * négociation en cours, commande. Tout est marqué « DÉMO » dans le sujet :
+ * une donnée de démonstration ne doit jamais pouvoir passer pour réelle.
+ */
+async function seedMessaging({
+  buyer,
+  sellerCm,
+  storeCm,
+  business,
+  rfq,
+}: {
+  buyer: { id: string };
+  sellerCm: { id: string };
+  storeCm: { id: string; name: string };
+  business: { id: string };
+  rfq: { id: string; title: string; currency: string };
+}): Promise<void> {
+  const already = await prisma.toumaConversation.findFirst({ where: { createdById: buyer.id, subject: { startsWith: 'DÉMO' } } });
+  if (already) return;
+  console.log('→ [Touma] Messagerie et négociation de démonstration…');
+
+  const seats = [
+    { userId: buyer.id, role: 'BUYER', businessProfileId: business.id },
+    { userId: sellerCm.id, role: 'SELLER' },
+  ];
+
+  // 1. Échange direct avec une boutique.
+  const direct = await prisma.toumaConversation.create({
+    data: {
+      kind: 'BUYER_SELLER',
+      subject: `DÉMO — Échange avec ${storeCm.name}`,
+      storeId: storeCm.id,
+      createdById: buyer.id,
+      participants: { create: seats },
+    },
+  });
+  await prisma.toumaMessage.createMany({
+    data: [
+      { conversationId: direct.id, authorId: buyer.id, type: 'TEXT', body: 'Bonjour, quelle est votre quantité minimale de commande sur le cacao ?' },
+      { conversationId: direct.id, authorId: sellerCm.id, type: 'TEXT', body: 'Bonjour, notre MOQ est de 200 kg, livrable sous 12 jours vers N’Djamena.' },
+    ],
+  });
+
+  // 2. Fil d'appel d'offres.
+  const rfqThread = await prisma.toumaConversation.create({
+    data: {
+      kind: 'RFQ',
+      subject: `DÉMO — Appel d'offres : ${rfq.title}`,
+      storeId: storeCm.id,
+      rfqId: rfq.id,
+      createdById: buyer.id,
+      participants: { create: seats },
+    },
+  });
+  await prisma.toumaMessage.create({
+    data: { conversationId: rfqThread.id, type: 'SYSTEM', body: `${rfq.title} — vous êtes sollicité pour proposer une offre.` },
+  });
+
+  // 3. Offre chiffrée, puis 4. négociation dans son fil.
+  const quote = await prisma.toumaQuote.create({
+    data: {
+      reference: 'QT-DEMO-0001',
+      rfqId: rfq.id,
+      storeId: storeCm.id,
+      sellerId: sellerCm.id,
+      currency: rfq.currency,
+      itemsTotal: '1450000',
+      shippingTotal: '50000',
+      total: '1500000',
+      leadTimeDays: 18,
+      validUntil: new Date(Date.now() + 21 * 24 * 3600 * 1000),
+      message: 'Cacao fermenté qualité export, sacs de 50 kg.',
+      items: {
+        create: [{ name: 'Cacao en fèves fermentées', quantity: 500, unit: 'kg', unitPrice: '2900', lineTotal: '1450000' }],
+      },
+    },
+  });
+
+  const quoteThread = await prisma.toumaConversation.create({
+    data: {
+      kind: 'QUOTE',
+      subject: `DÉMO — Offre ${quote.reference}`,
+      storeId: storeCm.id,
+      rfqId: rfq.id,
+      quoteId: quote.id,
+      createdById: sellerCm.id,
+      participants: { create: seats },
+    },
+  });
+  await prisma.toumaMessage.create({
+    data: {
+      conversationId: quoteThread.id,
+      authorId: sellerCm.id,
+      type: 'QUOTE',
+      body: `Offre ${quote.reference} : 1 500 000 XAF, livraison sous 18 jours.`,
+      metadata: {
+        quoteId: quote.id,
+        reference: quote.reference,
+        currency: quote.currency,
+        itemsTotal: '1450000',
+        shipping: '50000',
+        total: '1500000',
+        leadTimeDays: 18,
+      },
+    },
+  });
+
+  const counter = await prisma.toumaNegotiationMessage.create({
+    data: {
+      quoteId: quote.id,
+      authorId: buyer.id,
+      kind: 'COUNTER_OFFER',
+      body: 'Pouvez-vous descendre à 2 800 XAF le kilo pour une commande ferme ?',
+      proposedTotal: '1450000',
+      proposedItemsTotal: '1400000',
+      proposedShipping: '50000',
+      proposedLeadTimeDays: 18,
+      proposedItems: [{ rfqItemId: null, name: 'Cacao en fèves fermentées', quantity: 500, unit: 'kg', unitPrice: '2800', lineTotal: '1400000' }],
+    },
+  });
+  await prisma.toumaMessage.create({
+    data: {
+      conversationId: quoteThread.id,
+      authorId: buyer.id,
+      type: 'COUNTER_OFFER',
+      body: counter.body,
+      negotiationMessageId: counter.id,
+      metadata: { quoteId: quote.id },
+    },
+  });
+  await prisma.toumaQuote.update({ where: { id: quote.id }, data: { status: 'COUNTERED' } });
+
+  // 5. Fil de commande, s'il existe une commande de démonstration.
+  const order = await prisma.toumaOrder.findFirst({ where: { buyerId: buyer.id }, orderBy: { createdAt: 'desc' } });
+  if (order) {
+    const orderThread = await prisma.toumaConversation.create({
+      data: {
+        kind: 'ORDER',
+        subject: `DÉMO — Commande ${order.orderNumber}`,
+        storeId: order.storeId,
+        orderId: order.id,
+        createdById: buyer.id,
+        participants: { create: seats },
+      },
+    });
+    await prisma.toumaMessage.create({
+      data: {
+        conversationId: orderThread.id,
+        type: 'ORDER_UPDATE',
+        body: `Commande ${order.orderNumber} créée — en attente de paiement.`,
+        metadata: { orderId: order.id, status: order.status },
+      },
+    });
+  }
 }
 
 main()

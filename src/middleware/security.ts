@@ -38,7 +38,12 @@ const skipInTests = () => process.env.NODE_ENV === 'test';
 /** Limite globale de l'API : protège contre l'abus / le déni de service léger. */
 export const apiLimiter = rateLimit({
   windowMs: 60_000,
-  limit: 300,
+  /**
+   * 300 requêtes par minute et par IP. Configurable : un poste de
+   * développement qui rejoue un parcours navigateur complet dépasse ce seuil
+   * sans rien abuser. La valeur par défaut, elle, ne bouge pas.
+   */
+  limit: Number(process.env.TOUMA_API_RATE_LIMIT ?? 300),
   skip: skipInTests,
   standardHeaders: 'draft-7',
   legacyHeaders: false,

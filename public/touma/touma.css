@@ -620,6 +620,134 @@ tbody tr:hover { background: var(--surface-sunken); }
 
 @page { margin: 14mm; }
 
+/* ── Messagerie commerciale ────────────────────────────────────────────── */
+/*
+ * Mobile : la conversation occupe tout l'écran, la liste est une page à part.
+ * Bureau : liste à gauche, conversation à droite, dans la proportion qui rend
+ * les deux lisibles (une liste trop large mange la conversation).
+ */
+.messaging { display: grid; gap: var(--space-4); }
+.messaging-side { display: none; }
+.messaging-main { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.messaging-empty { display: none; }
+.thread-back { align-self: flex-start; }
+
+.conv-search { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
+.conv-search input { flex: 1 1 auto; min-width: 0; }
+.conv-search button { flex: 0 0 auto; }
+
+.conv-list { display: flex; flex-direction: column; gap: var(--space-1); }
+.conv-row {
+  display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-3); align-items: start;
+  padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid transparent;
+  color: inherit; text-decoration: none; background: var(--surface);
+}
+.conv-row:hover { background: var(--surface-sunken); text-decoration: none; }
+.conv-row-active { border-color: var(--primary); background: var(--primary-soft); }
+.conv-row-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--surface-sunken); }
+.conv-row-icon svg { width: 18px; height: 18px; }
+.conv-row-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.conv-row-top { display: flex; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
+.conv-row-top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-row-context, .conv-row-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-unread {
+  align-self: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  background: var(--accent); color: #fff; font-size: var(--text-xs); font-weight: var(--weight-semibold);
+  display: grid; place-items: center;
+}
+
+.thread-head { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); padding: var(--space-4); }
+.thread-head-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.chip-verified { border-color: var(--primary); color: var(--primary); }
+
+.negotiation-bar {
+  margin-top: var(--space-3); padding: var(--space-3); border-radius: var(--radius-md);
+  background: var(--primary-soft); display: flex; flex-wrap: wrap; gap: var(--space-3);
+  justify-content: space-between; align-items: center;
+}
+
+.thread-scroll { display: flex; flex-direction: column; gap: var(--space-3); }
+#thread-messages { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.msg { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); padding: var(--space-3) var(--space-4); max-width: 90%; }
+.msg-mine { align-self: flex-end; background: var(--primary-soft); border-color: transparent; }
+.msg-head { display: flex; gap: var(--space-2); align-items: baseline; margin-bottom: var(--space-1); }
+.msg-body { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.msg-deleted { margin: 0; color: var(--text-muted); }
+.msg-quote {
+  margin: 0 0 var(--space-2); padding: var(--space-2) var(--space-3); border-left: 3px solid var(--border-strong);
+  background: var(--surface-sunken); border-radius: var(--radius-sm); font-size: var(--text-sm);
+}
+.msg-quote strong { display: block; font-size: var(--text-xs); color: var(--text-muted); }
+.msg-actions { display: flex; gap: var(--space-3); margin-top: var(--space-2); opacity: 0; transition: opacity 120ms; }
+.msg:hover .msg-actions, .msg:focus-within .msg-actions { opacity: 1; }
+@media (hover: none) { .msg-actions { opacity: 1; } }
+.msg-system {
+  align-self: center; text-align: center; font-size: var(--text-sm); color: var(--text-muted);
+  background: var(--surface-sunken); border-radius: var(--radius-md); padding: var(--space-2) var(--space-4);
+  display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; justify-content: center;
+}
+.msg-system svg { width: 16px; height: 16px; flex: 0 0 auto; }
+
+.link-btn { background: none; border: 0; padding: 0; color: var(--primary); cursor: pointer; text-decoration: underline; min-height: auto; width: auto; }
+.link-btn:hover { color: var(--accent); }
+
+.attachment-row { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.attachment {
+  display: inline-flex; gap: var(--space-2); align-items: center; padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); font-size: var(--text-sm);
+}
+.attachment svg { width: 16px; height: 16px; }
+
+/* Carte d'offre : la même information qu'un devis papier, lisible d'un coup. */
+.offer-card { margin-top: var(--space-3); border: 1px solid var(--primary); border-radius: var(--radius-md); padding: var(--space-3); background: var(--surface); }
+.offer-card-expired { border-color: var(--border); opacity: 0.75; }
+/* Un tableau de lignes ne doit jamais élargir la page : il défile seul. */
+.table-scroll { overflow-x: auto; max-width: 100%; }
+.offer-lines { width: 100%; font-size: var(--text-sm); }
+.offer-lines td, .offer-lines th { padding: var(--space-2); }
+.offer-lines .num { text-align: right; white-space: nowrap; }
+.offer-figures { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-5); margin: var(--space-3) 0 0; }
+.offer-figures div { display: flex; flex-direction: column; }
+.offer-figures dt { font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.offer-figures dd { margin: 0; font-weight: var(--weight-semibold); }
+.offer-figures .offer-total dd { font-size: var(--text-lg); color: var(--primary); }
+
+.composer { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); padding: var(--space-3); position: sticky; bottom: 0; }
+.composer-shortcuts { margin-bottom: var(--space-2); }
+.composer-shortcuts .chip { cursor: pointer; }
+.composer-row { display: flex; gap: var(--space-2); align-items: flex-end; }
+.composer-row textarea { flex: 1 1 auto; min-width: 0; resize: vertical; }
+.composer-buttons { display: flex; gap: var(--space-2); flex: 0 0 auto; }
+.attach-btn { cursor: pointer; display: inline-grid; place-items: center; }
+.reply-banner {
+  display: flex; justify-content: space-between; gap: var(--space-2); align-items: center;
+  background: var(--surface-sunken); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2); font-size: var(--text-sm);
+}
+.thread-closed { border: 1px dashed var(--border-strong); border-radius: var(--radius-md); padding: var(--space-4); text-align: center; }
+
+.counter-line { display: grid; gap: var(--space-2); grid-template-columns: 1fr; align-items: end; margin-bottom: var(--space-2); }
+.counter-line .field { margin: 0; }
+@media (min-width: 640px) { .counter-line { grid-template-columns: 2fr 1fr 1fr 1.2fr auto; } }
+
+.timeline-entry { display: grid; gap: 2px; }
+.timeline-when { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: baseline; }
+.timeline-total { font-weight: var(--weight-semibold); color: var(--primary); font-size: var(--text-base); }
+.timeline-lines { margin: var(--space-1) 0 0; padding-left: var(--space-4); }
+.timeline-entry[data-side="SELLER"] .timeline-total { color: var(--accent); }
+
+.table-compact td, .table-compact th { padding: var(--space-2) var(--space-3); }
+
+@media (min-width: 900px) {
+  .messaging { grid-template-columns: minmax(280px, 32%) 1fr; align-items: start; }
+  .messaging-side { display: block; max-height: calc(100vh - 160px); overflow-y: auto; }
+  .messaging-empty { display: block; }
+  .thread-back { display: none; }
+  .messaging-main { max-height: calc(100vh - 160px); }
+  .thread-scroll { overflow-y: auto; flex: 1 1 auto; padding-right: var(--space-2); }
+}
+
 @media print {
   /* Ne survit à l'impression que le document lui-même. */
   .header, .footer, .bottom-nav, .drawer, .drawer-backdrop,

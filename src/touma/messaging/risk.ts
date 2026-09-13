@@ -35,11 +35,12 @@ function normalize(text: string): string {
  * de messagerie ne suffit jamais.
  */
 const OFF_PLATFORM_PATTERNS: Array<{ re: RegExp; score: number }> = [
-  { re: /\bpay(?:ez|er|e|ment)?\s+(?:moi\s+)?(?:en\s+)?direct(?:ement)?\b/, score: 70 },
+  // Le séparateur peut être une espace ou un trait d'union : « payez-moi ».
+  { re: /\bpay(?:ez|er|e|ment)?[\s-]+(?:moi[\s-]+)?(?:en[\s-]+)?direct(?:ement)?\b/, score: 70 },
   { re: /\bpay\s+me\s+direct(?:ly)?\b/, score: 70 },
   { re: /\b(?:en|hors)\s+dehors\s+(?:de\s+)?(?:la\s+)?(?:plateforme|touma|site)\b/, score: 75 },
   { re: /\boutside\s+(?:the\s+)?(?:platform|site|app)\b/, score: 75 },
-  { re: /\benvoy(?:ez|er)\s+(?:l['’]?\s*argent|les?\s+fonds?)\b/, score: 65 },
+  { re: /\benvoy(?:ez|er)[\s-]+(?:moi[\s-]+)?(?:l['’]?\s*argent|les?\s+fonds?)\b/, score: 65 },
   { re: /\bsend\s+(?:the\s+)?money\b/, score: 65 },
   { re: /\b(?:virement|transfert)\s+(?:direct|personnel|prive)\b/, score: 60 },
   { re: /\b(?:mobile\s*money|orange\s*money|mtn\s*money|wave|western\s*union|moneygram)\b/, score: 45 },

@@ -8,7 +8,9 @@
  */
 import {
   api,
+  API,
   ApiError,
+  chooseDialog,
   confirmDialog,
   emptyState,
   errorState,
@@ -50,9 +52,17 @@ const ROUTES = [
   { path: '/touma/sourcing/:slug', module: 'sourcing', name: 'supplier' },
   { path: '/touma/vendeur/offres', module: 'business', name: 'myQuotes', auth: true, role: 'SELLER' },
 
-  // Messagerie.
+  // Messagerie. L'ordre compte : « reglages » avant le motif générique.
   { path: '/touma/messages', module: 'messages', name: 'inbox', auth: true },
+  { path: '/touma/messages/reglages', module: 'messages', name: 'settings', auth: true },
   { path: '/touma/messages/:id', module: 'messages', name: 'thread', auth: true },
+  { path: '/touma/business/messages', module: 'messages', name: 'businessInbox', auth: true },
+  { path: '/touma/business/messages/:id', module: 'messages', name: 'businessThread', auth: true },
+  { path: '/touma/vendeur/messages', module: 'messages', name: 'sellerInbox', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/messages/:id', module: 'messages', name: 'sellerThread', auth: true, role: 'SELLER' },
+  { path: '/touma/negociations/:id', module: 'messages', name: 'negotiation', auth: true },
+  { path: '/touma/business/negociations/:id', module: 'messages', name: 'negotiation', auth: true },
+  { path: '/touma/vendeur/negociations/:id', module: 'messages', name: 'negotiation', auth: true, role: 'SELLER' },
 
   // Après-vente et assistance (chargés à la demande).
   { path: '/touma/retours', module: 'support', name: 'returns', auth: true },
@@ -91,6 +101,7 @@ const ROUTES = [
   { path: '/touma/admin/verifications', module: 'admin', name: 'verifications', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/risque', module: 'admin', name: 'risk', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/intelligence', module: 'admin', name: 'intelligence', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/moderation', module: 'admin', name: 'moderation', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/:section', module: 'admin', name: 'list', auth: true, role: 'ADMIN' },
 ];
 
@@ -184,6 +195,7 @@ function renderChrome() {
   if (user) {
     drawerLinks.splice(2, 0, ['/touma/panier', 'Panier']);
     drawerLinks.push(['/touma/messages', 'Messages']);
+    if (session.isSeller) drawerLinks.push(['/touma/vendeur/messages', 'Messagerie vendeur']);
     drawerLinks.push(['/touma/retours', 'Mes retours']);
     drawerLinks.push(['/touma/documents', 'Mes documents']);
     drawerLinks.push(['/touma/aide', 'Assistance']);
@@ -1218,10 +1230,84 @@ document.addEventListener('submit', (event) => {
     event.preventDefault();
     return run(
       async () => {
-        await api(`/conversations/${form.dataset.conversation}/messages`, {
+        const body = document.getElementById('m-body').value.trim();
+        if (!body) return toast('Écrivez votre message.', 'error');
+
+        if (composerState.editing) {
+          await api(`/messages/${composerState.editing}`, { method: 'PATCH', body: { body } });
+          toast('Message modifié.');
+        } else {
+          await api(`/conversations/${form.dataset.conversation}/messages`, {
+            method: 'POST',
+            body: { body, replyToId: composerState.replyTo || undefined },
+          });
+        }
+        resetComposer();
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'conv-search') {
+    event.preventDefault();
+    const q = form.querySelector('#conv-q').value.trim();
+    return navigate(`${form.dataset.base}${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  }
+
+  if (form.id === 'counter-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const lines = counterLines(form);
+        if (lines.some((l) => !l.name)) return toast('Chaque ligne a besoin d’une désignation.', 'error');
+        await api(`/negotiations/${form.dataset.negotiation}/counter`, {
           method: 'POST',
-          body: { body: document.getElementById('m-body').value },
+          body: {
+            items: lines,
+            shippingTotal: String(document.getElementById('c-shipping').value).replace(',', '.').trim() || '0',
+            leadTimeDays: Number(document.getElementById('c-lead').value) || 7,
+            validityDays: Number(document.getElementById('c-validity').value) || undefined,
+            note: document.getElementById('c-note').value.trim() || undefined,
+          },
         });
+        toast('Proposition envoyée.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'accept-offer-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const ok = await confirmDialog({
+          title: 'Accepter cette offre ?',
+          body: 'Une commande payable est créée immédiatement et les offres concurrentes sont écartées.',
+          confirmLabel: 'Accepter',
+        });
+        if (!ok) return;
+        const result = await api(`/negotiations/${form.dataset.negotiation}/accept`, {
+          method: 'POST',
+          body: { addressId: document.getElementById('a-address').value },
+        });
+        toast('Offre acceptée : commande créée.', 'success');
+        navigate(`/touma/commandes/${result.orderId}`);
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'template-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api('/messaging/templates', {
+          method: 'POST',
+          body: { title: document.getElementById('t-title').value.trim(), content: document.getElementById('t-content').value.trim() },
+        });
+        toast('Réponse enregistrée.');
         await render();
       },
       { button: submit },
@@ -1612,12 +1698,371 @@ document.addEventListener('click', (event) => {
   );
 });
 
+// ── Messagerie ─────────────────────────────────────────────────────────────
+/** Message auquel on répond, et message en cours de modification. */
+const composerState = { replyTo: null, editing: null };
+
+function setReplyBanner(text) {
+  const banner = document.getElementById('reply-banner');
+  if (!banner) return;
+  banner.hidden = !text;
+  banner.querySelector('span').textContent = text ?? '';
+}
+
+function resetComposer() {
+  composerState.replyTo = null;
+  composerState.editing = null;
+  setReplyBanner(null);
+  const field = document.getElementById('m-body');
+  if (field) field.value = '';
+}
+
+/** Insère un texte dans le champ de saisie sans écraser ce qui est déjà écrit. */
+function fillComposer(content) {
+  const field = document.getElementById('m-body');
+  if (!field) return;
+  field.value = field.value.trim() ? `${field.value.trim()}\n${content}` : content;
+  field.focus();
+  field.setSelectionRange(field.value.length, field.value.length);
+}
+
+/** Total d'une contre-offre, affiché pendant la saisie. Le serveur recalcule. */
+function refreshCounterTotal() {
+  const form = document.getElementById('counter-form');
+  const target = document.getElementById('counter-total');
+  if (!form || !target) return;
+  let total = 0;
+  form.querySelectorAll('.counter-line').forEach((line) => {
+    const qty = Number(line.querySelector('.cl-qty').value) || 0;
+    const price = Number(String(line.querySelector('.cl-price').value).replace(',', '.')) || 0;
+    total += qty * price;
+  });
+  total += Number(String(document.getElementById('c-shipping').value).replace(',', '.')) || 0;
+  target.textContent = money(String(total), form.dataset.currency);
+}
+
+/** Lignes saisies dans le formulaire de contre-offre. */
+function counterLines(form) {
+  return [...form.querySelectorAll('.counter-line')].map((line) => ({
+    name: line.querySelector('.cl-name').value.trim(),
+    quantity: Number(line.querySelector('.cl-qty').value) || 1,
+    unit: line.querySelector('.cl-unit').value.trim() || 'pièce',
+    unitPrice: String(line.querySelector('.cl-price').value).replace(',', '.').trim(),
+  }));
+}
+
+document.addEventListener('click', (event) => {
+  const el = event.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+
+  if (action === 'reply-message') {
+    composerState.replyTo = el.dataset.id;
+    composerState.editing = null;
+    setReplyBanner(`Réponse à ${el.dataset.author} : « ${el.dataset.body} »`);
+    document.getElementById('m-body')?.focus();
+    return;
+  }
+
+  if (action === 'cancel-reply') return resetComposer();
+
+  if (action === 'use-template') return fillComposer(el.dataset.content);
+
+  if (action === 'edit-message') {
+    const article = el.closest('.msg');
+    const body = article?.querySelector('.msg-body')?.textContent ?? '';
+    composerState.editing = el.dataset.id;
+    composerState.replyTo = null;
+    const field = document.getElementById('m-body');
+    if (field) {
+      field.value = body;
+      field.focus();
+    }
+    setReplyBanner('Modification d’un message envoyé — envoyez pour enregistrer.');
+    return;
+  }
+
+  if (action === 'delete-message') {
+    return run(async () => {
+      const ok = await confirmDialog({
+        title: 'Supprimer ce message ?',
+        body: 'Le fil gardera la trace de la suppression. Les offres et les messages système ne sont jamais supprimés.',
+        confirmLabel: 'Supprimer',
+        danger: true,
+      });
+      if (!ok) return;
+      await api(`/messages/${el.dataset.id}`, { method: 'DELETE' });
+      toast('Message supprimé.');
+      await render();
+    });
+  }
+
+  if (action === 'report-message') {
+    return run(async () => {
+      const choice = await chooseDialog({
+        title: 'Signaler ce message',
+        body: 'Votre signalement est transmis à l’administration TOUMA. Le message reste visible tant qu’aucune décision n’est prise.',
+        withNote: true,
+        options: [
+          { value: 'OFF_PLATFORM_PAYMENT', label: 'Paiement en dehors de TOUMA' },
+          { value: 'FRAUD', label: 'Tentative de fraude' },
+          { value: 'SPAM', label: 'Message indésirable' },
+          { value: 'ABUSE', label: 'Propos abusifs' },
+          { value: 'PROHIBITED_CONTENT', label: 'Contenu interdit' },
+          { value: 'OTHER', label: 'Autre' },
+        ],
+      });
+      if (!choice) return;
+      await api(`/messages/${el.dataset.id}/report`, { method: 'POST', body: { reason: choice.value, details: choice.note || undefined } });
+      toast('Signalement transmis.', 'success');
+    });
+  }
+
+  if (action === 'toggle-mute' || action === 'toggle-archive') {
+    const muted = action === 'toggle-mute';
+    const current = muted ? el.dataset.muted === 'true' : el.dataset.archived === 'true';
+    return run(
+      async () => {
+        await api(`/conversations/${el.dataset.id}`, { method: 'PATCH', body: muted ? { muted: !current } : { archived: !current } });
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'load-older') {
+    return run(
+      async () => {
+        const data = await api(`/conversations/${el.dataset.conversation}/messages?before=${el.dataset.cursor}`);
+        if (data.items.length === 0) {
+          el.remove();
+          return;
+        }
+        const view = await loadModule('messages');
+        const container = document.getElementById('thread-messages');
+        const currency = el.dataset.currency || null;
+        container.insertAdjacentHTML('afterbegin', view.messagesHtml(data.items, currency));
+        if (data.hasMore) el.dataset.cursor = data.olderCursor;
+        else el.remove();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'apply-proposal') {
+    return run(
+      async () => {
+        await api(`/negotiations/${el.dataset.id}/apply`, { method: 'POST', body: {} });
+        toast('Contre-proposition entérinée : l’acheteur peut confirmer.', 'success');
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'reject-offer') {
+    return run(
+      async () => {
+        const ok = await confirmDialog({
+          title: 'Refuser cette offre ?',
+          body: 'Le refus est définitif pour cette offre. La négociation reste consultable.',
+          confirmLabel: 'Refuser',
+          danger: true,
+        });
+        if (!ok) return;
+        await api(`/negotiations/${el.dataset.id}/reject`, { method: 'POST', body: {} });
+        toast('Offre refusée.');
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'add-counter-line') {
+    const container = document.getElementById('counter-lines');
+    const index = container.querySelectorAll('.counter-line').length;
+    const line = document.createElement('div');
+    line.className = 'counter-line';
+    line.innerHTML = `
+      <div class="field"><label class="sr-only" for="cl-name-${index}">Désignation</label><input id="cl-name-${index}" class="cl-name" type="text" placeholder="Désignation" required /></div>
+      <div class="field"><label class="sr-only" for="cl-qty-${index}">Quantité</label><input id="cl-qty-${index}" class="cl-qty" type="number" min="1" value="1" required /></div>
+      <div class="field"><label class="sr-only" for="cl-unit-${index}">Unité</label><input id="cl-unit-${index}" class="cl-unit" type="text" value="pièce" required /></div>
+      <div class="field"><label class="sr-only" for="cl-price-${index}">Prix unitaire</label><input id="cl-price-${index}" class="cl-price" type="text" inputmode="decimal" value="0" required /></div>
+      <button type="button" class="link-btn xs" data-action="remove-counter-line">Retirer</button>`;
+    container.appendChild(line);
+    refreshCounterTotal();
+    return;
+  }
+
+  if (action === 'remove-counter-line') {
+    const lines = document.querySelectorAll('.counter-line');
+    if (lines.length <= 1) return toast('Une proposition comporte au moins une ligne.', 'error');
+    el.closest('.counter-line').remove();
+    refreshCounterTotal();
+    return;
+  }
+
+  if (action === 'resolve-report') {
+    return run(
+      async () => {
+        await api(`/messaging/reports/${el.dataset.id}/resolve`, {
+          method: 'POST',
+          body: { status: el.dataset.status, closeConversation: el.dataset.status === 'ACTIONED' },
+        });
+        toast('Signalement traité.');
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'resolve-risk') {
+    return run(
+      async () => {
+        await api(`/messaging/risk-flags/${el.dataset.id}/resolve`, { method: 'POST', body: { status: el.dataset.status } });
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'delete-template') {
+    return run(
+      async () => {
+        await api(`/messaging/templates/${el.dataset.id}`, { method: 'DELETE' });
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'unblock-user') {
+    return run(
+      async () => {
+        await api(`/messaging/blocks/${el.dataset.id}`, { method: 'DELETE' });
+        toast('Compte débloqué.');
+        await render();
+      },
+      { button: el },
+    );
+  }
+});
+
+// Préférences de notification : une case cochée s'applique immédiatement.
+document.addEventListener('change', (event) => {
+  const input = event.target.closest('[data-action="set-preference"]');
+  if (input) {
+    return run(async () => {
+      await api('/messaging/preferences', {
+        method: 'PUT',
+        body: { category: input.dataset.category, [input.dataset.channel]: input.checked },
+      });
+      toast('Préférence enregistrée.');
+    });
+  }
+
+  // Envoi d'un fichier : le contenu part brut, le serveur reconnaît le type.
+  const file = event.target.closest('#m-file');
+  if (file?.files?.length) {
+    const form = document.getElementById('message-form');
+    const chosen = file.files[0];
+    file.value = '';
+    return run(async () => {
+      const buffer = await chosen.arrayBuffer();
+      await api(`/conversations/${form.dataset.conversation}/attachments`, {
+        method: 'POST',
+        body: buffer,
+        contentType: 'application/octet-stream',
+        // Un en-tête HTTP ne transporte pas les accents : on encode.
+        headers: { 'x-file-name': encodeURIComponent(chosen.name) },
+      });
+      toast('Fichier envoyé.', 'success');
+      await render();
+    });
+  }
+});
+
+// Recalcul du total pendant la saisie d'une contre-offre.
+document.addEventListener('input', (event) => {
+  if (event.target.closest('#counter-form')) refreshCounterTotal();
+});
+
+// Entrée envoie, Maj+Entrée va à la ligne : l'usage attendu d'une messagerie.
+document.addEventListener('keydown', (event) => {
+  if (event.target.id !== 'm-body' || event.key !== 'Enter' || event.shiftKey) return;
+  event.preventDefault();
+  document.getElementById('message-form')?.requestSubmit();
+});
+
 // Fermeture du tiroir et des modales au clavier.
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   if (document.getElementById('drawer').dataset.open === 'true') setDrawer(false);
 });
 document.getElementById('drawer-backdrop').addEventListener('click', () => setDrawer(false));
+
+// ── Temps réel ─────────────────────────────────────────────────────────────
+/**
+ * Flux d'événements de messagerie.
+ *
+ * Strictement facultatif : tout ce que fait le flux, un rechargement le fait
+ * aussi. S'il tombe (proxy, réseau mobile, veille du téléphone), l'application
+ * continue de fonctionner — c'est la condition pour s'en servir.
+ */
+let stream = null;
+let streamRetry = null;
+
+function currentConversationId() {
+  const match = location.pathname.match(/\/messages\/([\w-]{10,})$/);
+  return match ? match[1] : null;
+}
+
+async function connectStream() {
+  if (!session.user || stream) return;
+  try {
+    const { ticket } = await api('/messaging/stream-ticket', { method: 'POST', body: {} });
+    stream = new EventSource(`${API}/messaging/stream?ticket=${encodeURIComponent(ticket)}`);
+
+    const onActivity = (event) => {
+      let payload = {};
+      try {
+        payload = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      // Le fil ouvert se rafraîchit ; ailleurs, seuls les compteurs bougent.
+      if (payload.conversationId && payload.conversationId === currentConversationId()) render();
+      else refreshCounters();
+    };
+
+    ['message.created', 'message.updated', 'message.deleted', 'offer.created', 'offer.accepted', 'offer.rejected'].forEach((name) =>
+      stream.addEventListener(name, onActivity),
+    );
+
+    stream.addEventListener('error', () => {
+      // Le ticket est court : on referme et on retente, sans boucler serré.
+      stream?.close();
+      stream = null;
+      clearTimeout(streamRetry);
+      streamRetry = setTimeout(connectStream, 15_000);
+    });
+  } catch {
+    // Flux indisponible : l'application reste entièrement utilisable en REST.
+    stream = null;
+  }
+}
+
+function disconnectStream() {
+  clearTimeout(streamRetry);
+  stream?.close();
+  stream = null;
+}
+
+window.addEventListener('touma:session', () => {
+  disconnectStream();
+  connectStream();
+});
+if (session.user) connectStream();
 
 // Navigation par l'historique du navigateur.
 window.addEventListener('popstate', render);

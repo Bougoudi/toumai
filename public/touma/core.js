@@ -84,9 +84,9 @@ export class ApiError extends Error {
  * (import CSV) et `accept` de récupérer un fichier texte (export) sans passer
  * par un lien, qui partirait sans en-tête d'authentification.
  */
-export async function api(path, { method = 'GET', body, retry = true, contentType, accept } = {}) {
+export async function api(path, { method = 'GET', body, retry = true, contentType, accept, headers: extra } = {}) {
   const current = session.read();
-  const headers = {};
+  const headers = { ...(extra ?? {}) };
   const raw = Boolean(contentType);
   if (body !== undefined) headers['content-type'] = contentType ?? 'application/json';
   if (accept) headers.accept = accept;
@@ -104,7 +104,7 @@ export async function api(path, { method = 'GET', body, retry = true, contentTyp
   }
 
   if (res.status === 401 && retry && current?.refreshToken) {
-    if (await refreshSession(current.refreshToken)) return api(path, { method, body, retry: false, contentType, accept });
+    if (await refreshSession(current.refreshToken)) return api(path, { method, body, retry: false, contentType, accept, headers: extra });
   }
 
   const text = await res.text();
@@ -203,6 +203,7 @@ export const icon = {
   alert: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/>',
   inbox: '<path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M4.5 5h15L21 13v6H3v-6z"/>',
   spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
+  back: '<path d="M19 12H5"/><path d="m11 6-6 6 6 6"/>',
 };
 
 export const svg = (name, cls = '') =>
@@ -227,6 +228,57 @@ export function toast(message, kind = 'info') {
 
 // ── Fenêtre modale / confirmation ──────────────────────────────────────────
 /** Affiche une confirmation et renvoie `true` si l'utilisateur valide. */
+/**
+ * Modale de choix : une question, une liste de réponses, un motif libre
+ * facultatif. Sert notamment au signalement d'un message.
+ */
+export function chooseDialog({ title, body, options, withNote = false, confirmLabel = 'Envoyer' }) {
+  return new Promise((resolve) => {
+    const root = document.getElementById('modal-root');
+    const previous = document.activeElement;
+    root.innerHTML = `
+      <div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal">
+          <h2 id="modal-title">${esc(title)}</h2>
+          ${body ? `<p class="muted">${esc(body)}</p>` : ''}
+          <div class="field">
+            <label for="choose-value">Motif</label>
+            <select id="choose-value">
+              ${options.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}
+            </select>
+          </div>
+          ${withNote ? '<div class="field"><label for="choose-note">Précisions (facultatif)</label><textarea id="choose-note" rows="2" maxlength="1000"></textarea></div>' : ''}
+          <div class="row">
+            <button class="btn btn-secondary" data-action="cancel">Annuler</button>
+            <button class="btn" data-action="confirm">${esc(confirmLabel)}</button>
+          </div>
+        </div>
+      </div>`;
+
+    const close = (value) => {
+      root.innerHTML = '';
+      document.removeEventListener('keydown', onKey);
+      previous?.focus?.();
+      resolve(value);
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') close(null);
+    };
+    root.querySelector('[data-action="cancel"]').addEventListener('click', () => close(null));
+    root.querySelector('[data-action="confirm"]').addEventListener('click', () =>
+      close({
+        value: root.querySelector('#choose-value').value,
+        note: root.querySelector('#choose-note')?.value.trim() ?? '',
+      }),
+    );
+    root.querySelector('.modal-backdrop').addEventListener('click', (event) => {
+      if (event.target.classList.contains('modal-backdrop')) close(null);
+    });
+    document.addEventListener('keydown', onKey);
+    root.querySelector('#choose-value').focus();
+  });
+}
+
 export function confirmDialog({ title, body, confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false }) {
   return new Promise((resolve) => {
     const root = document.getElementById('modal-root');
