@@ -101,6 +101,24 @@ jobs:
       - name: Build
         run: npm run build
 
+  vitrine:
+    name: Vitrine Next.js
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Installation
+        run: npm ci
+      - name: Contrôle de typage
+        run: npm run typecheck --workspace @touma/web
+      # La compilation suffit à prouver que la vitrine tient : elle ne parle à
+      # l'API qu'au rendu, et les pages du catalogue sont rendues à la demande.
+      - name: Build
+        run: npm run build --workspace @touma/web
+
   image:
     name: Image Docker
     runs-on: ubuntu-latest

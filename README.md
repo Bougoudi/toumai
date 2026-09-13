@@ -307,6 +307,7 @@ les commandes des canaux connectés toutes les 5 minutes.
 - [`docs/api.md`](docs/api.md) — référence complète des endpoints
 - [`docs/user-flow.md`](docs/user-flow.md) — flux utilisateur principal
 - [`docs/touma-mise-en-ligne.md`](docs/touma-mise-en-ligne.md) — mettre la place de marché en ligne
+- [`docs/touma-monorepo.md`](docs/touma-monorepo.md) — espaces de travail, vitrine Next.js, et pourquoi l'API n'est pas réécrite en NestJS
 
 ## Scripts npm
 

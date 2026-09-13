@@ -9,7 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-RUN npm ci
+# `--workspaces=false` : l'image de production ne contient que l'API. La
+# vitrine Next.js (apps/web) se déploie à part, et embarquer ses dépendances
+# ici ajouterait des centaines de mégaoctets à une image qui ne s'en sert pas.
+RUN npm ci --workspaces=false
 
 COPY . .
 

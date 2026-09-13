@@ -6,6 +6,10 @@
   "engines": {
     "node": ">=20"
   },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "start": "tsx src/index.ts",
     "cli": "tsx src/cli/index.ts",
