@@ -47,3 +47,27 @@ describe('Délai de réponse', () => {
     assert.equal(deadlineFrom(maintenant, 24).toISOString(), '2026-09-14T10:00:00.000Z');
   });
 });
+
+describe('Machine d’état d’un retour', () => {
+  it('déclare une transition pour chaque statut, et aucune en arrière', async () => {
+    // Le défaut qui a fait rougir la CI : trois statuts ajoutés à
+    // l'énumération, la table des transitions laissée en arrière. Le typage
+    // l'attrape — mais seulement contre un client Prisma à jour.
+    const { RETURN_TRANSITIONS } = await import('../../src/touma/returns/return.service.js');
+    const statuts = Object.keys(RETURN_TRANSITIONS);
+    assert.deepEqual(
+      statuts.sort(),
+      ['APPROVED', 'CANCELLED', 'CLOSED', 'IN_TRANSIT', 'RECEIVED', 'REFUNDED', 'REFUND_PENDING', 'REJECTED', 'REQUESTED', 'UNDER_REVIEW'],
+    );
+
+    // Aucune issue ne revient en arrière.
+    for (const terminal of ['REFUNDED', 'REJECTED', 'CANCELLED'] as const) {
+      assert.deepEqual(RETURN_TRANSITIONS[terminal], ['CLOSED'], `${terminal} ne mène qu’à l’archivage`);
+    }
+    assert.deepEqual(RETURN_TRANSITIONS.CLOSED, [], 'un dossier clos ne repart pas');
+
+    // L'état intermédiaire qui manquait : reçu, accepté, argent pas encore parti.
+    assert.ok(RETURN_TRANSITIONS.RECEIVED.includes('REFUND_PENDING'));
+    assert.ok(RETURN_TRANSITIONS.REFUND_PENDING.includes('REFUNDED'));
+  });
+});

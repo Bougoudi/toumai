@@ -130,6 +130,21 @@ consultée est bien celle sur laquelle on a décidé.
 Une résolution ne se rejoue pas : une seconde tentative reçoit un 409. Ni
 l'acheteur ni le vendeur ne peuvent trancher leur propre litige.
 
+## 6. Un défaut trouvé par l'intégration continue
+
+Les trois statuts de retour ajoutés (`UNDER_REVIEW`, `REFUND_PENDING`, `CLOSED`)
+n'avaient pas été déclarés dans la table des transitions. Le typage l'attrape —
+`Record<ReturnStatus, ReturnStatus[]>` exige une entrée par statut — mais
+**seulement contre un client Prisma à jour** : mon contrôle local passait contre
+un client régénéré avant cette modification. La CI, qui régénère toujours depuis
+zéro, l'a vu.
+
+La correction n'est pas seulement d'ajouter trois lignes. `REFUND_PENDING` est
+l'état où se trouve un retour reçu et accepté pendant qu'un humain exécute le
+remboursement : jusqu'ici il n'existait pas, et l'acheteur ne voyait rien entre
+« reçu » et « remboursé ». Un test verrouille désormais la table — chaque statut
+y figure, et aucune issue ne revient en arrière.
+
 ---
 
 ## Ce qui est garanti par les tests

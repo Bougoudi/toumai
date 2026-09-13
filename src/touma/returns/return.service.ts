@@ -29,15 +29,31 @@ import type { ApproveReturnInput, CreateReturnInput, ListReturnsQuery, ReceiveRe
 /** Motifs imputables au vendeur : les frais de livraison sont alors remboursés. */
 const SELLER_FAULT: ReturnReason[] = ['DAMAGED', 'NOT_AS_DESCRIBED', 'WRONG_ITEM', 'MISSING_PARTS', 'NOT_DELIVERED'];
 
-/** Transitions autorisées d'une demande de retour. */
-const TRANSITIONS: Record<ReturnStatus, ReturnStatus[]> = {
-  REQUESTED: ['APPROVED', 'REJECTED', 'CANCELLED'],
-  APPROVED: ['IN_TRANSIT', 'RECEIVED', 'REFUNDED', 'CANCELLED'],
-  REJECTED: [],
+/**
+ * Transitions autorisées d'une demande de retour.
+ *
+ * Vers l'avant, plusieurs chemins sont ouverts : un vendeur qui rembourse tout
+ * de suite ne doit pas passer par quatre écrans. Vers l'arrière, aucun — un
+ * retour remboursé ne redevient jamais « en examen ».
+ *
+ * `CLOSED` est l'état d'archivage : il vient après une issue, quelle qu'elle
+ * soit, et ne mène nulle part.
+ */
+export const RETURN_TRANSITIONS: Record<ReturnStatus, ReturnStatus[]> = {
+  REQUESTED: ['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'CANCELLED'],
+  UNDER_REVIEW: ['APPROVED', 'REJECTED', 'CANCELLED'],
+  APPROVED: ['IN_TRANSIT', 'RECEIVED', 'REFUND_PENDING', 'REFUNDED', 'CANCELLED'],
+  REJECTED: ['CLOSED'],
   IN_TRANSIT: ['RECEIVED', 'CANCELLED'],
-  RECEIVED: ['REFUNDED'],
-  REFUNDED: [],
-  CANCELLED: [],
+  RECEIVED: ['REFUND_PENDING', 'REFUNDED'],
+  // Le retour est reçu et accepté, l'argent n'est pas encore parti. C'est
+  // l'état où se trouve une demande pendant qu'un humain exécute le
+  // remboursement — jusqu'ici il n'existait pas, et l'acheteur ne voyait rien
+  // entre « reçu » et « remboursé ».
+  REFUND_PENDING: ['REFUNDED', 'CANCELLED'],
+  REFUNDED: ['CLOSED'],
+  CANCELLED: ['CLOSED'],
+  CLOSED: [],
 };
 
 /** Statuts de commande ouvrant droit à un retour, selon le motif. */
@@ -133,7 +149,7 @@ async function loadForActor(user: ToumaRequestUser, id: string): Promise<ReturnR
 }
 
 function assertTransition(from: ReturnStatus, to: ReturnStatus) {
-  if (!TRANSITIONS[from].includes(to)) throw conflict(`Transition ${from} → ${to} impossible.`);
+  if (!RETURN_TRANSITIONS[from].includes(to)) throw conflict(`Transition ${from} → ${to} impossible.`);
 }
 
 function isSeller(user: ToumaRequestUser, row: ReturnRow) {
