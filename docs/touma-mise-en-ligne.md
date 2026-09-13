@@ -174,8 +174,45 @@ d'exploitation. Les interfaces sont en place et documentées.
 | Prestataire de paiement (Mobile Money, carte) | `TOUMA_PAYMENT_PROVIDER` | Adaptateur de démonstration |
 | Transporteur | `TOUMA_LOGISTICS_PROVIDER` | Tarifs et suivi simulés |
 | Envoi d'e-mails | `RESEND_API_KEY`, `EMAIL_FROM` | Notifications dans l'application uniquement |
+| SMS / WhatsApp | — | Aucun canal : demande un compte opérateur |
 | Stockage objet | `S3_*` | Disque local (prévoir un disque persistant) |
 | Régime de TVA | — | Les documents indiquent qu'aucune TVA n'est calculée |
+
+### Brancher l'e-mail (5 minutes)
+
+C'est le seul canal réel livré, et le plus rentable : un vendeur qui ne voit pas
+qu'un acheteur lui a écrit ne répond pas.
+
+1. Créer un compte sur <https://resend.com> (gratuit jusqu'à un volume
+   confortable) et vérifier votre domaine d'envoi.
+2. `RESEND_API_KEY=re_…` et `EMAIL_FROM="TOUMA <notifications@votre-domaine>"`.
+3. Redémarrer. Le canal s'enregistre seul ; sans clé, il ne s'enregistre pas et
+   rien ne change.
+
+Un e-mail n'est envoyé que si la personne a activé l'e-mail **pour cette
+catégorie** dans `/touma/messages/reglages`. Le défaut est « non » : recevoir des
+e-mails est un choix.
+
+### Brancher un paiement réel — ce qu'il faut nous dire
+
+Les adaptateurs de paiement et de logistique ne sont pas écrits, et c'est
+délibéré : personne ne peut coder contre l'API d'un prestataire sans sa
+documentation et ses identifiants. Inventer des points d'entrée plausibles
+donnerait du code qui compile, passe les tests et échoue le jour de la première
+vraie transaction.
+
+Pour le corridor Tchad ↔ Cameroun, les candidats sérieux sont les opérateurs de
+Mobile Money (Orange Money, MTN MoMo, Airtel Money, Wave) et les agrégateurs qui
+les revendent derrière une seule API. Pour avancer, il faut :
+
+- **avec qui** vous avez, ou pouvez ouvrir, un contrat marchand ;
+- la **documentation technique** qu'il vous remet (URL de base, authentification,
+  format des montants, webhooks) ;
+- un **environnement de test** et ses identifiants.
+
+Avec ces trois éléments, l’adaptateur s’écrit derrière `PaymentProvider`, qui
+existe déjà : le reste de la plateforme — commissions, remboursements, reçus,
+idempotence, protection contre le rejeu des webhooks — n'a pas à bouger.
 
 Détail complet : `TOUMA-V14-MESSAGING.md` (messagerie et pièces jointes),
 `docs/touma-marketplace.md` (architecture et décisions).

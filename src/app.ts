@@ -33,6 +33,7 @@ import { paymentWebhookRouter } from './touma/payments/payment.routes.js';
 import { toumaOpenApiDocument } from './touma/openapi.js';
 import { readiness } from './touma/health.js';
 import { initAttachmentStorage } from './touma/messaging/attachments.js';
+import { initNotificationChannels } from './touma/lib/email-channel.js';
 import { createMarketplaceHandler, robotsTxt, sitemapXml } from './touma/seo.js';
 
 /**
@@ -54,6 +55,8 @@ export function createApp() {
 
   // Stockage des pièces jointes : S3 si l'environnement le décrit, local sinon.
   initAttachmentStorage();
+  // Canaux de notification : e-mail si une clé d'envoi est configurée.
+  initNotificationChannels();
 
   // Derrière un proxy (HTTPS, load balancer) : nécessaire pour un rate-limit correct par IP.
   app.set('trust proxy', 1);

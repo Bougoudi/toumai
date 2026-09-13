@@ -341,8 +341,12 @@ Total : **311 tests** automatisés + 49 étapes navigateur.
 
 ## 11. Ce qui n'est PAS fait
 
-- **Aucun canal e-mail réel.** L'interface `NotificationChannel` attend une
-  implémentation ; aucune n'est livrée, et l'interface l'annonce.
+- **Canal e-mail : livré, branché sur une clé d'envoi.** `NotificationChannel`
+  a sa première implémentation réelle (`lib/email-channel.ts`, via l'API HTTP de
+  Resend). Elle ne s'enregistre que si `RESEND_API_KEY` est configurée, et
+  n'envoie que si l'utilisateur a activé l'e-mail pour la catégorie concernée —
+  le défaut reste « non ». SMS et WhatsApp n'ont toujours pas de canal : ils
+  demandent un compte opérateur et une décision d'exploitation.
 - **Stockage S3 : écrit, non éprouvé contre un service réel.** L'adaptateur est
   livré et couvert par des tests unitaires (signature, adressage, erreurs), mais
   aucun bucket n'a été raccordé ici : la première mise en service demande une
