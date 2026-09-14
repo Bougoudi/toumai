@@ -38,7 +38,10 @@ export interface RefundRequest {
 function refundReference(): string {
   const d = new Date();
   const day = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
-  return `RB-${day}-${randomBytes(3).toString('hex').toUpperCase()}`;
+  // Cinq octets, comme au checkout : trois ne donnaient que 16,7 millions de
+  // valeurs par jour, et la collision se manifeste par une erreur serveur chez
+  // celui qui a perdu au tirage.
+  return `RB-${day}-${randomBytes(5).toString('hex').toUpperCase()}`;
 }
 
 /**

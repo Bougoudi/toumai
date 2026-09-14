@@ -929,6 +929,52 @@ model ToumaCodRule {
   @@map("touma_cod_rules")
 }
 
+/// Zone de service déclarée par un **vendeur** : où sa boutique livre.
+///
+/// À ne pas confondre avec `ToumaDeliveryZone`, qui dit où un **transporteur**
+/// va. Les deux se combinent : une commande n'est livrable que si le vendeur
+/// accepte de servir la destination *et* qu'un transporteur la dessert.
+///
+/// **Sans déclaration, un vendeur ne restreint rien.** C'est l'inverse du
+/// paiement à la livraison, fermé par défaut, et la différence est réelle :
+/// encaisser du liquide est un engagement qu'on prend explicitement, alors que
+/// refuser de livrer une province est une limitation qu'on choisit. Fermer par
+/// défaut couperait du jour au lendemain toutes les boutiques existantes.
+model ToumaStoreServiceZone {
+  id      String     @id @default(cuid())
+  storeId String
+  store   ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  /// Portée, de la plus large à la plus fine. Province et département nuls = le
+  /// pays entier.
+  countryCode  String
+  provinceId   String?
+  province     ToumaProvince?   @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  departmentId String?
+  department   ToumaDepartment? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  /// Une règle peut **exclure** : c'est ainsi qu'on sert tout un pays sauf une
+  /// province, sans énumérer les vingt-deux autres.
+  served Boolean @default(true)
+
+  /// Délai propre au vendeur — préparation, pas transport. Nul = non annoncé,
+  /// et rien n'est alors affiché : un délai deviné est une promesse inventée.
+  handlingDays Int?
+
+  /// Motif visible de l'acheteur quand la zone est exclue. Un refus sans raison
+  /// est incompréhensible pour qui voulait acheter.
+  note String?
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, active])
+  @@index([provinceId])
+  @@map("touma_store_service_zones")
+}
+
 /// Règle de commission. Le taux cessait d'être une variable d'environnement
 /// unique le jour où une catégorie, un pays ou un vendeur négocié devait
 /// différer — c'est-à-dire tout de suite.
@@ -1307,8 +1353,9 @@ model ToumaProvince {
   codRules      ToumaCodRule[]
   deliveryZones ToumaDeliveryZone[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  storeServiceZones ToumaStoreServiceZone[]
 
   @@unique([countryCode, code])
   @@index([countryCode])
@@ -1332,8 +1379,9 @@ model ToumaDepartment {
   addresses      ToumaAddress[]
   pickupPoints   ToumaPickupPoint[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  storeServiceZones ToumaStoreServiceZone[]
 
   @@unique([provinceId, code])
   @@index([provinceId])
@@ -1507,6 +1555,7 @@ model ToumaStore {
 
   codRules        ToumaCodRule[]
   commissionRules ToumaCommissionRule[]
+  serviceZones    ToumaStoreServiceZone[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

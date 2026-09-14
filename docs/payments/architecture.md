@@ -165,6 +165,33 @@ Ils seront ajoutés **avec le premier prestataire réel**, parce que c'est lui q
 dira lesquels il emploie réellement. Les inventer d'avance produirait une
 machine d'état qui ne correspond à aucun prestataire.
 
+## Deux zones qui n'ont rien à voir
+
+Un colis arrive si **deux** conditions sont réunies, et les confondre produit
+une promesse fausse :
+
+- `ToumaStoreServiceZone` — **le vendeur** déclare où il accepte d'envoyer ;
+- `ToumaDeliveryZone` — **le transporteur** déclare où il va.
+
+Un vendeur qui sert tout le Tchad ne fait pas monter un colis à Faya-Largeau si
+personne n'y va ; un transporteur qui dessert Faya-Largeau ne sert à rien si le
+vendeur refuse d'y envoyer. `GET /products/:id/disponibilite` rend donc quatre
+réponses distinctes — livrable, refus du vendeur, aucun transporteur,
+destination inconnue — et jamais « probablement ». Un refus n'annonce aucun
+délai.
+
+**Sans déclaration, un vendeur ne restreint rien**, à l'inverse du paiement à la
+livraison qui est fermé par défaut. La différence est réelle : encaisser du
+liquide est un engagement qu'on prend, refuser de livrer une province est une
+limitation qu'on choisit — et fermer par défaut couperait du jour au lendemain
+toutes les boutiques existantes. En revanche, un vendeur qui a déclaré ses zones
+ne dessert pas implicitement les pays qu'il n'a pas nommés : sinon, déclarer ne
+servirait à rien.
+
+Le checkout applique la déclaration, avec le motif du vendeur. Sans cela, elle
+serait décorative : on encaisserait un acheteur pour une livraison que personne
+n'a promise.
+
 ## Les webhooks
 
 Un webhook est la seule chose qu'un tiers non authentifié peut pousser dans le

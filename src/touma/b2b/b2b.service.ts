@@ -30,7 +30,10 @@ import type { CreateQuoteInput, CreateRfqInput, InviteSuppliersInput, ListRfqsQu
 function reference(prefix: string): string {
   const d = new Date();
   const day = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
-  return `${prefix}-${day}-${randomBytes(3).toString('hex').toUpperCase()}`;
+  // Cinq octets, comme au checkout : trois donnaient 16,7 millions de valeurs
+  // par jour, et une collision probable dès quelques milliers de références
+  // quotidiennes.
+  return `${prefix}-${day}-${randomBytes(5).toString('hex').toUpperCase()}`;
 }
 
 /** Vue publique d'un appel d'offres (ce qu'un fournisseur peut voir). */

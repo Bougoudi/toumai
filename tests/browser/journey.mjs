@@ -873,6 +873,55 @@ await step('administration : TOUMA Intelligence', async () => {
   if (!admin.url().includes('jours=7')) throw new Error('le changement de période n’a pas pris');
 });
 
+// ── Zones de service : où une boutique accepte de livrer (V17) ──────────────
+
+await step('vendeur : déclarer où il livre, et le motif d’une exclusion', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur/zones`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('#service-zones-form', { timeout: 20000 });
+
+  const body = ((await seller.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+  // Sans déclaration, rien n'est restreint : le vendeur doit le lire avant de
+  // toucher à quoi que ce soit.
+  if (!/ne restreignez rien/.test(body)) throw new Error('l’état « aucune restriction » n’est pas annoncé');
+  if (!/visible de l’acheteur/.test(body)) throw new Error('le motif n’est pas annoncé comme visible');
+  // Les deux natures de zone ne doivent pas être confondues.
+  if (!/ne remplacent pas celles des transporteurs/.test(body)) throw new Error('la distinction vendeur/transporteur est absente');
+
+  const provinces = await seller.locator('.sz-province').count();
+  if (provinces !== 23) throw new Error(`23 provinces attendues dans le formulaire, ${provinces} rendues`);
+  await seller.screenshot({ path: `${OUT}/50-zones-service.png` });
+});
+
+await step('acheteur : « est-ce que ça arrive chez moi ? » a enfin une réponse', async () => {
+  await page.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.product-card a[href^="/touma/produits/"]');
+  await page.locator('.product-card a[href^="/touma/produits/"]').first().click();
+  await page.waitForSelector('#avail-province', { timeout: 20000 });
+
+  // Sans province, on ne devine pas : ce serait une promesse inventée.
+  await page.click('[data-availability]');
+  await page.waitForTimeout(600);
+  if (!/Choisissez d’abord une province/.test((await page.textContent('#availability-result')) ?? '')) {
+    throw new Error('la destination est devinée au lieu d’être demandée');
+  }
+
+  await page.selectOption('#avail-province', { index: 1 });
+  await page.click('[data-availability]');
+  await page.waitForSelector('#availability-result strong', { timeout: 15000 });
+
+  const reponse = (await page.textContent('#availability-result')) ?? '';
+  // Quatre réponses possibles, et pas une de plus. Aucune n'est « probablement ».
+  if (!/Livrable|ne livre pas|indisponible|Destination inconnue/.test(reponse)) {
+    throw new Error(`réponse de disponibilité inattendue : ${reponse}`);
+  }
+  // Un délai ne s'affiche jamais sur un refus.
+  if (/ne livre pas|indisponible/.test(reponse) && /jours/.test(reponse)) {
+    throw new Error('un délai est annoncé alors que la livraison n’est pas possible');
+  }
+  await page.screenshot({ path: `${OUT}/51-disponibilite.png` });
+});
+
 // ── Français et arabe, les deux langues officielles du Tchad (V17) ──────────
 
 await step('langue : l’ossature bascule en arabe, et le sens d’écriture avec', async () => {

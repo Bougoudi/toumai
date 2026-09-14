@@ -31,7 +31,10 @@ const PRIORITY_BY_CATEGORY: Record<TicketCategory, 'LOW' | 'NORMAL' | 'HIGH' | '
 function reference(): string {
   const d = new Date();
   const day = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
-  return `AS-${day}-${randomBytes(3).toString('hex').toUpperCase()}`;
+  // Cinq octets, comme au checkout : trois ne donnaient que 16,7 millions de
+  // valeurs par jour, et la collision se manifeste par une erreur serveur chez
+  // celui qui a perdu au tirage.
+  return `AS-${day}-${randomBytes(5).toString('hex').toUpperCase()}`;
 }
 
 const ticketInclude = {

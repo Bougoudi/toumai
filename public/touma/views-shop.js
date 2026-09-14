@@ -346,6 +346,27 @@ export async function product(params) {
           </div>
           <div id="ship-estimate" class="small mt-6"></div>
         </div>
+
+        <div class="card mt-6">
+          <h3>Est-ce que ça arrive chez moi ?</h3>
+          <p class="small muted">
+            Deux conditions, et les deux doivent être réunies : que la boutique accepte d’envoyer là-bas,
+            et qu’un transporteur y aille.
+          </p>
+          <div class="row" style="gap:var(--space-2);align-items:flex-end">
+            <div class="field" style="flex:1;margin-bottom:0">
+              <label for="avail-province">Province de livraison</label>
+              <select id="avail-province">
+                <option value="">Choisissez une province</option>
+                ${(await api('/geo/provinces?country=TD')).items
+                  .map((pr) => `<option value="${esc(pr.id)}">${esc(pr.name)}</option>`)
+                  .join('')}
+              </select>
+            </div>
+            <button class="btn btn-secondary" data-availability="${esc(p.id)}">Vérifier</button>
+          </div>
+          <div id="availability-result" class="small mt-6"></div>
+        </div>
       </div>
     </div>
 

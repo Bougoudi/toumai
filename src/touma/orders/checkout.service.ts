@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { logger } from '../../utils/logger.js';
 import { env } from '../../config/env.js';
 import { applyRate, assertSameCurrency, roundTo, sum, ZERO } from '../lib/money.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
@@ -10,6 +11,7 @@ import { logisticsService } from '../logistics/logistics.service.js';
 import { couponService, type BasketStoreLine } from '../promotions/coupon.service.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { commissionFor } from '../payments/commission.service.js';
+import { sellerServes } from '../logistics/service-zones.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import { loadTiers, resolveUnitPrice, tiersFor } from '../catalog/pricing.js';
 import { sweepReservations } from './reservation.js';
@@ -25,10 +27,30 @@ function groupReference(): string {
   return reference('TMG');
 }
 
+/**
+ * Référence lisible : préfixe, jour, puis tirage aléatoire.
+ *
+ * **Le tirage faisait trois octets**, soit 16,7 millions de valeurs par jour.
+ * Au paradoxe des anniversaires, une collision devient probable autour de
+ * quelques milliers de commandes quotidiennes — un volume ordinaire — et se
+ * manifeste par une erreur serveur chez l'acheteur qui a perdu au tirage.
+ *
+ * Cinq octets portent cela à mille milliards de valeurs par jour. La collision
+ * devient négligeable, mais « négligeable » est ce qu'on dit avant qu'elle
+ * arrive : le checkout rejoue donc la transaction si elle se produit.
+ */
 function reference(prefix: string): string {
   const d = new Date();
   const day = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
-  return `${prefix}-${day}-${randomBytes(3).toString('hex').toUpperCase()}`;
+  return `${prefix}-${day}-${randomBytes(5).toString('hex').toUpperCase()}`;
+}
+
+/** Violation d'unicité sur une référence tirée au hasard ? */
+function isReferenceCollision(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false;
+  const cibles = err.meta?.target;
+  const champs = Array.isArray(cibles) ? cibles.map(String) : [String(cibles ?? '')];
+  return champs.some((c) => c.includes('orderNumber') || c.includes('reference'));
 }
 
 /**
@@ -114,6 +136,26 @@ export const checkoutService = {
         throw badRequest(`Quantité minimale de ${item.product.minOrderQty} pour « ${item.product.title} ».`);
       }
       assertSameCurrency(item.currency, item.product.currency);
+    }
+
+    // 5 bis. Zones de service du vendeur.
+    //
+    // Une boutique qui a déclaré où elle livre doit être prise au mot : laisser
+    // passer une commande vers une province qu'elle exclut reviendrait à
+    // encaisser un acheteur pour une livraison que personne n'a promise. Le
+    // refus porte le motif du vendeur, parce qu'un refus sans raison est
+    // incompréhensible pour qui voulait acheter.
+    //
+    // Sans déclaration, rien n'est restreint : `sellerServes` rend « oui ».
+    for (const [storeId, items] of groups) {
+      const verdict = await sellerServes(storeId, {
+        countryCode: address.countryCode,
+        provinceId: address.provinceId,
+        departmentId: address.departmentId,
+      });
+      if (!verdict.served) {
+        throw conflict(`${items[0].product.store.name} : ${verdict.note ?? 'cette boutique ne livre pas à cette adresse.'}`);
+      }
     }
 
     // 6. Frais de livraison : un devis par boutique (choisi par l'acheteur ou le moins cher).
@@ -285,7 +327,12 @@ export const checkoutService = {
 
     // 7/8/9. Création du groupe, des sous-commandes et décrément du stock,
     //        dans UNE transaction : tout réussit ou rien n'est écrit.
-    const groupId = await prisma.$transaction(async (tx) => {
+    // Rejeu sur collision de référence. Deux acheteurs peuvent tirer la même
+    // référence au même instant : c'est rare, ce n'est la faute de personne, et
+    // cela ne doit pas se solder par une erreur serveur pour l'un des deux. Le
+    // reste de la transaction est inchangé — elle n'a rien écrit si elle a
+    // échoué.
+    const creerGroupe = async () => prisma.$transaction(async (tx) => {
       const orderGroup = await tx.toumaOrderGroup.create({
         data: {
           reference: groupReference(),
@@ -471,6 +518,15 @@ export const checkoutService = {
       await tx.toumaCartItem.deleteMany({ where: { cartId: cart.id } });
       return orderGroup.id;
     });
+
+    let groupId: string;
+    try {
+      groupId = await creerGroupe();
+    } catch (err) {
+      if (!isReferenceCollision(err)) throw err;
+      logger.warn('Collision de référence au checkout : nouvelle tentative');
+      groupId = await creerGroupe();
+    }
 
     const group = await prisma.toumaOrderGroup.findUniqueOrThrow({
       where: { id: groupId },

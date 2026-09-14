@@ -35,7 +35,11 @@ async function panierPret(deliveryMethod: 'HOME' | 'PICKUP_POINT' = 'HOME') {
 
   const body: Record<string, unknown> = { addressId: buyer.addressId, deliveryMethod };
   if (deliveryMethod === 'PICKUP_POINT') body.pickupPointId = pickupPointId;
-  return api.post('/api/v1/checkout', body, buyer.accessToken);
+  const res = await api.post('/api/v1/checkout', body, buyer.accessToken);
+  // Sans ce contrôle, un checkout refusé ressort plus loin en « Cannot read
+  // properties of undefined » — un message qui ne dit rien de la cause.
+  assert.equal(res.status, 201, `checkout refusé : ${JSON.stringify(res.body)}`);
+  return res;
 }
 
 before(async () => {

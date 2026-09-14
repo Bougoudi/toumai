@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler, parseBody, parseQuery } from '../../middleware/validate.js';
+import { badRequest } from '../lib/errors.js';
 import { auditRequest } from '../lib/audit.js';
 import { authenticate, currentUser, optionalAuth, requireRole } from '../middleware/toumaAuth.js';
 import { createProductSchema, listProductsSchema, priceTiersSchema, updateProductSchema } from './product.schema.js';
 import { productService } from './product.service.js';
+import { productAvailability } from '../logistics/service-zones.js';
 import { facetsService } from './facets.service.js';
 import { intelligenceService } from '../admin/intelligence.service.js';
 
@@ -70,6 +72,25 @@ productRouter.get(
   optionalAuth,
   asyncHandler(async (req, res) => {
     res.json(await productService.get(req.params.id, req.toumaUser));
+  }),
+);
+
+/**
+ * « Est-ce que ça peut arriver chez moi ? »
+ *
+ * La première question d'un acheteur d'Abéché, et la seule à laquelle rien ne
+ * répondait. Deux conditions s'y rencontrent : le vendeur accepte d'envoyer
+ * là-bas, **et** un transporteur y va. Les deux doivent dire oui.
+ *
+ * Quatre réponses possibles, et aucune n'est « probablement » : quand le
+ * système ne sait pas, il le dit.
+ */
+productRouter.get(
+  '/:id/disponibilite',
+  asyncHandler(async (req, res) => {
+    const province = typeof req.query.province === 'string' ? req.query.province : '';
+    if (!province) throw badRequest('Indiquez la province de livraison.');
+    res.json(await productAvailability(req.params.id, province));
   }),
 );
 

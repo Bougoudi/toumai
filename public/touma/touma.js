@@ -91,6 +91,7 @@ const ROUTES = [
 
   // Finance : ce qui est dû, quand, et pourquoi pas encore. Le moteur de
   // règlement existait ; aucun écran ne le montrait.
+  { path: '/touma/vendeur/zones', module: 'zones', name: 'serviceZones', auth: true, role: 'SELLER' },
   { path: '/touma/vendeur/finance', module: 'finance', name: 'sellerFinance', auth: true, role: 'SELLER' },
   { path: '/touma/vendeur/versements', module: 'finance', name: 'sellerPayouts', auth: true, role: 'SELLER' },
   { path: '/touma/admin/finance', module: 'finance', name: 'adminFinance', auth: true, role: 'ADMIN' },
@@ -160,6 +161,7 @@ const LOADERS = {
   disputes: () => import('./views-disputes.js'),
   finance: () => import('./views-finance.js'),
   geo: () => import('./views-geo.js'),
+  zones: () => import('./views-zones.js'),
 };
 
 async function loadModule(name) {
@@ -573,6 +575,50 @@ document.addEventListener('click', (event) => {
     el.parentElement.querySelectorAll('button').forEach((b) => b.setAttribute('aria-current', String(b === el)));
     return;
   }
+  if (d.clearZones) {
+    return run(async () => {
+      // Revenir à « je ne restreins rien » doit être aussi simple que déclarer.
+      const ok = await confirmDialog({
+        title: 'Ne plus rien restreindre',
+        body: 'Votre boutique acceptera de nouveau toutes les destinations que les transporteurs desservent.',
+        confirmLabel: 'Retirer mes zones',
+      });
+      if (!ok) return;
+      await api(`/stores/${d.clearZones}/zones-service`, { method: 'PUT', body: { zones: [] } });
+      toast('Aucune restriction : toutes les destinations desservies sont acceptées.', 'success');
+      await render();
+    });
+  }
+
+  if (d.availability) {
+    const provinceId = document.getElementById('avail-province').value;
+    const cible = document.getElementById('availability-result');
+    if (!provinceId) {
+      // Deviner la destination produirait une promesse inventée.
+      cible.innerHTML = '<span class="muted">Choisissez d’abord une province.</span>';
+      return;
+    }
+    return run(
+      async () => {
+        cible.innerHTML = '<span class="muted">Vérification…</span>';
+        const r = await api(`/products/${d.availability}/disponibilite?province=${encodeURIComponent(provinceId)}`);
+
+        // Quatre réponses, et aucune n'est « probablement ». Le délai n'est
+        // affiché que lorsque les deux côtés ont confirmé — sinon, ce serait
+        // une promesse faite à quelqu'un qui va attendre un colis.
+        const couleur = r.deliverable ? 'var(--success)' : 'var(--warning)';
+        const delai =
+          r.deliverable && r.transitDays
+            ? `<div class="xs muted">Transport annoncé : ${r.transitDays.min}–${r.transitDays.max} jours${
+                r.handlingDays != null ? ` · préparation ${r.handlingDays} j` : ''
+              }</div>`
+            : '';
+        cible.innerHTML = `<div style="color:${couleur}"><strong>${esc(r.message)}</strong></div>${delai}`;
+      },
+      { button: el },
+    );
+  }
+
   if (d.estimate) {
     const destination = document.getElementById('ship-country').value;
     const target = document.getElementById('ship-estimate');
@@ -1774,6 +1820,26 @@ document.addEventListener('submit', (event) => {
           },
         });
         toast('Ticket mis à jour.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'service-zones-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const { collectZones } = await loadModule('zones');
+        const zones = collectZones();
+        await api(`/stores/${form.dataset.store}/zones-service`, { method: 'PUT', body: { zones } });
+        const exclues = zones.filter((z) => !z.served && z.provinceId).length;
+        toast(
+          exclues === 0
+            ? 'Zones enregistrées : vous livrez dans tout le Tchad.'
+            : `Zones enregistrées : ${exclues} province${exclues > 1 ? 's' : ''} exclue${exclues > 1 ? 's' : ''}.`,
+          'success',
+        );
         await render();
       },
       { button: submit },
