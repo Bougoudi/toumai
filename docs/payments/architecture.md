@@ -38,6 +38,10 @@ Règlement
        ├─ PENDING  : fenêtre de protection
        ├─ ELIGIBLE : livrée + fenêtre écoulée + aucun litige bloquant
        └─ SETTLED  : rattachée à un ToumaSellerPayout
+
+Écrans
+  └─ /vendeur/finance ── ce qui est dû, par devise, avec le motif d'un retard
+  └─ /admin/versements ─ créer, retenir, libérer, annuler — jamais virer
 ```
 
 ---
@@ -119,6 +123,20 @@ poliment la même chose doit obtenir la même réponse, sinon il redemande encor
 Mais chaque route garde ses garde-fous métier : plafonds, statuts, prises
 conditionnelles. L'idempotence rattrape le réseau, elle ne remplace pas la
 logique.
+
+### Un balayage parcourt tout, ou le dit
+
+`refreshEligibility` ne lisait que les **500 premières** parts en attente, sans
+ordre ni suite. Au-delà — un volume ordinaire pour une place de marché — les
+suivantes n'étaient jamais examinées : aucune erreur, aucun journal, des
+vendeurs qui cessent d'être réglés, et un balayage qui a l'air de fonctionner.
+
+Il parcourt maintenant par lots jusqu'à épuisement. Le garde-fou qui subsiste
+existe contre une boucle infinie, pas pour plafonner le travail utile : quand il
+est atteint, le résultat porte `truncated` et le journal le dit. **Un balayage
+qui s'arrête doit le dire** — c'est la version, côté exploitation, de la règle
+qui gouverne tout le reste : ne jamais laisser croire que quelque chose a été
+fait.
 
 ### Rien ne se décide tout seul
 

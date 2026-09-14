@@ -6,6 +6,7 @@ import { env } from '../../src/config/env.js';
 import { promoteToAdmin, registerUser, signWebhook, TestApi, uniqueEmail } from '../helpers/api.js';
 import { ensureReferenceData, ensureSchema } from '../helpers/db.js';
 import { purgeWebhookDeliveries } from '../../src/touma/payments/webhook-log.js';
+import { REDACTED } from '../../src/touma/lib/redact.js';
 
 /**
  * Traçabilité des webhooks (V20).
@@ -226,8 +227,14 @@ describe('Le corps consigné', () => {
     const extrait = trace!.bodyExcerpt ?? '';
     assert.ok(!extrait.includes('sk_live_abcdefgh12345678'), 'la clé du prestataire ne doit jamais être conservée');
     assert.ok(!extrait.includes('4111111111111111'), 'le numéro de carte ne doit jamais être conservé');
-    assert.ok(!extrait.includes('321'), 'le cryptogramme ne doit jamais être conservé');
-    assert.ok(extrait.includes('payment.succeeded'), 'le reste du corps doit rester exploitable');
+
+    // Le cryptogramme se vérifie sur le champ, pas par recherche de sous-chaîne :
+    // trois chiffres se retrouvent par hasard dans un horodatage.
+    const relu = JSON.parse(extrait);
+    assert.equal(relu.card.cvv, REDACTED, 'le cryptogramme ne doit jamais être conservé');
+    assert.equal(relu.card.cardNumber, REDACTED);
+    assert.equal(relu.apiKey, REDACTED);
+    assert.equal(relu.type, 'payment.succeeded', 'le reste du corps doit rester exploitable');
   });
 
   it('borne ce qu’un appelant non authentifié peut écrire en base', async () => {

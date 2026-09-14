@@ -82,8 +82,18 @@ describe('Réservation de stock : elle finit par expirer', () => {
     assert.deepEqual(await stock(produit), { quantity: 6, reserved: 4 });
 
     // Tant que le délai n'est pas écoulé, on ne touche à rien.
+    //
+    // Le balayage est **global** par nature : il annule les réservations
+    // périmées de toute la base. Compter ses annulations totales ferait donc
+    // dépendre ce test des commandes que les autres suites laissent vieillir
+    // au même moment. C'est notre commande qu'on observe, et notre stock.
     resetSweepThrottle();
-    assert.equal((await expireStaleReservations()).cancelled, 0);
+    await expireStaleReservations();
+    assert.equal(
+      (await prisma.toumaOrder.findUnique({ where: { id: orderId }, select: { status: true } }))?.status,
+      'PENDING',
+      'avant le délai, la commande n’est pas touchée',
+    );
     assert.deepEqual(await stock(produit), { quantity: 6, reserved: 4 });
 
     // Passé le délai, le stock revient exactement comme il est parti.
@@ -97,9 +107,9 @@ describe('Réservation de stock : elle finit par expirer', () => {
     assert.match(apres?.cancelReason ?? '', /expirée/i);
 
     // Rejouer le balayage ne libère pas une seconde fois — sinon le stock
-    // enflerait à chaque exécution.
-    const second = await expireStaleReservations();
-    assert.equal(second.cancelled, 0);
+    // enflerait à chaque exécution. C'est le stock qui le prouve, pas le
+    // compteur global du balayage.
+    await expireStaleReservations();
     assert.deepEqual(await stock(produit), { quantity: 10, reserved: 0 });
   });
 
@@ -115,11 +125,10 @@ describe('Réservation de stock : elle finit par expirer', () => {
     await api.post('/api/v1/payments/create', { orderId, method: 'MOBILE_MONEY' }, buyer.accessToken);
     await vieillir(orderId);
 
-    const resultat = await expireStaleReservations();
+    await expireStaleReservations();
     const apres = await prisma.toumaOrder.findUnique({ where: { id: orderId }, select: { status: true } });
     assert.notEqual(apres?.status, 'CANCELLED', 'une commande en cours de paiement reste intouchée');
     assert.deepEqual(await stock(produit), { quantity: 5, reserved: 3 }, 'le stock reste réservé');
-    assert.equal(resultat.cancelled, 0);
   });
 
   it('annule le groupe quand plus aucune sous-commande ne survit', async () => {

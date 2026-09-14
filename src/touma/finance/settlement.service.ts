@@ -88,6 +88,15 @@ export async function applyRefundToAllocation(orderId: string, amount: Prisma.De
 export interface EligibilityResult {
   promoted: number;
   cancelled: number;
+  /** Parts examinées. Utile pour distinguer « rien à faire » de « rien vu ». */
+  examined: number;
+  /**
+   * Vrai si le balayage s'est arrêté avant d'avoir tout vu.
+   *
+   * Il ne s'arrête jamais **en silence** : un arrêt silencieux laisserait des
+   * vendeurs sans règlement sans que rien ne le dise.
+   */
+  truncated: boolean;
 }
 
 /**
@@ -102,59 +111,102 @@ export interface EligibilityResult {
  * annulée. Payer zéro franc à quelqu'un est une écriture inutile qui brouille
  * l'histoire.
  */
+/** Taille d'un lot. Bornée pour ne pas charger la base d'un seul coup. */
+const ELIGIBILITY_BATCH = 500;
+
+/**
+ * Garde-fou absolu, en nombre de lots.
+ *
+ * Il existe pour qu'un défaut de progression ne devienne pas une boucle
+ * infinie, pas pour plafonner le travail utile. Quand il est atteint, le
+ * résultat le **dit** — `truncated` — au lieu de laisser croire que tout a été
+ * examiné.
+ */
+const ELIGIBILITY_MAX_BATCHES = 200;
+
 export async function refreshEligibility(now = new Date()): Promise<EligibilityResult> {
   const limite = new Date(now.getTime() - PROTECTION_DAYS * 86_400_000);
 
-  const candidates = await prisma.toumaSettlementAllocation.findMany({
-    where: { status: 'PENDING' },
-    select: {
-      id: true,
-      orderId: true,
-      grossAmount: true,
-      shippingAmount: true,
-      commissionAmount: true,
-      refundedAmount: true,
-      order: {
-        select: {
-          status: true,
-          deliveredAt: true,
-          disputes: { where: { status: { in: BLOCKING_DISPUTES as never } }, select: { id: true } },
-        },
-      },
-    },
-    take: 500,
-  });
-
   let promoted = 0;
   let cancelled = 0;
+  let examined = 0;
+  let truncated = false;
+  let curseur: string | undefined;
 
-  for (const a of candidates) {
-    // Intégralement remboursée : il n'y a plus rien à régler.
-    if (netOf(a).lessThanOrEqualTo(0)) {
-      await prisma.toumaSettlementAllocation.updateMany({
+  // Parcours par lots plutôt qu'un plafond unique.
+  //
+  // Le défaut corrigé : un seul `take: 500`, sans ordre ni suite. Au-delà de
+  // 500 parts en attente — une situation parfaitement ordinaire pour une place
+  // de marché — les suivantes n'étaient jamais examinées. Aucune erreur, aucun
+  // journal : des vendeurs cessaient simplement d'être réglés, et le balayage
+  // avait l'air de fonctionner.
+  //
+  // Le curseur porte sur l'identifiant : les parts promues ou annulées sortent
+  // de `PENDING`, celles qu'on laisse en place y restent, et l'ordre stable
+  // garantit qu'on avance dans les deux cas.
+  for (let lot = 0; lot < ELIGIBILITY_MAX_BATCHES; lot += 1) {
+    const candidates = await prisma.toumaSettlementAllocation.findMany({
+      where: { status: 'PENDING', ...(curseur ? { id: { gt: curseur } } : {}) },
+      select: {
+        id: true,
+        orderId: true,
+        grossAmount: true,
+        shippingAmount: true,
+        commissionAmount: true,
+        refundedAmount: true,
+        order: {
+          select: {
+            status: true,
+            deliveredAt: true,
+            disputes: { where: { status: { in: BLOCKING_DISPUTES as never } }, select: { id: true } },
+          },
+        },
+      },
+      orderBy: { id: 'asc' },
+      take: ELIGIBILITY_BATCH,
+    });
+
+    if (candidates.length === 0) break;
+    curseur = candidates[candidates.length - 1].id;
+    examined += candidates.length;
+
+    for (const a of candidates) {
+      // Intégralement remboursée : il n'y a plus rien à régler.
+      if (netOf(a).lessThanOrEqualTo(0)) {
+        await prisma.toumaSettlementAllocation.updateMany({
+          where: { id: a.id, status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        });
+        cancelled += 1;
+        continue;
+      }
+
+      if (!['DELIVERED', 'COMPLETED'].includes(a.order.status)) continue;
+      const livree = a.order.deliveredAt;
+      if (!livree || livree > limite) continue;
+      if (a.order.disputes.length > 0) continue;
+
+      // Prise conditionnée au statut : un remboursement arrivé dans le même
+      // instant l'emporte, et le balayage passe son chemin.
+      const pris = await prisma.toumaSettlementAllocation.updateMany({
         where: { id: a.id, status: 'PENDING' },
-        data: { status: 'CANCELLED' },
+        data: { status: 'ELIGIBLE', eligibleAt: now },
       });
-      cancelled += 1;
-      continue;
+      if (pris.count === 1) promoted += 1;
     }
 
-    if (!['DELIVERED', 'COMPLETED'].includes(a.order.status)) continue;
-    const livree = a.order.deliveredAt;
-    if (!livree || livree > limite) continue;
-    if (a.order.disputes.length > 0) continue;
-
-    // Prise conditionnée au statut : un remboursement arrivé dans le même
-    // instant l'emporte, et le balayage passe son chemin.
-    const pris = await prisma.toumaSettlementAllocation.updateMany({
-      where: { id: a.id, status: 'PENDING' },
-      data: { status: 'ELIGIBLE', eligibleAt: now },
-    });
-    if (pris.count === 1) promoted += 1;
+    if (candidates.length < ELIGIBILITY_BATCH) break;
+    if (lot === ELIGIBILITY_MAX_BATCHES - 1) truncated = true;
   }
 
-  if (promoted > 0 || cancelled > 0) logger.info('Parts de règlement mises à jour', { promoted, cancelled });
-  return { promoted, cancelled };
+  if (truncated) {
+    logger.error('Balayage des règlements interrompu avant la fin : des parts n’ont pas été examinées', {
+      examined,
+      maxBatches: ELIGIBILITY_MAX_BATCHES,
+    });
+  }
+  if (promoted > 0 || cancelled > 0) logger.info('Parts de règlement mises à jour', { promoted, cancelled, examined });
+  return { promoted, cancelled, examined, truncated };
 }
 
 /** Intervalle minimal entre deux balayages déclenchés par le trafic. */

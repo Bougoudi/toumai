@@ -61,6 +61,20 @@ after(async () => {
   await api.stop();
 });
 
+/**
+ * Fenêtre réservée à ces essais.
+ *
+ * Une règle **globale** posée maintenant s'appliquerait aux commandes que les
+ * autres suites créent au même instant, dans la même base — et fausserait leurs
+ * montants. Les règles de portée large sont donc datées dans une période que
+ * personne d'autre n'atteint, et interrogées à cette date.
+ *
+ * C'est exactement ce à quoi sert le champ de validité : l'employer ici n'est
+ * pas une ruse de test, c'est son usage normal.
+ */
+const PLUS_TARD = new Date('2031-06-01T12:00:00.000Z');
+const OUVERTURE = new Date('2031-01-01T00:00:00.000Z');
+
 describe('La résolution du taux', () => {
   it('retombe sur la configuration quand aucune règle ne couvre la commande', async () => {
     // L'absence de règle ne doit pas faire tomber la commission à zéro :
@@ -72,34 +86,37 @@ describe('La résolution du taux', () => {
   });
 
   it('fait primer la règle la plus précise : boutique > catégorie > pays > globale', async () => {
-    await poser({ rate: new Prisma.Decimal('0.09') });
-    await poser({ countryCode: 'TD', rate: new Prisma.Decimal('0.07') });
-    await poser({ categoryId, rate: new Prisma.Decimal('0.06') });
-    await poser({ storeId, rate: new Prisma.Decimal('0.03'), note: 'Taux négocié 2026.' });
+    await poser({ rate: new Prisma.Decimal('0.09'), effectiveFrom: OUVERTURE });
+    await poser({ countryCode: 'NE', rate: new Prisma.Decimal('0.07'), effectiveFrom: OUVERTURE });
+    await poser({ categoryId, rate: new Prisma.Decimal('0.06'), effectiveFrom: OUVERTURE });
+    await poser({ storeId, rate: new Prisma.Decimal('0.03'), note: 'Taux négocié.', effectiveFrom: OUVERTURE });
 
-    assert.equal((await resolveCommission({ currency: 'XAF' })).rate.toString(), '0.09');
-    assert.equal((await resolveCommission({ countryCode: 'TD', currency: 'XAF' })).rate.toString(), '0.07');
-    assert.equal((await resolveCommission({ countryCode: 'TD', categoryIds: [categoryId], currency: 'XAF' })).rate.toString(), '0.06');
+    const a = (contexte: Record<string, unknown>) => resolveCommission({ currency: 'XAF', at: PLUS_TARD, ...contexte });
 
-    const boutique = await resolveCommission({ countryCode: 'TD', categoryIds: [categoryId], storeId, currency: 'XAF' });
+    assert.equal((await a({})).rate.toString(), '0.09');
+    assert.equal((await a({ countryCode: 'NE' })).rate.toString(), '0.07');
+    assert.equal((await a({ countryCode: 'NE', categoryIds: [categoryId] })).rate.toString(), '0.06');
+
+    const boutique = await a({ countryCode: 'NE', categoryIds: [categoryId], storeId });
     assert.equal(boutique.rate.toString(), '0.03');
     assert.equal(boutique.scope, 'STORE');
-    assert.equal(boutique.explanation, 'Taux négocié 2026.', 'le motif posé par l’exploitant est rendu tel quel');
+    assert.equal(boutique.explanation, 'Taux négocié.', 'le motif posé par l’exploitant est rendu tel quel');
   });
 
   it('ignore une règle hors de sa période de validité', async () => {
-    const hier = new Date(Date.now() - 48 * 3600 * 1000);
-    await poser({ storeId, rate: new Prisma.Decimal('0.02'), effectiveFrom: hier, effectiveUntil: new Date(Date.now() - 3600 * 1000) });
-    await poser({ storeId, rate: new Prisma.Decimal('0.04'), effectiveFrom: new Date(Date.now() + 7 * 24 * 3600 * 1000) });
+    const debut = new Date('2031-03-01T00:00:00.000Z');
+    const fin = new Date('2031-04-01T00:00:00.000Z');
+    await poser({ storeId, rate: new Prisma.Decimal('0.021'), effectiveFrom: debut, effectiveUntil: fin });
+    await poser({ storeId, rate: new Prisma.Decimal('0.041'), effectiveFrom: new Date('2031-12-01T00:00:00.000Z') });
 
-    // Ni la règle close ni celle qui n'a pas commencé.
-    const maintenant = await resolveCommission({ storeId, currency: 'XAF' });
-    assert.ok(!['0.02', '0.04'].includes(maintenant.rate.toString()), `taux inattendu : ${maintenant.rate}`);
+    // À PLUS_TARD : ni la règle close en avril, ni celle qui ouvre en décembre.
+    const entre = await resolveCommission({ storeId, currency: 'XAF', at: PLUS_TARD });
+    assert.ok(!['0.021', '0.041'].includes(entre.rate.toString()), `taux inattendu : ${entre.rate}`);
 
     // Mais la règle close reste consultable à sa date : une commande passée
     // doit rester explicable par la règle qui l'a produite.
-    const alors = await resolveCommission({ storeId, currency: 'XAF', at: new Date(Date.now() - 24 * 3600 * 1000) });
-    assert.equal(alors.rate.toString(), '0.02');
+    const alors = await resolveCommission({ storeId, currency: 'XAF', at: new Date('2031-03-15T00:00:00.000Z') });
+    assert.equal(alors.rate.toString(), '0.021');
   });
 
   it('écarte une règle dont les bornes sont dans une autre devise', async () => {
@@ -170,9 +187,11 @@ describe('Une commande', () => {
 
 describe('L’administration', () => {
   it('pose une règle, la retrouve, et n’a aucun moyen d’en modifier le taux', async () => {
+    // Toujours scopée à notre boutique : une règle globale posée maintenant
+    // s'appliquerait aux commandes des autres suites.
     const cree = await api.post(
       '/api/v1/admin/commission-rules',
-      { storeId, rate: '0.045', note: 'Accord commercial.' },
+      { storeId, rate: '0.045', note: 'Accord commercial.', effectiveFrom: OUVERTURE.toISOString() },
       admin.accessToken,
     );
     assert.equal(cree.status, 201, JSON.stringify(cree.body));
@@ -201,15 +220,17 @@ describe('L’administration', () => {
   it('refuse un taux absurde plutôt que de l’appliquer', async () => {
     // Négatif : la plateforme paierait le vendeur pour vendre.
     // Au-delà de 1 : elle prendrait plus que le prix.
-    const trop = await api.post('/api/v1/admin/commission-rules', { rate: '1.5' }, admin.accessToken);
+    // Ces requêtes doivent être refusées : rien n'est donc écrit, et la portée
+    // large qu'elles portent n'atteint jamais la base.
+    const trop = await api.post('/api/v1/admin/commission-rules', { storeId, rate: '1.5' }, admin.accessToken);
     assert.equal(trop.status, 400);
 
-    const borneSansDevise = await api.post('/api/v1/admin/commission-rules', { rate: '0.05', maxFee: '1000' }, admin.accessToken);
+    const borneSansDevise = await api.post('/api/v1/admin/commission-rules', { storeId, rate: '0.05', maxFee: '1000' }, admin.accessToken);
     assert.equal(borneSansDevise.status, 400, 'une borne sans devise n’a pas de sens');
 
     const inverse = await api.post(
       '/api/v1/admin/commission-rules',
-      { rate: '0.05', minFee: '5000', maxFee: '1000', feeCurrency: 'XAF' },
+      { storeId, rate: '0.05', minFee: '5000', maxFee: '1000', feeCurrency: 'XAF' },
       admin.accessToken,
     );
     assert.equal(inverse.status, 400, 'le plancher ne peut pas dépasser le plafond');
@@ -227,7 +248,7 @@ describe('L’administration', () => {
   });
 
   it('reste fermée à qui n’est pas administrateur', async () => {
-    const res = await api.post('/api/v1/admin/commission-rules', { rate: '0.001' }, seller.accessToken);
+    const res = await api.post('/api/v1/admin/commission-rules', { storeId, rate: '0.001' }, seller.accessToken);
     assert.ok([403, 404].includes(res.status), `attendu 403/404, reçu ${res.status}`);
   });
 });

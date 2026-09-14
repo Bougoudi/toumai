@@ -873,6 +873,88 @@ await step('administration : TOUMA Intelligence', async () => {
   if (!admin.url().includes('jours=7')) throw new Error('le changement de période n’a pas pris');
 });
 
+// ── Finance : ce qui est dû, quand, et pourquoi pas encore (V20) ────────────
+
+await step('vendeur : l’écran Finance dit ce qui lui revient, par devise', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur/finance`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('.tabs a[aria-current="page"]', { timeout: 20000 });
+
+  // Le texte rendu porte les sauts de ligne du gabarit : on compare le contenu,
+  // pas la mise en forme.
+  const body = ((await seller.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+  // La distinction qui sépare une place de marché d'un établissement de
+  // paiement doit se lire à l'écran, pas seulement dans le modèle.
+  if (!body.includes('ce qui vous revient')) throw new Error('l’écran ne dit pas que ce n’est pas un solde détenu');
+  if (!/n’est pas un établissement de paiement/.test(body)) throw new Error('la frontière réglementaire n’est pas affichée');
+  if (!/jamais additionnées/.test(body)) throw new Error('la règle des devises n’est pas annoncée');
+  await seller.screenshot({ path: `${OUT}/41-vendeur-finance.png` });
+});
+
+await step('vendeur : ses versements, et ce qu’« exécuté » veut dire', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  await seller.goto(`${BASE}/vendeur/versements`, { waitUntil: 'networkidle' });
+  await seller.waitForSelector('#view', { timeout: 20000 });
+
+  const body = ((await seller.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+  // Un vendeur ne doit pas croire que TOUMA lui a viré l'argent elle-même.
+  if (!/ne transfère pas d’argent/.test(body)) throw new Error('l’écran laisse croire que TOUMA vire les fonds');
+  await seller.screenshot({ path: `${OUT}/42-vendeur-versements.png` });
+});
+
+await step('administration : vue financière, par devise et sans total mélangé', async () => {
+  const admin = await sessionFor('admin@touma.dev');
+  await admin.goto(`${BASE}/admin/finance`, { waitUntil: 'networkidle' });
+  await admin.waitForSelector('.admin-sidebar a[aria-current="page"]', { timeout: 20000 });
+
+  const body = ((await admin.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+  for (const section of ['Paiements', 'Parts de règlement', 'Versements', 'Remboursements']) {
+    if (!body.includes(section)) throw new Error(`section « ${section} » absente`);
+  }
+  if (!/jamais additionnés entre devises/.test(body)) throw new Error('la règle des devises n’est pas affichée');
+  await admin.screenshot({ path: `${OUT}/43-admin-finance.png` });
+});
+
+await step('administration : versements, et ce qu’annuler veut dire', async () => {
+  const admin = await sessionFor('admin@touma.dev');
+  await admin.goto(`${BASE}/admin/versements`, { waitUntil: 'networkidle' });
+  await admin.waitForSelector('#payout-create-form', { timeout: 20000 });
+
+  const body = ((await admin.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+  if (!/n’envoie aucun argent/.test(body)) throw new Error('l’écran laisse croire que l’exécution vire les fonds');
+  if (!/rend ses parts/.test(body)) throw new Error('l’effet d’une annulation n’est pas annoncé');
+
+  // Le formulaire ne demande aucun montant : c'est le serveur qui décide de ce
+  // qui entre dans le versement, et un montant envoyé par le client n'aurait
+  // aucune valeur.
+  if ((await admin.locator('#payout-create-form input[name="amount"]').count()) > 0) {
+    throw new Error('le formulaire demande un montant au client');
+  }
+
+  // Filtrer recharge réellement la liste.
+  await admin.click('a[href="/touma/admin/versements?etat=PENDING"]');
+  await admin.waitForTimeout(1500);
+  if (!admin.url().includes('etat=PENDING')) throw new Error('le filtre n’a pas pris');
+  await admin.screenshot({ path: `${OUT}/44-admin-versements.png` });
+});
+
+await step('finance : pas de débordement horizontal sur mobile', async () => {
+  const seller = await sessionFor('vendeur.cm@touma.dev');
+  for (const [width, height] of [
+    [360, 780],
+    [390, 844],
+  ]) {
+    await seller.setViewportSize({ width, height });
+    for (const path of ['/vendeur/finance', '/vendeur/versements']) {
+      await seller.goto(`${BASE}${path}`, { waitUntil: 'networkidle' });
+      await seller.waitForTimeout(600);
+      const overflow = await seller.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+      if (overflow) throw new Error(`débordement horizontal sur ${path} à ${width}px`);
+    }
+  }
+  await seller.setViewportSize({ width: 1280, height: 900 });
+});
+
 await step('après-vente : pages privées sur mobile', async () => {
   if (!returnId || !ticketUrl) throw new Error('le parcours après-vente n’a pas abouti : rien à vérifier');
   // Ces pages exigent une session : on redimensionne le contexte déjà connecté.

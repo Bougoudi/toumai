@@ -82,6 +82,13 @@ const ROUTES = [
   { path: '/touma/vendeur/litiges/:id', module: 'disputes', name: 'sellerDisputeDetail', auth: true, role: 'SELLER' },
   { path: '/touma/admin/litiges/:id', module: 'disputes', name: 'adminDisputeDetail', auth: true, role: 'ADMIN' },
 
+  // Finance : ce qui est dû, quand, et pourquoi pas encore. Le moteur de
+  // règlement existait ; aucun écran ne le montrait.
+  { path: '/touma/vendeur/finance', module: 'finance', name: 'sellerFinance', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/versements', module: 'finance', name: 'sellerPayouts', auth: true, role: 'SELLER' },
+  { path: '/touma/admin/finance', module: 'finance', name: 'adminFinance', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/versements', module: 'finance', name: 'adminPayouts', auth: true, role: 'ADMIN' },
+
   // Documents commerciaux.
   { path: '/touma/documents', module: 'documents', name: 'documents', auth: true },
   { path: '/touma/documents/:id', module: 'documents', name: 'documentView', auth: true },
@@ -144,6 +151,7 @@ const LOADERS = {
   documents: () => import('./views-documents.js'),
   sourcing: () => import('./views-sourcing.js'),
   disputes: () => import('./views-disputes.js'),
+  finance: () => import('./views-finance.js'),
 };
 
 async function loadModule(name) {
@@ -955,6 +963,57 @@ document.addEventListener('click', (event) => {
       await render();
     });
   }
+  // ── Versements ───────────────────────────────────────────────────────────
+  // Aucune de ces actions ne déplace d'argent : TOUMA ne transfère pas de
+  // fonds. Elles consignent une décision, et qui l'a prise.
+  if (d.payoutProcess) {
+    return run(async () => {
+      const providerRef = prompt(
+        'Référence du virement réalisé chez la banque ou l’opérateur (elle est conservée avec le versement) :',
+      );
+      if (providerRef === null) return;
+      await api(`/admin/finance/payouts/${d.payoutProcess}/process`, {
+        method: 'POST',
+        body: providerRef ? { providerRef } : {},
+      });
+      toast('Exécution consignée.', 'success');
+      await render();
+    });
+  }
+  if (d.payoutHold) {
+    return run(async () => {
+      // Le motif est obligatoire et visible du vendeur : un versement retenu
+      // sans raison est, de son point de vue, un vol silencieux.
+      const reason = prompt('Motif de la retenue (visible du vendeur) :');
+      if (!reason) return;
+      await api(`/admin/finance/payouts/${d.payoutHold}/hold`, { method: 'POST', body: { reason } });
+      toast('Versement retenu. Le motif est visible du vendeur.');
+      await render();
+    });
+  }
+  if (d.payoutRelease) {
+    return run(async () => {
+      await api(`/admin/finance/payouts/${d.payoutRelease}/release`, { method: 'POST' });
+      toast('Retenue levée.', 'success');
+      await render();
+    });
+  }
+  if (d.payoutCancel) {
+    return run(async () => {
+      const ok = await confirmDialog({
+        title: 'Annuler ce versement',
+        body: 'Les parts qu’il regroupe redeviennent réglables : ce qui est dû au vendeur ne disparaît pas. Un motif est enregistré.',
+        confirmLabel: 'Annuler le versement',
+        danger: true,
+      });
+      if (!ok) return;
+      const reason = prompt('Motif de l’annulation :');
+      if (!reason) return;
+      await api(`/admin/finance/payouts/${d.payoutCancel}/cancel`, { method: 'POST', body: { reason } });
+      toast('Versement annulé : ses parts redeviennent réglables.');
+      await render();
+    });
+  }
   if (d.rejectVerification) {
     return run(async () => {
       const comment = prompt('Motif du rejet (communiqué au vendeur) :');
@@ -1647,6 +1706,28 @@ document.addEventListener('submit', (event) => {
           },
         });
         toast('Ticket mis à jour.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'payout-create-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        // Le serveur seul décide de ce qui entre dans le versement : il ne
+        // regroupe que les parts réglables. Un montant envoyé par le client
+        // n'aurait aucune valeur — et n'est d'ailleurs pas demandé.
+        const data = new FormData(form);
+        const payout = await api('/admin/finance/payouts', {
+          method: 'POST',
+          body: {
+            storeId: String(data.get('storeId')).trim(),
+            currency: String(data.get('currency')).trim().toUpperCase(),
+          },
+        });
+        toast(`Versement ${payout.reference ?? ''} créé.`.trim(), 'success');
         await render();
       },
       { button: submit },

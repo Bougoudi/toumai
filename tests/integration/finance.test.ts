@@ -266,6 +266,75 @@ describe('Idempotence des opérations financières', () => {
   });
 });
 
+describe('Le balayage d’éligibilité', () => {
+  it('examine toutes les parts, pas seulement les 500 premières', async () => {
+    // Le défaut : un seul `take: 500`, sans ordre ni suite. Au-delà de 500
+    // parts en attente — une situation ordinaire pour une place de marché —
+    // les suivantes n'étaient jamais examinées. Aucune erreur, aucun journal :
+    // des vendeurs cessaient d'être réglés et le balayage semblait fonctionner.
+    //
+    // On fabrique le volume directement en base : dérouler 500 commandes par
+    // l'API prendrait des minutes sans rien prouver de plus.
+    const { orderId, paymentId } = await commandeLivree('10000', 1);
+    await prisma.toumaOrder.update({
+      where: { id: orderId },
+      data: { deliveredAt: new Date(Date.now() - 60 * 86_400_000) },
+    });
+
+    // Parts rattachées à des commandes NON livrées : elles restent en attente et
+    // occupent la file, exactement comme en exploitation.
+    let total = await prisma.toumaSettlementAllocation.count({ where: { status: 'PENDING' } });
+    const gabarit = await prisma.toumaSettlementAllocation.findFirstOrThrow({ where: { orderId } });
+    const factices: string[] = [];
+    while (total < 520) {
+      const commande = await prisma.toumaOrder.create({
+        data: {
+          orderNumber: `TM-BOURRAGE-${Date.now()}-${total}`,
+          buyerId: buyer.user.id,
+          storeId,
+          currency: 'XAF',
+          subtotal: '1000',
+          shippingTotal: '0',
+          commissionTotal: '50',
+          commissionRate: '0.05',
+          total: '1000',
+          status: 'PAID',
+          shippingSnapshot: {},
+          buyerCountry: 'TD',
+          sellerCountry: 'TD',
+        },
+      });
+      await prisma.toumaSettlementAllocation.create({
+        data: {
+          paymentId: gabarit.paymentId,
+          orderId: commande.id,
+          storeId,
+          currency: 'XAF',
+          grossAmount: '1000',
+          shippingAmount: '0',
+          commissionAmount: '50',
+          refundedAmount: '0',
+          status: 'PENDING',
+        },
+      });
+      factices.push(commande.id);
+      total += 1;
+    }
+
+    const resultat = await refreshEligibility();
+    assert.ok(resultat.examined >= 520, `seulement ${resultat.examined} parts examinées sur ${total}`);
+    assert.equal(resultat.truncated, false, 'le balayage ne doit pas s’interrompre à ce volume');
+
+    // Et la part qui nous intéresse, livrée et hors fenêtre, a bien basculé —
+    // qu'elle soit la 3e ou la 517e de la file.
+    assert.equal((await prisma.toumaSettlementAllocation.findUniqueOrThrow({ where: { orderId } })).status, 'ELIGIBLE');
+
+    await prisma.toumaSettlementAllocation.deleteMany({ where: { orderId: { in: factices } } });
+    await prisma.toumaOrder.deleteMany({ where: { id: { in: factices } } });
+    assert.ok(paymentId);
+  });
+});
+
 describe('Règlement des vendeurs', () => {
   it('crée une part à l’encaissement, et elle attend la fenêtre de protection', async () => {
     // Le défaut : aucun objet ne disait quelle boutique attendait quoi sur quel
