@@ -6,6 +6,7 @@ import { authenticate, currentUser, requireAdmin } from '../middleware/toumaAuth
 import { applySuccess, paymentService } from './payment.service.js';
 import { codService } from './cod.service.js';
 import { refundService } from './refund.service.js';
+import { idempotent } from '../lib/idempotency.js';
 
 export const paymentRouter = Router();
 
@@ -68,6 +69,7 @@ paymentRouter.post(
 paymentRouter.post(
   '/:id/cash/collect',
   authenticate,
+  idempotent('payments.cash.collect'),
   asyncHandler(async (req, res) => {
     const amount = typeof req.body?.amount === 'string' ? req.body.amount : undefined;
     const note = typeof req.body?.note === 'string' ? req.body.note : undefined;
@@ -90,6 +92,7 @@ paymentRouter.post(
 paymentRouter.post(
   '/create',
   authenticate,
+  idempotent('payments.create'),
   asyncHandler(async (req, res) => {
     const input = parseBody(createSchema, req);
     // L'en-tête standard `Idempotency-Key` est accepté comme alternative.
@@ -121,6 +124,7 @@ paymentRouter.post(
   '/refund',
   authenticate,
   requireAdmin,
+  idempotent('payments.refund'),
   asyncHandler(async (req, res) => {
     const input = parseBody(refundSchema, req);
     const actorId = currentUser(req).id;

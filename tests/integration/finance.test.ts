@@ -188,3 +188,79 @@ describe('La fidélité distingue le gain de la reprise', () => {
     assert.ok(gains <= 1, 'un seul gain par commande, quoi qu’il arrive');
   });
 });
+
+describe('Idempotence des opérations financières', () => {
+  it('rejoue la réponse d’origine au lieu de rembourser deux fois', async () => {
+    // Le cas réel : le réseau coupe entre l'envoi et la réponse, le client
+    // renvoie. Sans clé, c'est un second remboursement.
+    const { orderId } = await commandeLivree('15000', 1);
+    const cle = `remb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const a = await api.post('/api/v1/payments/refund', { orderId, amount: '3000', reason: 'Geste' }, admin.accessToken, {
+      'idempotency-key': cle,
+    });
+    assert.equal(a.status, 201, JSON.stringify(a.body));
+
+    const b = await api.post('/api/v1/payments/refund', { orderId, amount: '3000', reason: 'Geste' }, admin.accessToken, {
+      'idempotency-key': cle,
+    });
+    assert.equal(b.status, 201, 'la requête rejouée reçoit la réponse d’origine, pas une erreur');
+    assert.equal(b.headers.get('idempotent-replay'), 'true', 'et elle est signalée comme rejeu');
+    assert.deepEqual(b.body, a.body, 'la réponse est identique, au caractère près');
+
+    // Un seul mouvement d'argent.
+    const lignes = await prisma.toumaRefund.findMany({ where: { orderId } });
+    assert.equal(lignes.length, 1, 'un seul remboursement, malgré deux requêtes');
+
+    const paiement = await prisma.toumaRefund.aggregate({ where: { orderId }, _sum: { amount: true } });
+    assert.equal(paiement._sum.amount?.toString(), '3000');
+  });
+
+  it('refuse une clé déjà employée pour une requête différente', async () => {
+    // Le client s'est trompé de clé. Lui servir la réponse d'une autre
+    // opération serait pire que de le lui dire.
+    const { orderId } = await commandeLivree('15000', 1);
+    const cle = `melange-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const a = await api.post('/api/v1/payments/refund', { orderId, amount: '2000', reason: 'A' }, admin.accessToken, {
+      'idempotency-key': cle,
+    });
+    assert.equal(a.status, 201);
+
+    const b = await api.post('/api/v1/payments/refund', { orderId, amount: '5000', reason: 'B' }, admin.accessToken, {
+      'idempotency-key': cle,
+    });
+    assert.equal(b.status, 409);
+    assert.match(b.body.error, /requête différente/i);
+
+    const lignes = await prisma.toumaRefund.count({ where: { orderId } });
+    assert.equal(lignes, 1, 'la seconde requête n’a rien créé');
+  });
+
+  it('laisse passer une requête sans clé : l’idempotence est une ceinture, pas la seule', async () => {
+    const { orderId } = await commandeLivree('9000', 1);
+    const res = await api.post('/api/v1/payments/refund', { orderId, amount: '1000', reason: 'Sans clé' }, admin.accessToken);
+    assert.equal(res.status, 201);
+  });
+
+  it('ne confond pas deux opérations différentes portant la même clé', async () => {
+    // La clé est portée par (demandeur, opération) : la même chaîne employée
+    // sur deux routes n'est pas la même clé.
+    const { orderId } = await commandeLivree('9000', 1);
+    const cle = `partagee-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const remboursement = await api.post('/api/v1/payments/refund', { orderId, amount: '1000' }, admin.accessToken, {
+      'idempotency-key': cle,
+    });
+    assert.equal(remboursement.status, 201);
+
+    // Même clé, autre opération : elle doit être acceptée, pas rejouée.
+    const paiement = await api.post(
+      '/api/v1/payments/create',
+      { orderId, method: 'MOBILE_MONEY' },
+      buyer.accessToken,
+      { 'idempotency-key': cle },
+    );
+    assert.notEqual(paiement.headers.get('idempotent-replay'), 'true', 'aucun rejeu entre deux opérations distinctes');
+  });
+});

@@ -251,6 +251,9 @@ model User {
   /// Colis remis par cette personne en point relais.
   pickupReleases ToumaOrder[] @relation("PickupRelease")
 
+  /// Clés d'idempotence des opérations financières de ce compte.
+  idempotencyKeys ToumaIdempotencyKey[]
+
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -736,6 +739,60 @@ model ToumaDeliveryZone {
   @@index([provinceId])
   @@index([localityId])
   @@map("touma_delivery_zones")
+}
+
+/// État d'une clé d'idempotence.
+enum IdempotencyStatus {
+  /// Une requête portant cette clé est en cours. Une seconde ne passe pas.
+  IN_PROGRESS
+  /// La requête a abouti : la réponse d'origine est rejouée telle quelle.
+  COMPLETED
+  /// La requête a échoué : la clé est libérée, on peut réessayer.
+  FAILED
+}
+
+/// Clé d'idempotence d'une opération financière (§5).
+///
+/// **Pourquoi elle existe.** Au Tchad, un réseau qui coupe entre l'envoi et la
+/// réponse est la situation normale, pas l'exception : l'acheteur renvoie, le
+/// navigateur rejoue, l'application réessaie. Sans clé, la seconde requête est
+/// une opération de plus — un second remboursement, un second versement.
+///
+/// Ce que cette table garantit, et qui va plus loin qu'un simple verrou : la
+/// requête rejouée reçoit **la réponse d'origine**, pas une erreur. Un client
+/// qui redemande poliment la même chose doit obtenir la même réponse, sans quoi
+/// il redemande encore.
+///
+/// L'empreinte du corps est conservée : réutiliser une clé pour une **autre**
+/// requête est une erreur du client, et elle est signalée plutôt que servie.
+model ToumaIdempotencyKey {
+  id     String @id @default(cuid())
+  /// Clé fournie par le client (en-tête `Idempotency-Key`).
+  key    String
+  /// Portée au demandeur : deux clients peuvent employer la même clé.
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Opération concernée : une même clé ne vaut pas d'une route à l'autre.
+  operation String
+
+  /// Empreinte du corps de la requête (SHA-256).
+  requestHash String
+  status      IdempotencyStatus @default(IN_PROGRESS)
+
+  /// Réponse d'origine, rejouée à l'identique. Ne contient jamais de secret :
+  /// c'est le corps que l'API a réellement rendu au client.
+  responseStatus Int?
+  responseBody   Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  /// Au-delà, la clé n'a plus de sens : la conserver indéfiniment ferait de
+  /// cette table un journal, ce qu'elle n'est pas.
+  expiresAt DateTime
+
+  @@unique([userId, operation, key])
+  @@index([expiresAt])
+  @@map("touma_idempotency_keys")
 }
 
 enum CashCollectionStatus {
