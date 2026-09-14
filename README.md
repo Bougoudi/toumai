@@ -34,7 +34,7 @@ uniquement) : `admin@touma.dev`, `vendeur.td@touma.dev`, `vendeur.cm@touma.dev`,
 `acheteur@touma.dev`.
 
 ```bash
-npm test              # 426 tests : unitaires, intégration et parcours complet (Node ≥ 22)
+npm test              # 431 tests : unitaires, intégration et parcours complet (Node ≥ 22)
 npm run typecheck     # TypeScript strict
 npm run test:browser  # 63 vérifications navigateur, de 360 à 1440 px (Chromium)
 ```

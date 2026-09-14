@@ -213,7 +213,7 @@ figé dans une commande doit rester explicable.
 
 ## Ce qui est garanti par les tests
 
-**426 tests** (`npm test`) contre une vraie base PostgreSQL.
+**431 tests** (`npm test`) contre une vraie base PostgreSQL.
 
 Géographie :
 
@@ -256,6 +256,16 @@ Retrait :
 - **connaître le numéro de commande ne suffit plus** ; un code juste ailleurs ne
   vaut rien ici ; un colis ne se remet pas deux fois ; un vendeur étranger au
   dossier trouve « introuvable », jamais « interdit ».
+
+Entre provinces (§63, §64) :
+
+- **N'Djamena → Moundou**, **Abéché → Moundou**, **Faya-Largeau → Moundou** : la
+  province de destination reste la sienne dans chaque commande, et une commande
+  entre provinces n'est pas comptée comme transfrontalière ;
+- **modifier son adresse ne réécrit pas une commande passée** : quelqu'un qui
+  déménage ne voit pas ses commandes de l'an dernier changer de ville ;
+- un vendeur d'une province est **visible depuis toutes les autres**, et sa
+  province est nommée dans sa fiche — l'acheteur sait d'où part le colis.
 
 Zones :
 
