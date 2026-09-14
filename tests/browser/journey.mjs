@@ -81,11 +81,34 @@ const sessions = new Map();
 async function sessionFor(email, password = 'touma-dev-1234') {
   if (sessions.has(email)) return sessions.get(email);
   const context = watch(await browser.newPage({ viewport: { width: 1280, height: 900 } }), ` (${email})`);
-  await context.goto(`${BASE}/connexion`, { waitUntil: 'networkidle' });
-  await context.fill('#l-email', email);
-  await context.fill('#l-password', password);
-  await context.click('#login-form button[type="submit"]');
-  await context.waitForTimeout(1600);
+
+  for (let essai = 1; ; essai += 1) {
+    await context.goto(`${BASE}/connexion`, { waitUntil: 'networkidle' });
+    await context.fill('#l-email', email);
+    await context.fill('#l-password', password);
+    await context.click('#login-form button[type="submit"]');
+    try {
+      // Une connexion réussie quitte l'écran de connexion. Attendre un délai
+      // fixe puis mettre la page en réserve mettait en réserve une session NON
+      // connectée : toutes les étapes du rôle échouaient ensuite sur des
+      // sélecteurs absents, et la cause — un refus de connexion quinze étapes
+      // plus tôt — n'apparaissait nulle part. La reprise de l'étape ne pouvait
+      // rien y faire non plus, puisqu'elle réutilisait la session abîmée.
+      await context.waitForFunction(() => !location.pathname.includes('/connexion'), null, { timeout: 15_000 });
+      break;
+    } catch {
+      // La limitation anti-force-brute est une protection qui doit rester
+      // active : rejouer le parcours dans la même minute la déclenche
+      // légitimement. On laisse la fenêtre se refermer, une fois.
+      if (essai === 2) {
+        await context.close();
+        throw new Error(`connexion impossible pour ${email}`);
+      }
+      await context.waitForTimeout(62_000);
+      rateLimited = false;
+    }
+  }
+
   sessions.set(email, context);
   return context;
 }
@@ -802,11 +825,21 @@ await step('messagerie : envoyer, citer, modifier, supprimer', async () => {
   await buyer.goto(demoThreadUrl, { waitUntil: 'networkidle' });
   await buyer.waitForSelector('#m-body');
 
-  const before = await buyer.locator('.msg').count();
-  await buyer.fill('#m-body', 'Quelle est votre disponibilité pour une livraison en mars ?');
+  // On cherche le message à son texte, jamais au nombre de messages affichés :
+  // le fil est paginé, et au-delà d'une page pleine un message envoyé en pousse
+  // un ancien dehors — le compte ne bouge plus. En intégration continue la base
+  // repart vide, donc ce défaut n'y apparaît jamais ; sur une base qui a déjà
+  // servi, l'étape échouait pour toujours.
+  const marque = `livraison en mars ${Date.now()}`;
+  await buyer.fill('#m-body', `Quelle est votre disponibilité pour une ${marque} ?`);
   await buyer.click('#message-form button[type="submit"]');
-  await buyer.waitForTimeout(1800);
-  if ((await buyer.locator('.msg').count()) <= before) throw new Error('le message n’apparaît pas dans le fil');
+  await buyer
+    .locator('.msg-body', { hasText: marque })
+    .first()
+    .waitFor({ timeout: 15000 })
+    .catch(() => {
+      throw new Error('le message n’apparaît pas dans le fil');
+    });
 
   // Répondre en citant : la citation doit apparaître dans le nouveau message.
   await buyer.locator('.msg').last().hover();
