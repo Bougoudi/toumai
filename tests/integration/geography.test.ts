@@ -196,3 +196,67 @@ describe('Découverte des vendeurs par province', () => {
     assert.ok('province' in res.body.items[0], 'la province fait partie de la fiche');
   });
 });
+
+describe('Ce qui est écrit dans une adresse', () => {
+  it('range le téléphone en E.164, quelle que soit la façon de l’écrire', async () => {
+    // Le branchement compte autant que la fonction : une normalisation qui
+    // existe mais n'est appelée nulle part ne range rien.
+    const res = await api.post(
+      '/api/v1/auth/me/addresses',
+      { fullName: 'Test téléphone', phone: '66 12 34 56', line1: 'Rue 1', city: "N'Djamena", countryCode: 'TD' },
+      seller.accessToken,
+    );
+    assert.equal(res.status, 201);
+
+    const adresse = await prisma.toumaAddress.findUniqueOrThrow({ where: { id: res.body.id } });
+    assert.equal(adresse.phone, '+23566123456', 'le numéro est rangé sous une seule forme');
+  });
+
+  it('refuse un numéro qui n’en est pas un', async () => {
+    const res = await api.post(
+      '/api/v1/auth/me/addresses',
+      { fullName: 'Test', phone: '6612345', line1: 'Rue 1', city: "N'Djamena", countryCode: 'TD' },
+      seller.accessToken,
+    );
+    assert.equal(res.status, 400, 'sept chiffres au Tchad, c’est une faute de frappe');
+  });
+
+  it('vérifie la géographie au lieu de la recopier', async () => {
+    const provinces = (await api.get('/api/v1/geo/provinces?country=TD')).body.items;
+    const province = provinces[0];
+
+    // Un identifiant qui n'existe pas est refusé : sinon on n'aurait fait que
+    // déguiser du texte libre en clé étrangère.
+    const inconnu = await api.post(
+      '/api/v1/auth/me/addresses',
+      { fullName: 'Test', phone: '66123456', line1: 'Rue 1', city: 'Ville', countryCode: 'TD', provinceId: 'cla00000000000000000000000' },
+      seller.accessToken,
+    );
+    assert.equal(inconnu.status, 400);
+
+    // Une localité qui n'est pas dans la province indiquée est une erreur, pas
+    // une préférence.
+    const autreProvince = provinces[1];
+    const localite = (await api.get(`/api/v1/geo/provinces/${autreProvince.id}/localities?limit=1`)).body.items[0];
+    const incoherent = await api.post(
+      '/api/v1/auth/me/addresses',
+      { fullName: 'Test', phone: '66123456', line1: 'Rue 1', city: 'Ville', countryCode: 'TD', provinceId: province.id, localityId: localite.id },
+      seller.accessToken,
+    );
+    assert.equal(incoherent.status, 400);
+    assert.match(incoherent.body.error, /n’appartient pas à la province/i);
+
+    // Cohérent : accepté, et la province est déduite de la localité quand elle
+    // n'est pas donnée — beaucoup de gens connaissent leur ville, pas leur
+    // découpage administratif.
+    const parLocalite = await api.post(
+      '/api/v1/auth/me/addresses',
+      { fullName: 'Test', phone: '66123456', line1: 'Rue 1', city: localite.name, countryCode: 'TD', localityId: localite.id },
+      seller.accessToken,
+    );
+    assert.equal(parLocalite.status, 201);
+    const enregistree = await prisma.toumaAddress.findUniqueOrThrow({ where: { id: parLocalite.body.id } });
+    assert.equal(enregistree.localityId, localite.id);
+    assert.equal(enregistree.provinceId, autreProvince.id, 'la province est déduite de la localité');
+  });
+});

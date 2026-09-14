@@ -6,9 +6,24 @@ import { hashPassword, verifyPassword } from '../../utils/auth.js';
 import { logger } from '../../utils/logger.js';
 import { audit } from '../lib/audit.js';
 import { badRequest, conflict, unauthorized } from '../lib/errors.js';
+import { normalizePhone } from '../lib/phone.js';
 import { generateRefreshToken, hashRefreshToken, refreshTokenLooksValid, signAccessToken } from '../lib/tokens.js';
 
 /** Représentation publique d'un utilisateur : aucune donnée sensible. */
+/**
+ * Normalise un numéro avec l'indicatif du pays du compte.
+ *
+ * Rend `null` quand rien n'est fourni ; lève quand ce qui est fourni n'est pas
+ * un numéro. Un numéro facultatif peut être absent — il ne peut pas être
+ * n'importe quoi.
+ */
+async function normalizedPhoneFor(phone: string | undefined, countryCode?: string | null): Promise<string | null> {
+  if (!phone) return null;
+  const country = countryCode ? await prisma.country.findUnique({ where: { code: countryCode }, select: { dialCode: true } }) : null;
+  const dialCode = country?.dialCode.replace(/^\+/, '') || undefined;
+  return normalizePhone(phone, dialCode).e164;
+}
+
 export function publicUser(user: Pick<User, 'id' | 'name' | 'email' | 'toumaRole' | 'status' | 'phone' | 'countryCode' | 'locale' | 'createdAt'>) {
   return {
     id: user.id,
@@ -85,12 +100,17 @@ export const authService = {
       throw conflict("Impossible de créer ce compte. S'il existe déjà, connectez-vous.");
     }
     const passwordHash = await hashPassword(input.password);
+    // Le numéro est rangé en E.164, avec l'indicatif du pays du compte. Sans
+    // cela « 66 12 34 56 » et « +235 66123456 » restent deux numéros différents
+    // pour la base : aucun compte reconnaissable par son numéro, aucun SMS
+    // fiable, aucune détection de fraude par numéro.
+    const phone = await normalizedPhoneFor(input.phone, countryCode);
     const user = await prisma.user.create({
       data: {
         name: input.name,
         email: input.email,
         passwordHash,
-        phone: input.phone ?? null,
+        phone,
         countryCode,
         toumaRole: input.role,
         // Rôle historique du logiciel d'automatisation : inchangé (utilisateur simple).
@@ -216,7 +236,10 @@ export const authService = {
     if (input.countryCode) await assertCountry(input.countryCode);
     const data: Prisma.UserUncheckedUpdateInput = {};
     if (input.name !== undefined) data.name = input.name;
-    if (input.phone !== undefined) data.phone = input.phone;
+    if (input.phone !== undefined) {
+      const utilisateur = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { countryCode: true } });
+      data.phone = await normalizedPhoneFor(input.phone, input.countryCode ?? utilisateur.countryCode ?? undefined);
+    }
     if (input.countryCode !== undefined) data.countryCode = input.countryCode;
     if (input.locale !== undefined) data.locale = input.locale;
     const user = await prisma.user.update({ where: { id: userId }, data });

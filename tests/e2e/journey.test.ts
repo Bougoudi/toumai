@@ -294,7 +294,7 @@ describe('Parcours complet Touma (Tchad → Cameroun)', () => {
         businessType: 'COMPANY',
         legalName: 'Douala Trade House SARL',
         registrationNo: 'RC/DLA/2019/B/1234',
-        contactPhone: '+23790000003',
+        contactPhone: '+237690000003',
         contactEmail: 'vendeur@touma.test',
         documents: [{ kind: 'registre_commerce', url: 'https://private.touma.example/doc.pdf' }],
       },

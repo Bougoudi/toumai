@@ -276,10 +276,10 @@ async function main() {
   });
 
   console.log('→ [Touma] Comptes de démonstration…');
-  const admin = await upsertUser({ email: 'admin@touma.dev', name: 'Administration Touma', role: 'ADMIN', countryCode: 'TD', phone: '+23590000001' });
-  const sellerTd = await upsertUser({ email: 'vendeur.td@touma.dev', name: 'Aïcha Mahamat', role: 'SELLER', countryCode: 'TD', phone: '+23590000002' });
-  const sellerCm = await upsertUser({ email: 'vendeur.cm@touma.dev', name: 'Blaise Ngoumou', role: 'SELLER', countryCode: 'CM', phone: '+23790000003' });
-  const buyer = await upsertUser({ email: 'acheteur@touma.dev', name: 'Fatimé Oumar', role: 'BUYER', countryCode: 'TD', phone: '+23590000004' });
+  const admin = await upsertUser({ email: 'admin@touma.dev', name: 'Administration Touma', role: 'ADMIN', countryCode: 'TD', phone: '+23566000001' });
+  const sellerTd = await upsertUser({ email: 'vendeur.td@touma.dev', name: 'Aïcha Mahamat', role: 'SELLER', countryCode: 'TD', phone: '+23566000002' });
+  const sellerCm = await upsertUser({ email: 'vendeur.cm@touma.dev', name: 'Blaise Ngoumou', role: 'SELLER', countryCode: 'CM', phone: '+237690000003' });
+  const buyer = await upsertUser({ email: 'acheteur@touma.dev', name: 'Fatimé Oumar', role: 'BUYER', countryCode: 'TD', phone: '+23566000004' });
 
   console.log('→ [Touma] Boutiques…');
   const storeTd = await prisma.toumaStore.upsert({
@@ -292,7 +292,7 @@ async function main() {
       description: "Grossiste tchadien en produits agricoles et textiles. Expédition vers toute l'Afrique centrale.",
       countryCode: 'TD',
       city: "N'Djamena",
-      phone: '+23590000002',
+      phone: '+23566000002',
       status: 'ACTIVE',
       verificationStatus: 'APPROVED',
     },
@@ -307,7 +307,7 @@ async function main() {
       description: 'Import-export basé à Douala : agroalimentaire, emballage, textile et accessoires.',
       countryCode: 'CM',
       city: 'Douala',
-      phone: '+23790000003',
+      phone: '+237690000003',
       status: 'ACTIVE',
       verificationStatus: 'PENDING',
     },
@@ -326,7 +326,7 @@ async function main() {
         businessType: 'COMPANY',
         legalName: 'Douala Trade House SARL',
         registrationNo: 'RC/DLA/2019/B/1234',
-        contactPhone: '+23790000003',
+        contactPhone: '+237690000003',
         contactEmail: 'vendeur.cm@touma.dev',
         documents: [{ kind: 'registre_commerce', url: 'private://demo/rc.pdf', uploadedAt: new Date().toISOString() }] as object,
       },
@@ -351,7 +351,7 @@ async function main() {
       data: {
         userId: buyer.id,
         fullName: 'Fatimé Oumar',
-        phone: '+23590000004',
+        phone: '+23566000004',
         line1: 'Avenue Charles de Gaulle, quartier Klemat',
         city: "N'Djamena",
         countryCode: 'TD',
@@ -371,7 +371,7 @@ async function main() {
       sector: 'Distribution agroalimentaire',
       countryCode: 'TD',
       city: "N'Djamena",
-      phone: '+23590000004',
+      phone: '+23566000004',
       annualVolume: '50–100 M XAF',
     },
   });

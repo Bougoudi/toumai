@@ -177,7 +177,7 @@ async function commandePayee() {
   // visibilité qui compte.
   if (await page.locator('#address-form').isVisible().catch(() => false)) {
     await page.fill('#a-name', 'Acheteuse Navigateur');
-    await page.fill('#a-phone', '+235900012');
+    await page.fill('#a-phone', '+23566000012');
     await page.fill('#a-line1', 'Avenue Charles de Gaulle');
     await page.fill('#a-city', "N'Djamena");
     await page.click('#address-form button[type="submit"]');
@@ -295,7 +295,7 @@ await step('tunnel de commande : adresse', async () => {
   await page.goto(`${BASE}/checkout`, { waitUntil: 'networkidle' });
   await page.waitForSelector('#address-form');
   await page.fill('#a-name', 'Acheteuse Navigateur');
-  await page.fill('#a-phone', '+235900012');
+  await page.fill('#a-phone', '+23566000012');
   await page.fill('#a-line1', 'Avenue Charles de Gaulle');
   await page.fill('#a-city', "N'Djamena");
   await page.click('#address-form button[type="submit"]');

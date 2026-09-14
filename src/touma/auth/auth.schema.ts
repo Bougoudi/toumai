@@ -62,6 +62,19 @@ export const addressSchema = z.object({
   district: z.string().trim().max(120).optional(),
   landmark: z.string().trim().max(200).optional(),
   instructions: z.string().trim().max(500).optional(),
+
+  /**
+   * Rattachement à la géographie officielle. Facultatif, parce qu'un pays non
+   * cartographié doit rester utilisable — mais dès qu'il est fourni, il est
+   * **vérifié** : un identifiant de province qui n'existe pas, ou qui appartient
+   * à un autre pays, est refusé plutôt que rangé tel quel.
+   */
+  provinceId: z.string().cuid().optional(),
+  departmentId: z.string().cuid().optional(),
+  subPrefectureId: z.string().cuid().optional(),
+  localityId: z.string().cuid().optional(),
+  /** Second numéro : joindre quelqu'un tient souvent au fait d'avoir deux opérateurs. */
+  alternativePhone: z.string().trim().max(30).optional(),
   /** Coordonnées facultatives, jamais exposées publiquement. */
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
