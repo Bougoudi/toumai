@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { recordRefund } from '../finance/ledger.js';
+import { applyRefundToAllocation } from '../finance/settlement.service.js';
 import { env } from '../../config/env.js';
 import { audit } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
@@ -270,6 +271,12 @@ export const refundService = {
           });
         }
       }
+
+      // La part de règlement suit : ce qui est remboursé n'est plus dû au
+      // vendeur. Sans cela, un remboursement laisserait la boutique créditée de
+      // l'argent rendu à l'acheteur — le défaut même que la convergence des
+      // deux moteurs vient de corriger, une couche plus haut.
+      await applyRefundToAllocation(order.id, amount, tx);
 
       // Registre : le remboursement part de la boutique, la commission lui
       // revient. Deux lignes de sens opposé — les fondre en une seule

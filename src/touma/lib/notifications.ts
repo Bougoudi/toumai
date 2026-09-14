@@ -39,6 +39,9 @@ export type NotificationType =
   | 'DELIVERY_CONFIRMED'
   | 'RESERVATION_EXPIRED'
   | 'PAYOUT_ELIGIBLE'
+  | 'PAYOUT_PAID'
+  | 'PAYOUT_HELD'
+  | 'PAYOUT_FAILED'
   // ── Confiance après-vente (V16) ──────────────────────────────────────────
   | 'RETURN_REQUESTED'
   | 'RETURN_APPROVED'

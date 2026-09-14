@@ -254,6 +254,9 @@ model User {
   /// Clés d'idempotence des opérations financières de ce compte.
   idempotencyKeys ToumaIdempotencyKey[]
 
+  /// Versements décidés par cette personne.
+  payoutDecisions ToumaSellerPayout[] @relation("PayoutDecider")
+
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -742,6 +745,53 @@ model ToumaDeliveryZone {
 }
 
 /// État d'une clé d'idempotence.
+/// Part de règlement d'un vendeur dans un paiement (§9).
+///
+/// **Pourquoi ce modèle existe.** Le panier multi-vendeurs est payé une fois et
+/// donne une commande par boutique, chacune avec sa commission. Mais il
+/// n'existait **aucun objet** qui dise, pour un paiement donné : quelle part
+/// revient à quelle boutique, quelle commission, quel transport, quel
+/// remboursement, quel net. La réponse se reconstituait en croisant trois
+/// tables — ce qui suffit pour afficher, pas pour régler, et surtout pas pour
+/// expliquer un écart à un vendeur qui conteste.
+///
+/// **Ce n'est pas un portefeuille.** Aucune somme n'est détenue pour le compte
+/// d'un vendeur : cette table dit ce qui lui est **dû**, pas ce qu'il possède
+/// chez TOUMA. Voir `docs/payments/compliance-boundaries.md`.
+model ToumaSettlementAllocation {
+  id        String @id @default(cuid())
+  paymentId String
+  payment   ToumaPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  /// Sous-commande d'une boutique : c'est l'unité de règlement.
+  orderId   String @unique
+  order     ToumaOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  storeId   String
+  store     ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  /// Montants figés au moment de l'encaissement, sauf le remboursement qui suit
+  /// la vie de la commande.
+  grossAmount      Decimal @db.Decimal(18, 4)
+  commissionAmount Decimal @db.Decimal(18, 4)
+  shippingAmount   Decimal @db.Decimal(18, 4)
+  refundedAmount   Decimal @default(0) @db.Decimal(18, 4)
+  currency         String
+
+  status SettlementStatus @default(PENDING)
+  /// Date à partir de laquelle la part devient réglable, si rien ne s'y oppose.
+  eligibleAt DateTime?
+
+  payoutId String?
+  payout   ToumaSellerPayout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, status])
+  @@index([paymentId])
+  @@index([payoutId])
+  @@map("touma_settlement_allocations")
+}
+
 enum IdempotencyStatus {
   /// Une requête portant cette clé est en cours. Une seconde ne passe pas.
   IN_PROGRESS
@@ -952,10 +1002,30 @@ enum DisputeStatus {
 }
 
 enum PayoutStatus {
+  /// Créé, pas encore éligible : la fenêtre de protection court.
   PENDING
+  /// Toutes les conditions de règlement sont réunies. Un humain peut l'exécuter.
+  ELIGIBLE
   PROCESSING
   PAID
   FAILED
+  /// Retenu par l'administration : litige, soupçon, vérification en cours.
+  /// Un motif est obligatoire — un versement retenu sans raison est un vol
+  /// silencieux du point de vue du vendeur.
+  ON_HOLD
+  CANCELLED
+}
+
+/// État d'une part de règlement.
+enum SettlementStatus {
+  /// La vente est encaissée, la part est calculée, la fenêtre de protection court.
+  PENDING
+  /// Réglable : livrée, fenêtre écoulée, aucun litige bloquant.
+  ELIGIBLE
+  /// Rattachée à un versement.
+  SETTLED
+  /// Annulée par un remboursement intégral.
+  CANCELLED
 }
 
 enum AddressKind {
@@ -1381,6 +1451,7 @@ model ToumaStore {
   reputation     ToumaStoreReputation?
   rfqInvitations ToumaRfqInvitation[]
   ledger         ToumaLedgerEntry[]
+  allocations ToumaSettlementAllocation[]
 
   codRules       ToumaCodRule[]
 
@@ -1713,6 +1784,8 @@ model ToumaOrder {
   loyaltyEvents  ToumaLoyaltyEvent[]
   documents      ToumaDocument[]
 
+  settlement ToumaSettlementAllocation?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1785,6 +1858,7 @@ model ToumaPayment {
   failureReason  String?
 
   events  ToumaPaymentEvent[]
+  allocations ToumaSettlementAllocation[]
   refunds ToumaRefund[]
 
   createdAt   DateTime  @default(now())
@@ -1911,10 +1985,20 @@ model ToumaSellerPayout {
   amount    Decimal      @db.Decimal(18, 4)
   currency  String
   status    PayoutStatus @default(PENDING)
-  reference String?
+  reference String?      @unique
   paidAt    DateTime?
 
+  /// Qui a exécuté, retenu ou annulé — et pourquoi. Un mouvement d'argent sans
+  /// auteur ne se conteste pas.
+  decidedById String?
+  decidedBy   User?   @relation("PayoutDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  holdReason    String?
+  failureReason String?
+  /// Référence du virement chez le prestataire, quand il y en a un.
+  providerRef String?
+
   commissions ToumaCommission[]
+  allocations ToumaSettlementAllocation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -3,6 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import { prisma } from '../../src/db/prisma.js';
 import { promoteToAdmin, registerUser, TestApi, uniqueEmail } from '../helpers/api.js';
 import { ensureReferenceData, ensureSchema } from '../helpers/db.js';
+import { refreshEligibility, settlementService } from '../../src/touma/finance/settlement.service.js';
 
 /**
  * Infrastructure financière (V20).
@@ -262,5 +263,137 @@ describe('Idempotence des opérations financières', () => {
       { 'idempotency-key': cle },
     );
     assert.notEqual(paiement.headers.get('idempotent-replay'), 'true', 'aucun rejeu entre deux opérations distinctes');
+  });
+});
+
+describe('Règlement des vendeurs', () => {
+  it('crée une part à l’encaissement, et elle attend la fenêtre de protection', async () => {
+    // Le défaut : aucun objet ne disait quelle boutique attendait quoi sur quel
+    // paiement. Le versement était un modèle mort.
+    const { orderId } = await commandeLivree('20000', 1);
+
+    const part = await prisma.toumaSettlementAllocation.findUnique({ where: { orderId } });
+    assert.ok(part, 'la part naît de l’encaissement');
+    assert.equal(part!.status, 'PENDING', 'elle attend : livrer ne suffit pas, la fenêtre court');
+    assert.ok(part!.commissionAmount.greaterThan(0), 'la commission y figure');
+
+    // Le net est calculé, jamais stocké.
+    const net = settlementService.netOf(part!);
+    assert.equal(
+      net.toString(),
+      part!.grossAmount.plus(part!.shippingAmount).minus(part!.commissionAmount).toString(),
+    );
+  });
+
+  it('ne devient réglable qu’après la fenêtre, et jamais avec un litige ouvert', async () => {
+    const { orderId } = await commandeLivree('20000', 1);
+
+    // Fenêtre non écoulée : rien ne bouge.
+    assert.equal((await refreshEligibility()).promoted, 0, 'la fenêtre de protection est respectée');
+
+    // On recule la livraison au-delà de la fenêtre.
+    await prisma.toumaOrder.update({
+      where: { id: orderId },
+      data: { deliveredAt: new Date(Date.now() - 60 * 86_400_000) },
+    });
+
+    // Un litige ouvert retient l'argent, même la fenêtre passée.
+    const litige = await api.post('/api/v1/disputes', { orderId, reason: 'DAMAGED', category: 'DAMAGED_ITEM' }, buyer.accessToken);
+    assert.equal(litige.status, 201, JSON.stringify(litige.body));
+    await refreshEligibility();
+    assert.equal(
+      (await prisma.toumaSettlementAllocation.findUniqueOrThrow({ where: { orderId } })).status,
+      'PENDING',
+      'un litige ouvert retient la part',
+    );
+
+    // Litige tranché : la part devient réglable.
+    await api.post(
+      `/api/v1/disputes/${litige.body.id}/resolve`,
+      { decision: 'RESOLVED_SELLER', resolution: 'Réclamation non fondée.', resolutionType: 'NO_REFUND' },
+      admin.accessToken,
+    );
+    await refreshEligibility();
+    assert.equal(
+      (await prisma.toumaSettlementAllocation.findUniqueOrThrow({ where: { orderId } })).status,
+      'ELIGIBLE',
+    );
+  });
+
+  it('annule une part intégralement remboursée au lieu de la régler à zéro', async () => {
+    const { orderId } = await commandeLivree('10000', 1);
+    await api.post('/api/v1/payments/refund', { orderId }, admin.accessToken);
+
+    await prisma.toumaOrder.update({ where: { id: orderId }, data: { deliveredAt: new Date(Date.now() - 60 * 86_400_000) } });
+    await refreshEligibility();
+
+    const part = await prisma.toumaSettlementAllocation.findUniqueOrThrow({ where: { orderId } });
+    assert.equal(part.status, 'CANCELLED', 'payer zéro franc est une écriture inutile qui brouille l’histoire');
+  });
+
+  it('regroupe les parts réglables en un versement, retenu et libéré avec motif', async () => {
+    const { orderId } = await commandeLivree('30000', 1);
+    await prisma.toumaOrder.update({ where: { id: orderId }, data: { deliveredAt: new Date(Date.now() - 60 * 86_400_000) } });
+    await refreshEligibility();
+
+    const creation = await api.post('/api/v1/admin/finance/payouts', { storeId, currency: 'XAF' }, admin.accessToken);
+    assert.equal(creation.status, 201, JSON.stringify(creation.body));
+    assert.equal(creation.body.status, 'ELIGIBLE');
+    const payoutId = creation.body.id;
+
+    // Les parts sont rattachées : on ne les règle pas deux fois.
+    const secondeFois = await api.post('/api/v1/admin/finance/payouts', { storeId, currency: 'XAF' }, admin.accessToken);
+    assert.equal(secondeFois.status, 409, 'plus rien de réglable une fois rattaché');
+
+    // Retenue : motif obligatoire.
+    const sansMotif = await api.post(`/api/v1/admin/finance/payouts/${payoutId}/hold`, {}, admin.accessToken);
+    assert.equal(sansMotif.status, 400, 'un versement retenu sans raison est un vol silencieux du point de vue du vendeur');
+
+    const retenu = await api.post(`/api/v1/admin/finance/payouts/${payoutId}/hold`, { reason: 'Vérification en cours' }, admin.accessToken);
+    assert.equal(retenu.status, 200);
+    assert.equal(retenu.body.status, 'ON_HOLD');
+    assert.equal(retenu.body.holdReason, 'Vérification en cours');
+
+    const libere = await api.post(`/api/v1/admin/finance/payouts/${payoutId}/release`, {}, admin.accessToken);
+    assert.equal(libere.body.status, 'ELIGIBLE');
+
+    const execute = await api.post(`/api/v1/admin/finance/payouts/${payoutId}/process`, { providerRef: 'VIR-TEST-1' }, admin.accessToken);
+    assert.equal(execute.body.status, 'PAID');
+    assert.ok(execute.body.paidAt, 'la date d’exécution est consignée');
+  });
+
+  it('annuler un versement rend ses parts au vendeur', async () => {
+    const { orderId } = await commandeLivree('25000', 1);
+    await prisma.toumaOrder.update({ where: { id: orderId }, data: { deliveredAt: new Date(Date.now() - 60 * 86_400_000) } });
+    await refreshEligibility();
+
+    const creation = await api.post('/api/v1/admin/finance/payouts', { storeId, currency: 'XAF' }, admin.accessToken);
+    assert.equal(creation.status, 201);
+
+    const annule = await api.post(
+      `/api/v1/admin/finance/payouts/${creation.body.id}/cancel`,
+      { reason: 'Créé par erreur' },
+      admin.accessToken,
+    );
+    assert.equal(annule.body.status, 'CANCELLED');
+
+    // Sans cela, annuler un versement ferait disparaître ce qui est dû.
+    const part = await prisma.toumaSettlementAllocation.findUniqueOrThrow({ where: { orderId } });
+    assert.equal(part.status, 'ELIGIBLE');
+    assert.equal(part.payoutId, null);
+  });
+
+  it('ne montre à un vendeur que ses propres boutiques', async () => {
+    const autre = await registerUser(api, { name: 'Autre vendeur', email: uniqueEmail('fin-seller2'), role: 'SELLER', countryCode: 'TD' });
+    const res = await api.get(`/api/v1/seller/finance?store=${storeId}`, autre.accessToken);
+    // Anti-IDOR : « introuvable », jamais « interdit ».
+    assert.equal(res.status, 404);
+  });
+
+  it('rend les soldes par devise, jamais additionnés', async () => {
+    const res = await api.get('/api/v1/seller/finance', seller.accessToken);
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.body.balances), 'un solde par devise');
+    assert.equal(res.body.protectionDays > 0, true, 'la fenêtre de protection est annoncée');
   });
 });

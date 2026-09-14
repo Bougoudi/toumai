@@ -12,6 +12,7 @@ import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { notify } from '../lib/notifications.js';
 import { authenticate, currentUser, requireAdmin } from '../middleware/toumaAuth.js';
 import { reputationService } from '../reputation/reputation.service.js';
+import { refreshGroupStatus } from '../orders/group-status.js';
 
 /**
  * Litiges Touma. Acheteur et vendeur échangent messages et preuves ; seule
@@ -374,6 +375,45 @@ disputeRouter.post(
     // réécrite, elle est datée. L'historique doit pouvoir dire « ces fonds ont
     // été retenus du 3 au 17 ».
     await releaseHold(dispute.id);
+
+    // **La commande sort de l'état « en litige ».** Ouvrir un litige y fait
+    // passer la commande ; rien ne l'en faisait ressortir. Elle y restait donc
+    // pour toujours, même une fois la décision rendue — la machine d'état
+    // déclare pourtant DISPUTED → COMPLETED / REFUNDED. Conséquence concrète et
+    // silencieuse : le vendeur n'était jamais réglé, puisqu'une commande
+    // bloquée en litige ne devient jamais réglable.
+    const autresLitiges = await prisma.toumaDispute.count({
+      where: {
+        orderId: dispute.orderId,
+        id: { not: dispute.id },
+        status: { in: ['OPEN', 'SELLER_RESPONSE_REQUIRED', 'BUYER_RESPONSE_REQUIRED', 'UNDER_REVIEW', 'MEDIATION', 'ESCALATED'] },
+      },
+    });
+    if (autresLitiges === 0) {
+      const commande = await prisma.toumaOrder.findUnique({
+        where: { id: dispute.orderId },
+        select: { id: true, status: true, total: true, deliveredAt: true },
+      });
+      if (commande?.status === 'DISPUTED') {
+        const rembourse = await prisma.toumaRefund.aggregate({
+          where: { orderId: commande.id, status: { in: ['PENDING', 'PROCESSING', 'COMPLETED'] } },
+          _sum: { amount: true },
+        });
+        const total = rembourse._sum.amount ?? new Prisma.Decimal(0);
+        // On ne devine pas : intégralement remboursée, elle est remboursée ;
+        // livrée et non remboursée, elle est menée à son terme. Dans les autres
+        // cas on laisse le statut tel quel plutôt que d'inventer une fin.
+        const suite = total.greaterThanOrEqualTo(commande.total)
+          ? 'REFUNDED'
+          : commande.deliveredAt
+            ? 'COMPLETED'
+            : null;
+        if (suite) {
+          await prisma.toumaOrder.update({ where: { id: commande.id }, data: { status: suite } });
+          await refreshGroupStatus(commande.id);
+        }
+      }
+    }
 
     await audit({
       actorId: admin.id,

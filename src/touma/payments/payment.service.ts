@@ -2,6 +2,7 @@ import { Prisma, type PaymentStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { refreshGroupStatus } from '../orders/group-status.js';
 import { recordSale } from '../finance/ledger.js';
+import { allocateForPayment } from '../finance/settlement.service.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { audit } from '../lib/audit.js';
@@ -92,6 +93,25 @@ export async function applySuccess(paymentId: string, providerRef: string | null
       // à éviter.
       await recordSale(
         { id: order.id, storeId: order.storeId, total: order.total, commissionTotal: order.commissionTotal, currency: order.currency },
+        tx,
+      );
+
+      // Part de règlement : ce qui revient à cette boutique sur ce paiement.
+      // Créée ici, dans la même transaction que le registre — un vendeur à qui
+      // l'on doit de l'argent sans trace serait le symétrique exact du défaut
+      // corrigé côté acheteur. Idempotent : `orderId` est unique.
+      await allocateForPayment(
+        payment.id,
+        [
+          {
+            id: order.id,
+            storeId: order.storeId,
+            subtotal: order.subtotal,
+            shippingTotal: order.shippingTotal,
+            commissionTotal: order.commissionTotal,
+            currency: order.currency,
+          },
+        ],
         tx,
       );
 
