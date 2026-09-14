@@ -71,7 +71,10 @@ export function toumaOpenApiDocument() {
       '/auth/me': { get: op('Auth', 'Profil courant'), patch: op('Auth', 'Mettre à jour le profil', { body: true }) },
       '/auth/me/addresses': { get: op('Auth', 'Carnet d’adresses'), post: op('Auth', 'Ajouter une adresse', { body: true }) },
       '/countries': { get: op('Catalogue', 'Pays desservis', { auth: false }) },
-      '/categories': { get: op('Catalogue', 'Catégories', { auth: false }) },
+      '/categories': {
+        get: op('Catalogue', 'Catégories', { auth: false }),
+        post: op('Catalogue', 'Créer une catégorie', { body: true, role: 'ADMIN' }),
+      },
       '/stores': { get: op('Catalogue', 'Boutiques', { auth: false, query: ['q', 'country', 'verified', 'page', 'limit'] }), post: op('Catalogue', 'Créer une boutique', { body: true }) },
       '/stores/{id}': { get: op('Catalogue', 'Fiche boutique', { auth: false, params: ['id'] }), patch: op('Catalogue', 'Modifier sa boutique', { params: ['id'], body: true, role: 'SELLER' }) },
       '/products': {
@@ -259,6 +262,136 @@ export function toumaOpenApiDocument() {
       },
       '/admin/risk': { get: op('Administration', 'Scores de risque', { role: 'ADMIN' }) },
       '/admin/audit': { get: op('Administration', 'Journal d’audit', { role: 'ADMIN', query: ['action', 'page', 'limit'] }) },
+
+      // ── Index et sondes ─────────────────────────────────────────────────
+      '/': { get: op('Catalogue', 'Index de l’API : produits, points d’entrée, taux de commission de repli', { auth: false }) },
+      '/health': { get: op('Catalogue', 'Le processus vit', { auth: false }) },
+      '/ready': { get: op('Catalogue', 'Dépendances joignables ; 503 tant qu’une dépendance requise manque', { auth: false }) },
+      '/search': { get: op('Catalogue', 'Recherche globale : produits et boutiques', { auth: false, query: ['q', 'limit'] }) },
+
+      // ── Catalogue ───────────────────────────────────────────────────────
+      '/categories/{slug}': { get: op('Catalogue', 'Fiche catégorie', { auth: false, params: ['slug'] }) },
+      '/countries/{code}': { get: op('Catalogue', 'Fiche pays', { auth: false, params: ['code'] }) },
+      '/stores/mine': { get: op('Vendeur', 'Mes boutiques', { role: 'SELLER' }) },
+      '/products/{id}/paliers': {
+        get: op('Catalogue', 'Grille de paliers B2B', { auth: false, params: ['id'] }),
+        put: op('Vendeur', 'Remplacer la grille de paliers', { params: ['id'], body: true, role: 'SELLER' }),
+      },
+      '/products/{id}/disponibilite': {
+        get: op(
+          'Touma Logistics',
+          'Ce produit peut-il arriver dans cette province ? Quatre réponses : livrable, refus du vendeur, aucun transporteur, destination inconnue',
+          { auth: false, params: ['id'], query: ['province'] },
+        ),
+      },
+      '/stores/{id}/zones-service': {
+        get: op('Touma Logistics', 'Où cette boutique livre (lecture publique)', { auth: false, params: ['id'] }),
+        put: op('Touma Logistics', 'Déclarer ses zones de service (remplacement complet)', { params: ['id'], body: true, role: 'SELLER' }),
+      },
+      '/auth/me/addresses/{id}': { delete: op('Auth', 'Supprimer une adresse', { params: ['id'] }) },
+
+      // ── Géographie ──────────────────────────────────────────────────────
+      '/geo/provinces': { get: op('Catalogue', 'Provinces d’un pays', { auth: false, query: ['country'] }) },
+      '/geo/provinces/{idOrCode}': { get: op('Catalogue', 'Fiche d’une province : boutiques, points relais, desserte', { auth: false, params: ['idOrCode'], query: ['country'] }) },
+      '/geo/provinces/{id}/departments': { get: op('Catalogue', 'Départements d’une province', { auth: false, params: ['id'] }) },
+      '/geo/provinces/{id}/localities': { get: op('Catalogue', 'Localités d’une province', { auth: false, params: ['id'], query: ['q', 'department', 'limit'] }) },
+      '/geo/localities': { get: op('Catalogue', 'Rechercher une localité dans tout un pays', { auth: false, query: ['country', 'q', 'limit'] }) },
+
+      // ── Commandes ───────────────────────────────────────────────────────
+      '/orders/groups/{id}': { get: op('Commandes', 'Détail d’un panier multi-vendeurs', { params: ['id'] }) },
+      '/orders/{id}/tracking': { get: op('Touma Logistics', 'Suivi d’une commande', { params: ['id'] }) },
+      '/orders/{id}/confirm': { post: op('Commandes', 'Accepter la commande', { params: ['id'], role: 'SELLER' }) },
+      '/orders/{id}/process': { post: op('Commandes', 'Mettre en préparation', { params: ['id'], role: 'SELLER' }) },
+      '/orders/{id}/ready-to-ship': { post: op('Commandes', 'Déclarer le colis prêt', { params: ['id'], role: 'SELLER' }) },
+      '/orders/{id}/ship': { post: op('Commandes', 'Déclarer l’expédition', { params: ['id'], body: true, role: 'SELLER' }) },
+      '/orders/{id}/deliver': { post: op('Commandes', 'Déclarer la livraison', { params: ['id'], role: 'SELLER' }) },
+      '/orders/{id}/confirm-delivery': { post: op('Commandes', 'L’acheteur confirme la réception', { params: ['id'] }) },
+      '/orders/{id}/cancel': { post: op('Commandes', 'Annuler la commande', { params: ['id'], body: true }) },
+      '/pickup-points/orders/{orderId}/release': {
+        post: op('Touma Logistics', 'Remettre un colis en point relais (code de retrait obligatoire)', { params: ['orderId'], body: true, role: 'SELLER' }),
+      },
+
+      // ── Touma Pay ───────────────────────────────────────────────────────
+      '/payments/providers': { get: op('Touma Pay', 'Adaptateurs enregistrés dans le code (≠ moyens ouverts)', { auth: false }) },
+      '/payments/methods': {
+        get: op('Touma Pay', 'Moyens réellement proposables, chacun avec son motif quand il est fermé', { query: ['country', 'currency', 'order', 'group'] }),
+      },
+      '/payments/{id}/cash': { get: op('Touma Pay', 'Suivi d’un encaissement à la livraison', { params: ['id'] }) },
+      '/payments/{id}/cash/confirm': { post: op('Touma Pay', 'Le vendeur s’engage à encaisser', { params: ['id'], role: 'SELLER' }) },
+      '/payments/{id}/cash/collect': { post: op('Touma Pay', 'Constater la remise de l’argent (seul chemin d’entrée au registre)', { params: ['id'], body: true, role: 'SELLER' }) },
+      '/payments/{id}/cash/fail': { post: op('Touma Pay', 'Déclarer l’échec de l’encaissement', { params: ['id'], body: true, role: 'SELLER' }) },
+
+      // ── Logistique et IA ────────────────────────────────────────────────
+      '/shipping/providers': { get: op('Touma Logistics', 'Transporteurs raccordés', { auth: false }) },
+      '/shipping/{id}/cancel': { post: op('Touma Logistics', 'Annuler une expédition', { params: ['id'], role: 'SELLER' }) },
+      '/ai/provider': { get: op('Touma AI', 'Adaptateur d’IA actif', { auth: false }) },
+
+      // ── Notifications ───────────────────────────────────────────────────
+      '/notifications/{id}/read': { post: op('Auth', 'Marquer une notification comme lue', { params: ['id'] }) },
+      '/notifications/read-all': { post: op('Auth', 'Tout marquer comme lu') },
+
+      // ── Finance vendeur ─────────────────────────────────────────────────
+      '/seller/finance': { get: op('Vendeur', 'Ce qui m’est dû, par devise, et pourquoi pas encore', { role: 'SELLER', query: ['store'] }) },
+      '/seller/finance/payouts': { get: op('Vendeur', 'Mes versements', { role: 'SELLER', query: ['store'] }) },
+      '/seller/finance/payouts/{id}': { get: op('Vendeur', 'Détail d’un versement', { params: ['id'], role: 'SELLER' }) },
+      '/seller/finance/orders/{orderId}/ledger': { get: op('Vendeur', 'Mouvements comptables d’une commande', { params: ['orderId'], role: 'SELLER' }) },
+      '/seller/orders': { get: op('Vendeur', 'Mes ventes', { role: 'SELLER', query: ['status', 'page', 'limit'] }) },
+      '/seller/orders/{id}': { get: op('Vendeur', 'Détail d’une vente', { params: ['id'], role: 'SELLER' }) },
+      '/seller/stores/{id}/stats': { get: op('Vendeur', 'Chiffres d’une boutique', { params: ['id'], role: 'SELLER' }) },
+      '/seller/stores/{id}/analytics': { get: op('Vendeur', 'Séries temporelles d’une boutique', { params: ['id'], role: 'SELLER', query: ['days'] }) },
+
+      // ── Administration : listes ─────────────────────────────────────────
+      '/admin/stores': { get: op('Administration', 'Boutiques', { role: 'ADMIN', query: ['status', 'page', 'limit'] }) },
+      '/admin/orders': { get: op('Administration', 'Commandes', { role: 'ADMIN', query: ['status', 'page', 'limit'] }) },
+      '/admin/payments': { get: op('Administration', 'Paiements', { role: 'ADMIN', query: ['page', 'limit'] }) },
+      '/admin/shipments': { get: op('Administration', 'Expéditions', { role: 'ADMIN', query: ['page', 'limit'] }) },
+      '/admin/disputes': { get: op('Administration', 'Litiges', { role: 'ADMIN', query: ['status', 'page', 'limit'] }) },
+      '/admin/analytics': { get: op('Administration', 'Séries temporelles de la place de marché', { role: 'ADMIN', query: ['days'] }) },
+      '/admin/webhooks': {
+        get: op('Administration', 'Tentatives de webhook, acceptées et refusées, comptées par issue', { role: 'ADMIN', query: ['outcome', 'provider', 'page', 'limit'] }),
+      },
+      '/admin/users/{id}/status': { patch: op('Administration', 'Suspendre ou réactiver un compte', { params: ['id'], body: true, role: 'ADMIN' }) },
+      '/admin/users/{id}/role': { patch: op('Administration', 'Changer le rôle d’un compte', { params: ['id'], body: true, role: 'ADMIN' }) },
+      '/admin/stores/{id}/status': { patch: op('Administration', 'Changer le statut d’une boutique', { params: ['id'], body: true, role: 'ADMIN' }) },
+      '/admin/products/{id}/status': { patch: op('Administration', 'Changer le statut d’un produit', { params: ['id'], body: true, role: 'ADMIN' }) },
+      '/admin/risk/{userId}/recompute': { post: op('Administration', 'Recalculer un score de risque', { params: ['userId'], role: 'ADMIN' }) },
+
+      // ── Administration : commission ─────────────────────────────────────
+      '/admin/commission-rules': {
+        get: op('Administration', 'Règles de commission en vigueur, et taux de repli', { role: 'ADMIN', query: ['all'] }),
+        post: op('Administration', 'Poser une règle de commission', { body: true, role: 'ADMIN' }),
+      },
+      '/admin/commission-rules/{id}/close': {
+        post: op('Administration', 'Clore une règle (il n’existe ni modification ni suppression)', { params: ['id'], body: true, role: 'ADMIN' }),
+      },
+      '/admin/commission-rules/simulate': { post: op('Administration', 'Quel taux s’appliquerait, et pourquoi', { body: true, role: 'ADMIN' }) },
+
+      // ── Administration : finance ────────────────────────────────────────
+      '/admin/finance/overview': { get: op('Administration', 'Vue d’ensemble financière, par devise', { role: 'ADMIN' }) },
+      '/admin/finance/ledger': { get: op('Administration', 'Registre d’une boutique', { role: 'ADMIN', query: ['store'] }) },
+      '/admin/finance/payouts': {
+        get: op('Administration', 'Versements', { role: 'ADMIN', query: ['status'] }),
+        post: op('Administration', 'Créer un versement (regroupe les parts réglables)', { body: true, role: 'ADMIN' }),
+      },
+      '/admin/finance/payouts/{id}/process': { post: op('Administration', 'Consigner l’exécution d’un virement fait ailleurs', { params: ['id'], body: true, role: 'ADMIN' }) },
+      '/admin/finance/payouts/{id}/hold': { post: op('Administration', 'Retenir un versement (motif visible du vendeur)', { params: ['id'], body: true, role: 'ADMIN' }) },
+      '/admin/finance/payouts/{id}/release': { post: op('Administration', 'Lever une retenue', { params: ['id'], role: 'ADMIN' }) },
+      '/admin/finance/payouts/{id}/cancel': { post: op('Administration', 'Annuler un versement (ses parts redeviennent réglables)', { params: ['id'], body: true, role: 'ADMIN' }) },
+
+      // ── Administration : géographie ─────────────────────────────────────
+      '/admin/geo/national': { get: op('Administration', 'Tableau de bord national, province par province', { role: 'ADMIN', query: ['country'] }) },
+      '/admin/geo/provinces/{id}': { patch: op('Administration', 'Désactiver ou renommer une province (jamais supprimer)', { params: ['id'], body: true, role: 'ADMIN' }) },
+      '/admin/geo/localities/{id}': { patch: op('Administration', 'Corriger une localité', { params: ['id'], body: true, role: 'ADMIN' }) },
+      '/admin/geo/delivery-zones': {
+        get: op('Administration', 'Zones de livraison déclarées', { role: 'ADMIN', query: ['country', 'province'] }),
+        post: op('Administration', 'Déclarer une zone de livraison', { body: true, role: 'ADMIN' }),
+      },
+      '/admin/geo/delivery-zones/{id}': {
+        patch: op('Administration', 'Modifier une zone', { params: ['id'], body: true, role: 'ADMIN' }),
+        delete: op('Administration', 'Retirer une zone (seulement si elle n’a jamais servi)', { params: ['id'], role: 'ADMIN' }),
+      },
+      '/admin/geo/pickup-points': { post: op('Administration', 'Créer un point relais', { body: true, role: 'ADMIN' }) },
+      '/admin/geo/pickup-points/{id}': { patch: op('Administration', 'Modifier un point relais', { params: ['id'], body: true, role: 'ADMIN' }) },
     },
   };
 }
