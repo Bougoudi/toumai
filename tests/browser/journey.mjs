@@ -1077,62 +1077,144 @@ await step('langue : le parcours d’achat entier en arabe, sans résidu', async
   await ar.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
   await ar.setViewportSize({ width: 390, height: 844 });
 
-  for (const [chemin, attendu, residus] of [
-    // L'accueil : la première chose qu'un visiteur voit.
-    [
-      '/',
-      /البيع والشراء بين البلدان الأفريقية/,
-      ['Acheter et vendre', 'Pourquoi TOUMA', 'Comment ça marche', 'Vous achetez', 'Vous vendez', 'Créer mon compte', 'Explorer le catalogue'],
-    ],
-    [
-      '/panier',
-      /سلتي|سلتك فارغة/,
-      ['Récapitulatif', 'Sous-total', 'Continuer vers le paiement', 'Retirer', 'Vider le panier', 'Mon panier', 'Votre panier est vide'],
-    ],
-    ['/commandes', /طلباتي/, ['Mes commandes', 'Toutes', 'Détail', 'Aucune commande']],
-    // Le catalogue et la fiche produit viennent AVANT le panier dans le
-    // parcours : sans eux, « le parcours d'achat est traduit » serait faux.
-    [
-      '/produits',
-      /الكتالوج/,
-      ['Mot-clé', 'Trier par', 'Appliquer', 'Disponibilité', 'Toutes les catégories', 'Tous les pays', 'Boutiques vérifiées'],
-    ],
-    // Le tunnel, étape par étape : c'est là que l'argent change de mains, donc
-    // l'écran qu'un acheteur ne peut pas se permettre de ne pas lire.
-    ['/checkout?etape=0', /أين نوصّل طلبك؟|سلتك فارغة/, ['Où livrer', 'Mode de remise', 'Ajouter une adresse', 'Continuer vers']],
-    ['/checkout?etape=1', /عنوان التوصيل|الملخّص|اختر أولاً/, ['Adresse de livraison', 'Récapitulatif', 'Modifier', 'Retour']],
-    ['/checkout?etape=2', /وسيلة الدفع|التخفيضات|سلتك فارغة/, ['Moyen de paiement', 'Réductions', 'Payer et confirmer', 'Total']],
-  ]) {
-    await ar.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
-    await ar.waitForTimeout(700);
-
-    if ((await ar.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`${chemin} : le sens d’écriture n’est pas rtl`);
-    const corps = ((await ar.textContent('#view')) ?? '').replace(/\s+/g, ' ');
-    if (!attendu.test(corps)) throw new Error(`${chemin} : aucun texte arabe attendu trouvé`);
-
-    const restes = residus.filter((r) => corps.includes(r));
-    if (restes.length > 0) throw new Error(`${chemin} : résidus français — ${restes.join(', ')}`);
-
-    if (await ar.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) {
-      throw new Error(`${chemin} : débordement horizontal en arabe`);
-    }
-  }
-  // La fiche produit s'atteint par un clic : son URL dépend du jeu d'essai.
+  // Le parcours a payé sa commande plus haut, donc le panier est vide ici : les
+  // trois étapes du tunnel afficheraient « panier vide » et le contrôle
+  // passerait sans avoir jamais rendu le tunnel en arabe. On y remet un article
+  // pour que ce soit le vrai écran qui soit vérifié.
   await ar.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
-  await ar.waitForSelector('.product-card a[href^="/touma/produits/"]', { timeout: 20000 });
-  await ar.locator('.product-card a[href^="/touma/produits/"]').first().click();
-  await ar.waitForSelector('[data-add-to-cart]', { timeout: 20000 });
-  await ar.waitForTimeout(500);
-  const fiche = ((await ar.textContent('#view')) ?? '').replace(/\s+/g, ' ');
-  if (!/الكمية|أضف إلى السلة/.test(fiche)) throw new Error('fiche produit : aucun texte arabe attendu trouvé');
-  const restesFiche = ['Quantité', 'Ajouter au panier', 'Description', 'Caractéristiques', 'Acheter maintenant', 'Marque', 'Vérifier'].filter((r) =>
-    fiche.includes(r),
-  );
-  if (restesFiche.length > 0) throw new Error(`fiche produit : résidus français — ${restesFiche.join(', ')}`);
+  await ar.waitForSelector('.product-card [data-add-to-cart]', { timeout: 20000 });
+  await ar.click('.product-card [data-add-to-cart]');
+  await ar.waitForTimeout(1200);
 
-  await ar.screenshot({ path: `${OUT}/53-panier-arabe.png` });
-  await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
-  await ar.setViewportSize({ width: 1280, height: 900 });
+  try {
+    for (const [chemin, attendu, residus] of [
+      // L'accueil : la première chose qu'un visiteur voit.
+      [
+        '/',
+        /البيع والشراء بين البلدان الأفريقية/,
+        ['Acheter et vendre', 'Pourquoi TOUMA', 'Comment ça marche', 'Vous achetez', 'Vous vendez', 'Créer mon compte', 'Explorer le catalogue'],
+      ],
+      [
+        '/panier',
+        /سلتي/,
+        ['Récapitulatif', 'Sous-total', 'Continuer vers le paiement', 'Retirer', 'Vider le panier', 'Mon panier', 'Votre panier est vide'],
+      ],
+      ['/commandes', /طلباتي/, ['Mes commandes', 'Toutes', 'Détail', 'Aucune commande']],
+      // Le catalogue et la fiche produit viennent AVANT le panier dans le
+      // parcours : sans eux, « le parcours d'achat est traduit » serait faux.
+      [
+        '/produits',
+        /الكتالوج/,
+        ['Mot-clé', 'Trier par', 'Appliquer', 'Disponibilité', 'Toutes les catégories', 'Tous les pays', 'Boutiques vérifiées'],
+      ],
+      // Le tunnel, étape par étape : c'est là que l'argent change de mains, donc
+      // l'écran qu'un acheteur ne peut pas se permettre de ne pas lire.
+      ['/checkout?etape=0', /أين نوصّل طلبك؟/, ['Où livrer', 'Mode de remise', 'Ajouter une adresse', 'Continuer vers']],
+      ['/checkout?etape=1', /عنوان التوصيل|الملخّص|اختر أولاً/, ['Adresse de livraison', 'Récapitulatif', 'Modifier', 'Retour']],
+      ['/checkout?etape=2', /وسيلة الدفع|التخفيضات/, ['Moyen de paiement', 'Réductions', 'Payer et confirmer', 'Total']],
+    ]) {
+      await ar.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+      await ar.waitForTimeout(700);
+
+      if ((await ar.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`${chemin} : le sens d’écriture n’est pas rtl`);
+      const corps = ((await ar.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!attendu.test(corps)) throw new Error(`${chemin} : aucun texte arabe attendu trouvé`);
+
+      const restes = residus.filter((r) => corps.includes(r));
+      if (restes.length > 0) throw new Error(`${chemin} : résidus français — ${restes.join(', ')}`);
+
+      if (await ar.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) {
+        throw new Error(`${chemin} : débordement horizontal en arabe`);
+      }
+    }
+    // La fiche produit s'atteint par un clic : son URL dépend du jeu d'essai.
+    await ar.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+    await ar.waitForSelector('.product-card a[href^="/touma/produits/"]', { timeout: 20000 });
+    await ar.locator('.product-card a[href^="/touma/produits/"]').first().click();
+    await ar.waitForSelector('[data-add-to-cart]', { timeout: 20000 });
+    await ar.waitForTimeout(500);
+    const fiche = ((await ar.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+    if (!/الكمية|أضف إلى السلة/.test(fiche)) throw new Error('fiche produit : aucun texte arabe attendu trouvé');
+    const restesFiche = ['Quantité', 'Ajouter au panier', 'Description', 'Caractéristiques', 'Acheter maintenant', 'Marque', 'Vérifier'].filter((r) =>
+      fiche.includes(r),
+    );
+    if (restesFiche.length > 0) throw new Error(`fiche produit : résidus français — ${restesFiche.join(', ')}`);
+
+    await ar.screenshot({ path: `${OUT}/53-panier-arabe.png` });
+  } finally {
+    // Sans ce `finally`, un seul contrôle raté laissait la session de
+    // l'acheteur en arabe : les dix étapes suivantes échouaient sur des
+    // libellés français absents, et la vraie cause disparaissait sous la
+    // cascade. On rend la session telle qu'on l'a trouvée, même en échec.
+    await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+    await ar.setViewportSize({ width: 1280, height: 900 });
+  }
+});
+
+await step('langue : l’espace vendeur entier en arabe, sans résidu', async () => {
+  // Un vendeur passe sa journée sur ces écrans : les laisser en français
+  // pendant que la boutique publique est en arabe reviendrait à traduire la
+  // vitrine et pas l'atelier. Chaque écran est vérifié en deux temps — du texte
+  // arabe attendu, ET zéro reste français — parce qu'un écran à moitié traduit
+  // passerait un contrôle qui ne chercherait que de l'arabe.
+  const ar = await sessionFor('vendeur.cm@touma.dev');
+  await ar.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await ar.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+
+  try {
+    for (const [chemin, attendu, residus] of [
+      [
+        '/vendeur',
+        /لوحة التحكّم|مساحة البائع|افتح متجرك/,
+        ['Tableau de bord', 'Ajouter un produit', 'Dernières commandes', 'Chiffre d’affaires', 'À expédier', 'Réputation'],
+      ],
+      ['/vendeur/produits', /منتجاتي|المخزون/, ['Mes produits', 'Actions', 'Modifier', 'Dépublier', 'Aucun produit']],
+      [
+        '/vendeur/produits/nouveau',
+        /منتج جديد|سعر الوحدة/,
+        ['Nouveau produit', 'Prix unitaire', 'Stock disponible', 'Quantité minimale', 'Publier le produit', 'Non classé'],
+      ],
+      ['/vendeur/commandes', /الطلبات الواردة|لا توجد طلبات/, ['Commandes reçues', 'Toutes', 'Suivi', 'Traiter', 'Aucune commande']],
+      [
+        '/vendeur/boutique',
+        /متجري|فتح متجر/,
+        ['Ma boutique', 'Nom de la boutique', 'Voir la vitrine', 'Enregistrer', 'Créer la boutique', 'Bannière'],
+      ],
+      [
+        '/vendeur/analyses',
+        /التحليلات|متوسط السلة|افتح متجرك/,
+        ['Analyses', 'Panier moyen', 'Produits les plus vendus', 'Chiffre d’affaires par jour', 'Aucune vente'],
+      ],
+      [
+        '/vendeur/verification',
+        /يشهد التوثيق|إيداع ملف/,
+        ['La vérification atteste', 'Déposer un dossier', 'Raison sociale', 'Envoyer le dossier', 'Document privé'],
+      ],
+      [
+        '/vendeur/import',
+        /استيراد الكتالوج|الأعمدة المتوقَّعة/,
+        ['Import de catalogue', 'Votre fichier', 'Colonnes attendues', 'Analyser le fichier', 'Télécharger un modèle'],
+      ],
+    ]) {
+      await ar.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+      await ar.waitForTimeout(700);
+
+      if ((await ar.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`${chemin} : le sens d’écriture n’est pas rtl`);
+      const corps = ((await ar.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!attendu.test(corps)) throw new Error(`${chemin} : aucun texte arabe attendu trouvé`);
+
+      const restes = residus.filter((r) => corps.includes(r));
+      if (restes.length > 0) throw new Error(`${chemin} : résidus français — ${restes.join(', ')}`);
+
+      if (await ar.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) {
+        throw new Error(`${chemin} : débordement horizontal en arabe`);
+      }
+    }
+
+    await ar.screenshot({ path: `${OUT}/54-vendeur-arabe.png` });
+  } finally {
+    await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+  }
 });
 
 await step('langue : les statuts de commande sont traduits partout à la fois', async () => {
