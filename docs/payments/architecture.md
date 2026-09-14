@@ -1,0 +1,162 @@
+# TOUMA Pay — architecture
+
+Comment l'argent circule dans TOUMA, et **pourquoi** chaque pièce est là.
+
+La frontière réglementaire — ce que TOUMA fait et ne fait pas avec l'argent des
+autres — est dans `compliance-boundaries.md`. Lire ce fichier-là d'abord.
+
+---
+
+## Le trajet d'un franc
+
+```
+Panier
+  └─ Checkout ──────────► ToumaOrderGroup (payé une fois)
+                             └─ ToumaOrder (une par boutique)
+                                  ├─ commission calculée côté serveur
+                                  └─ code de retrait si point relais
+
+Paiement
+  └─ ToumaPayment ──────► prestataire (intention)
+       │                     └─ webhook signé ──► applySuccess()
+       │
+       └─ applySuccess() est le SEUL chemin d'entrée de l'argent :
+            ├─ ToumaLedgerEntry   (vente, commission)
+            ├─ ToumaCommission    (une fois par commande)
+            ├─ ToumaSettlementAllocation (une par boutique)
+            └─ facture + reçu
+
+Après-vente
+  └─ ToumaRefund ───────► refundService : UN seul moteur
+       ├─ plafond commande + plafond paiement
+       ├─ contre-passation de commission (ligne négative)
+       ├─ ToumaLedgerEntry (remboursement)
+       └─ part de règlement diminuée
+
+Règlement
+  └─ ToumaSettlementAllocation
+       ├─ PENDING  : fenêtre de protection
+       ├─ ELIGIBLE : livrée + fenêtre écoulée + aucun litige bloquant
+       └─ SETTLED  : rattachée à un ToumaSellerPayout
+```
+
+---
+
+## Les décisions qui structurent le reste
+
+### Un seul chemin d'entrée, un seul chemin de sortie
+
+`applySuccess()` est le seul endroit où l'argent entre. `refundService` est le
+seul endroit d'où il sort.
+
+Ce n'était pas le cas : il existait **deux moteurs de remboursement qui
+s'ignoraient**. Celui de l'administration mettait à jour le paiement et
+s'arrêtait là — aucune ligne de remboursement, rien au registre, aucune
+commission rendue. Le registre continuait donc d'affirmer que la boutique avait
+gagné l'argent rendu à l'acheteur.
+
+Deux entrées au registre, c'est deux occasions de diverger. Une seule, c'est une
+seule chose à vérifier.
+
+### Le montant est un `Decimal`, jamais un flottant
+
+Tout montant en base est `Decimal(18, 4)`. `src/touma/lib/money.ts` centralise
+les opérations et **refuse d'additionner deux devises** sans taux officiel.
+
+Corollaire tenu partout : un solde est rendu **par devise**. Sans taux, une
+somme XAF + EUR serait un chiffre inventé, et un chiffre inventé dans un
+registre est pire qu'une absence de chiffre.
+
+### Le registre est append-only, le solde est calculé
+
+Aucune fonction de mise à jour ni de suppression n'existe sur
+`ToumaLedgerEntry` : c'est une contrainte de conception, pas un oubli. Une
+correction est une ligne de sens inverse.
+
+Le solde n'est jamais stocké. Un solde stocké finit toujours par diverger de ses
+mouvements, et le jour où cela arrive, personne ne sait lequel des deux a
+raison.
+
+### Ce qui est dû n'est pas ce qui est possédé
+
+`ToumaSettlementAllocation` dit ce qui revient à une boutique. Ce n'est **pas**
+un portefeuille : aucun solde n'est détenu pour le compte d'un vendeur.
+
+La distinction sépare une place de marché d'un établissement de paiement. Elle
+se lit dans le modèle, et elle doit continuer de s'y lire.
+
+### L'idempotence est une ceinture, pas le seul appui
+
+`Idempotency-Key` sur les routes qui déplacent de l'argent. Une requête rejouée
+reçoit **la réponse d'origine**, pas une erreur — un client qui redemande
+poliment la même chose doit obtenir la même réponse, sinon il redemande encore.
+
+Mais chaque route garde ses garde-fous métier : plafonds, statuts, prises
+conditionnelles. L'idempotence rattrape le réseau, elle ne remplace pas la
+logique.
+
+### Rien ne se décide tout seul
+
+Aucun remboursement automatique, aucun versement automatique, aucune sanction
+automatique. Un délai qui expire porte un dossier devant un humain ; il ne
+tranche pas. Une part devient « réglable » ; elle ne se paie pas seule.
+
+---
+
+## La machine d'état des paiements
+
+```
+PENDING ──► PROCESSING ──► SUCCEEDED ──► PARTIALLY_REFUNDED ──► REFUNDED
+   │                          │
+   ├──► FAILED                └──► (remboursement intégral) ──► REFUNDED
+   └──► CANCELLED
+```
+
+**Limite connue et assumée.** Les états `REQUIRES_ACTION`, `AUTHORIZED`,
+`CAPTURED` et `EXPIRED` demandés par le cahier des charges n'existent pas
+encore. Pour le mobile money, `REQUIRES_ACTION` n'est pas un détail de
+vocabulaire : c'est la différence entre « votre paiement attend votre validation
+sur votre téléphone » et un écran qui ne dit rien.
+
+Ils seront ajoutés **avec le premier prestataire réel**, parce que c'est lui qui
+dira lesquels il emploie réellement. Les inventer d'avance produirait une
+machine d'état qui ne correspond à aucun prestataire.
+
+## Le paiement à la livraison
+
+Un cas à part, et le plus important au Tchad.
+
+`CASH_ON_DELIVERY` ne passe **pas** par la confirmation ordinaire. La commande
+avance — acceptée, préparée, expédiée — mais n'est **jamais dite payée**. Le
+montant à collecter est suivi (`ToumaCashCollection`), et l'argent n'entre au
+registre qu'au moment où un vendeur **constate** la remise.
+
+L'acheteur ne confirme jamais lui-même : déclarer soi-même avoir payé n'est pas
+une preuve de paiement.
+
+Le mode est **fermé par défaut** et s'ouvre par règle (`ToumaCodRule`) : pays,
+province, boutique, catégorie, plafond. Encaisser du liquide engage un vendeur
+et un livreur — cela ne s'active pas par oubli de configuration.
+
+---
+
+## Ce qui n'est pas construit, et pourquoi
+
+- **Aucun prestataire réel.** Tant que les variables d'environnement sont vides,
+  le prestataire est *indisponible*. Inventer des points d'entrée plausibles
+  donnerait du code qui compile, passe les tests et échoue à la première vraie
+  transaction.
+- **Aucune réconciliation.** Elle compare le registre TOUMA aux transactions du
+  prestataire : sans prestataire, elle n'a rien à comparer. Le jour où il y en a
+  un, c'est ce qui manquera en premier.
+- **Table de webhooks dédiée.** Aujourd'hui un webhook **rejeté pour signature
+  invalide ne laisse aucune trace** — il est refusé et journalisé, rien de plus.
+  C'est précisément la trace qu'on voudra le jour où quelqu'un tente d'en forger
+  un.
+- **Validation d'horodatage sur les webhooks.** Un webhook valide capté puis
+  rejoué des mois plus tard avec un identifiant jamais vu serait accepté.
+- **Commission unique.** Un seul taux global. Par vendeur, par catégorie, par
+  pays, par période : rien de tout cela n'est possible aujourd'hui.
+
+Ces manques sont listés parce qu'ils sont réels, pas pour la forme. Le §80 est
+la règle : **ne jamais déclarer disponible ce qui ne l'est pas.**
