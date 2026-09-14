@@ -4,6 +4,7 @@ import { prisma } from '../../db/prisma.js';
 import { audit } from '../lib/audit.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { applyRate, assertSameCurrency, sum } from '../lib/money.js';
+import { commissionFor } from '../payments/commission.service.js';
 import { notify } from '../lib/notifications.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import { documentService } from '../documents/document.service.js';
@@ -493,9 +494,15 @@ export const b2bService = {
         },
       });
 
-      // Commission lue au même endroit que le checkout : deux chemins de
-      // commande, un seul calcul.
-      const commissionTotal = applyRate(quote.itemsTotal, env.touma.commissionRate, quote.currency);
+      // Commission résolue au même endroit que le checkout : deux chemins de
+      // commande, un seul calcul — et donc un vendeur au taux négocié le garde
+      // qu'il vende au détail ou sur appel d'offres.
+      const decisionCommission = await commissionFor(quote.itemsTotal, {
+        storeId: quote.storeId,
+        countryCode: quote.store.countryCode,
+        currency: quote.currency,
+      });
+      const commissionTotal = decisionCommission.amount;
       const order = await tx.toumaOrder.create({
         data: {
           orderNumber: reference('TM'),
@@ -506,6 +513,7 @@ export const b2bService = {
           subtotal: quote.itemsTotal,
           shippingTotal: quote.shippingTotal,
           commissionTotal,
+          commissionRate: decisionCommission.rate,
           total: quote.total,
           shippingAddressId: address.id,
           shippingSnapshot: shippingSnapshot as object,

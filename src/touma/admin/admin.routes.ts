@@ -8,6 +8,7 @@ import { pageParams, paginated } from '../lib/pagination.js';
 import { authenticate, currentUser, requireAdmin } from '../middleware/toumaAuth.js';
 import { riskService } from '../risk/risk.service.js';
 import { verificationService } from '../verification/verification.service.js';
+import { commissionService } from '../payments/commission.service.js';
 import { analyticsService } from './analytics.service.js';
 import { intelligenceService } from './intelligence.service.js';
 
@@ -149,6 +150,61 @@ adminRouter.get(
     ]);
     res.json(paginated(rows.map((p) => ({ ...p, amount: p.amount.toString(), refundedAmount: p.refundedAmount.toString() })), total, page));
   }),
+);
+
+// ── Commission ───────────────────────────────────────────────────────────────
+
+const commissionRuleSchema = z.object({
+  countryCode: z.string().trim().length(2).optional(),
+  categoryId: z.string().cuid().optional(),
+  storeId: z.string().cuid().optional(),
+  rate: z.string().regex(/^\d(\.\d{1,6})?$/, 'Taux décimal attendu (0.05 = 5 %).'),
+  minFee: z.string().regex(/^\d+(\.\d{1,4})?$/).optional(),
+  maxFee: z.string().regex(/^\d+(\.\d{1,4})?$/).optional(),
+  feeCurrency: z.string().trim().length(3).optional(),
+  effectiveFrom: z.string().datetime().optional(),
+  effectiveUntil: z.string().datetime().optional(),
+  note: z.string().trim().max(300).optional(),
+});
+
+const simulateSchema = z.object({
+  base: z.string().regex(/^\d+(\.\d{1,4})?$/),
+  currency: z.string().trim().length(3),
+  countryCode: z.string().trim().length(2).optional(),
+  categoryIds: z.array(z.string().cuid()).max(20).optional(),
+  storeId: z.string().cuid().optional(),
+});
+
+adminRouter.get(
+  '/commission-rules',
+  asyncHandler(async (req, res) => res.json(await commissionService.list(req.query.all === 'true'))),
+);
+
+adminRouter.post(
+  '/commission-rules',
+  asyncHandler(async (req, res) => {
+    const input = parseBody(commissionRuleSchema, req);
+    res.status(201).json(await commissionService.create(currentUser(req), input));
+  }),
+);
+
+/**
+ * Clôture. Il n'existe **aucune** route de modification ni de suppression :
+ * changer un taux, c'est clore la règle et en ouvrir une autre. Une commande
+ * passée doit rester explicable par la règle qui l'a produite.
+ */
+adminRouter.post(
+  '/commission-rules/:id/close',
+  asyncHandler(async (req, res) => {
+    const input = parseBody(z.object({ reason: z.string().trim().min(3).max(300) }), req);
+    res.json(await commissionService.close(currentUser(req), req.params.id, input.reason));
+  }),
+);
+
+/** Quel taux s'appliquerait, et pourquoi — avant de le poser sur de vraies commandes. */
+adminRouter.post(
+  '/commission-rules/simulate',
+  asyncHandler(async (req, res) => res.json(await commissionService.simulate(parseBody(simulateSchema, req)))),
 );
 
 /**

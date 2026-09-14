@@ -215,6 +215,7 @@ model User {
   aiRequests            ToumaAiRequest[]
   auditLogs             ToumaAuditLog[]
   reviewedVerifications ToumaSellerVerification[] @relation("VerificationReviewer")
+  commissionRules       ToumaCommissionRule[]     @relation("ToumaCommissionRuleAuthor")
 
   orderGroups         ToumaOrderGroup[]
   evidenceUploaded    ToumaDisputeEvidence[]         @relation("EvidenceAuthor")
@@ -928,6 +929,58 @@ model ToumaCodRule {
   @@map("touma_cod_rules")
 }
 
+/// Règle de commission. Le taux cessait d'être une variable d'environnement
+/// unique le jour où une catégorie, un pays ou un vendeur négocié devait
+/// différer — c'est-à-dire tout de suite.
+///
+/// Portée croissante : globale, pays, catégorie, boutique. La plus précise
+/// l'emporte ; à précision égale, la plus récemment entrée en vigueur.
+///
+/// Une règle n'est **jamais modifiée ni supprimée** une fois qu'elle a servi :
+/// on la clôt en posant `effectiveUntil` et on en ouvre une autre. Une commande
+/// passée doit rester explicable par la règle qui l'a produite.
+model ToumaCommissionRule {
+  id String @id @default(cuid())
+
+  /// Nul à chaque niveau = « toutes ». Les quatre nuls = la règle globale.
+  countryCode String?
+  categoryId  String?
+  category    ToumaCategory? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  storeId     String?
+  store       ToumaStore?    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  /// Taux appliqué au sous-total encaissé par le vendeur (0.05 = 5 %).
+  /// `Decimal`, pas un flottant : un taux multiplie de l'argent.
+  rate Decimal @db.Decimal(9, 6)
+
+  /// Plancher et plafond **du montant de commission**, en `feeCurrency`.
+  /// Une borne sans devise n'a pas de sens ; une borne dans une autre devise
+  /// que la commande rendrait la règle inapplicable plutôt qu'approximative.
+  minFee      Decimal? @db.Decimal(18, 4)
+  maxFee      Decimal? @db.Decimal(18, 4)
+  feeCurrency String?
+
+  /// Période de validité. `effectiveUntil` nul = toujours en vigueur.
+  effectiveFrom  DateTime  @default(now())
+  effectiveUntil DateTime?
+
+  active Boolean @default(true)
+  note   String?
+
+  /// Qui l'a posée. Un taux qui change sans auteur est ingérable.
+  createdById String?
+  createdBy   User?   @relation("ToumaCommissionRuleAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countryCode, effectiveFrom])
+  @@index([categoryId])
+  @@index([storeId])
+  @@index([active, effectiveFrom])
+  @@map("touma_commission_rules")
+}
+
 enum PaymentStatus {
   PENDING
   PROCESSING
@@ -1452,7 +1505,8 @@ model ToumaStore {
   ledger         ToumaLedgerEntry[]
   allocations    ToumaSettlementAllocation[]
 
-  codRules ToumaCodRule[]
+  codRules        ToumaCodRule[]
+  commissionRules ToumaCommissionRule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1512,9 +1566,10 @@ model ToumaCategory {
 
   products ToumaProduct[]
 
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  codRules  ToumaCodRule[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  codRules        ToumaCodRule[]
+  commissionRules ToumaCommissionRule[]
 
   @@index([parentId])
   @@map("touma_categories")
@@ -1738,6 +1793,10 @@ model ToumaOrder {
   shippingTotal        Decimal @default(0) @db.Decimal(18, 4)
   /// Commission Touma retenue sur la commande.
   commissionTotal      Decimal @default(0) @db.Decimal(18, 4)
+  /// Taux de commission **réellement appliqué** à cette commande, figé à la
+  /// validation. Sans lui, un changement de taux entre le paiement et la
+  /// facture ferait enregistrer un taux qui ne correspond pas au montant.
+  commissionRate       Decimal @default(0) @db.Decimal(9, 6)
   /// Part de la remise du panier imputée à cette sous-commande — ce que
   /// l'acheteur ne paie pas.
   discountTotal        Decimal @default(0) @db.Decimal(18, 4)

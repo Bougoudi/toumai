@@ -90,7 +90,13 @@ toumaV1Router.get('/', (_req, res) =>
       admin: '/api/v1/admin',
       openapi: '/api/v1/openapi.json',
     },
-    commissionRate: env.touma.commissionRate,
+    /**
+     * Taux de **repli**, appliqué quand aucune règle de commission ne couvre
+     * une commande. Ce n'est plus « le » taux de la plateforme : il dépend de
+     * la boutique, de la catégorie, du pays et de la période. Annoncer un
+     * chiffre unique ici laisserait croire le contraire.
+     */
+    defaultCommissionRate: env.touma.commissionRate,
   }),
 );
 

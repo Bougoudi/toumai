@@ -264,7 +264,10 @@ export const refundService = {
             data: {
               orderId: order.id,
               storeId: order.storeId,
-              rate: new Prisma.Decimal(env.touma.commissionRate.toString()),
+              // Le taux de la commande, pas le taux courant de la plateforme :
+              // une contre-passation doit porter le taux qui a produit la
+              // commission qu'elle annule.
+              rate: order.commissionRate,
               amount: capped.negated(),
               currency: order.currency,
             },

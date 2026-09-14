@@ -85,6 +85,31 @@ un portefeuille : aucun solde n'est détenu pour le compte d'un vendeur.
 La distinction sépare une place de marché d'un établissement de paiement. Elle
 se lit dans le modèle, et elle doit continuer de s'y lire.
 
+### La commission se paramètre, et ne se réécrit pas
+
+Le taux était `TOUMA_COMMISSION_RATE` : une variable d'environnement, une seule,
+pour tout le monde. Accorder un taux négocié à un gros vendeur ou abaisser celui
+d'une catégorie à faible marge demandait de changer le taux de **tous**, y
+compris pour des factures pas encore émises.
+
+Quatre portées, précision croissante : globale, pays, catégorie, boutique. La
+plus précise l'emporte ; à précision égale, la plus récemment entrée en vigueur.
+Sans aucune règle, la variable reste le repli — l'absence de configuration ne
+doit pas faire tomber la commission à zéro.
+
+**Une règle qui a servi ne se modifie jamais.** Il n'existe ni route de
+modification ni suppression : on clôt (`effectiveUntil`) et on rouvre. Une
+commande passée doit rester explicable par la règle qui l'a produite.
+
+**Et le taux retenu est figé sur la commande.** Sans cela, la commission
+enregistrée à l'encaissement serait calculée avec le taux du jour, pas celui qui
+a produit le montant — c'était le cas, et la contre-passation d'un remboursement
+souffrait du même défaut.
+
+Une borne de commission (plancher, plafond) porte sa devise. Une borne libellée
+dans une autre devise que la commande rend la règle **inapplicable** plutôt
+qu'approximative : convertir sans taux officiel produirait un plafond inventé.
+
 ### L'idempotence est une ceinture, pas le seul appui
 
 `Idempotency-Key` sur les routes qui déplacent de l'argent. Une requête rejouée
@@ -181,8 +206,10 @@ et un livreur — cela ne s'active pas par oubli de configuration.
 - **Aucune réconciliation.** Elle compare le registre TOUMA aux transactions du
   prestataire : sans prestataire, elle n'a rien à comparer. Le jour où il y en a
   un, c'est ce qui manquera en premier.
-- **Commission unique.** Un seul taux global. Par vendeur, par catégorie, par
-  pays, par période : rien de tout cela n'est possible aujourd'hui.
+- **Aucune remise de commission automatique.** Un palier de volume, une
+  dégressivité mensuelle, une promotion de taux : la règle existe, le
+  déclencheur automatique non. Un taux se pose à la main, et c'est voulu tant
+  que personne n'a décidé de la politique.
 
 Ces manques sont listés parce qu'ils sont réels, pas pour la forme. Le §80 est
 la règle : **ne jamais déclarer disponible ce qui ne l'est pas.**

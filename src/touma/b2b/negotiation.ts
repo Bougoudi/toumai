@@ -514,7 +514,3 @@ export const negotiationService = {
   },
 };
 
-/** Taux de commission de la plateforme, lu au même endroit que le checkout. */
-export function commissionRate(): number {
-  return env.touma.commissionRate;
-}

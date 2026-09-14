@@ -123,7 +123,10 @@ export async function applySuccess(paymentId: string, providerRef: string | null
           data: {
             orderId: order.id,
             storeId: order.storeId,
-            rate: new Prisma.Decimal(env.touma.commissionRate.toString()),
+            // Taux figé sur la commande à la validation du panier. Relire la
+            // configuration ici ferait enregistrer un taux qui ne correspond
+            // pas au montant, le jour où le taux change entre les deux.
+            rate: order.commissionRate,
             amount: order.commissionTotal,
             currency: order.currency,
           },

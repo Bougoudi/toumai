@@ -9,6 +9,7 @@ import { notify } from '../lib/notifications.js';
 import { logisticsService } from '../logistics/logistics.service.js';
 import { couponService, type BasketStoreLine } from '../promotions/coupon.service.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
+import { commissionFor } from '../payments/commission.service.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import { loadTiers, resolveUnitPrice, tiersFor } from '../catalog/pricing.js';
 import { sweepReservations } from './reservation.js';
@@ -323,7 +324,18 @@ export const checkoutService = {
         const sellerFunded = sellerFundedByStore.get(storeId) ?? ZERO;
         // La commission est assise sur ce que le vendeur encaisse réellement :
         // une remise qu'il finance la réduit, une campagne TOUMA non.
-        const commission = applyRate(subtotal.minus(sellerFunded), env.touma.commissionRate, currency);
+        // Commission : le taux n'est plus une variable d'environnement unique.
+        // La règle la plus précise l'emporte — boutique, catégorie, pays,
+        // global — et le taux **retenu** est figé sur la commande, sinon la
+        // commission enregistrée plus tard à l'encaissement pourrait être
+        // calculée avec un autre taux que celui qui a produit ce montant.
+        const decision = await commissionFor(subtotal.minus(sellerFunded), {
+          storeId,
+          countryCode: store.countryCode,
+          categoryIds: [...new Set(items.map((i) => i.product.categoryId).filter((c): c is string => Boolean(c)))],
+          currency,
+        });
+        const commission = decision.amount;
         const beforeDiscount = subtotal.plus(shipping.amount);
         // Garde-fou : une commande ne peut jamais devenir négative.
         const total = beforeDiscount.minus(discount).greaterThan(0) ? beforeDiscount.minus(discount) : ZERO;
@@ -344,6 +356,7 @@ export const checkoutService = {
             subtotal,
             shippingTotal: shipping.amount,
             commissionTotal: commission,
+            commissionRate: decision.rate,
             discountTotal: discount,
             sellerFundedDiscount: sellerFunded,
             total,
