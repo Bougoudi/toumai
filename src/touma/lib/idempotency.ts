@@ -169,9 +169,15 @@ async function run(operation: string, key: string, req: Request, res: Response, 
 }
 
 /**
- * Purge des clés expirées. Appelée par le balayage opportuniste — une table
- * d'idempotence qu'on ne purge jamais devient un journal, et un journal qu'on
- * n'a pas voulu.
+ * Purge des clés expirées.
+ *
+ * Une table d'idempotence qu'on ne purge jamais devient un journal, et un
+ * journal qu'on n'a pas voulu : elle grossit à chaque requête qui touche à
+ * l'argent.
+ *
+ * Le commentaire précédent affirmait qu'elle était « appelée par le balayage
+ * opportuniste ». Elle ne l'était par personne. Elle est maintenant branchée
+ * sur l'entretien périodique (`src/touma/maintenance.ts`).
  */
 export async function purgeExpiredKeys(now = new Date()): Promise<number> {
   const { count } = await prisma.toumaIdempotencyKey.deleteMany({ where: { expiresAt: { lt: now } } });

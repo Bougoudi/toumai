@@ -111,6 +111,32 @@ export const env = {
     /** Secret de signature des webhooks de paiement (HMAC). */
     paymentWebhookSecret: process.env.TOUMA_PAYMENT_WEBHOOK_SECRET ?? process.env.JWT_SECRET ?? 'dev-secret-change-me',
     /**
+     * Entretien périodique du domaine (balayages et purges).
+     *
+     * Activé par défaut : les balayages étaient jusqu'ici déclenchés par le
+     * trafic, ce qui marche la journée et pas la nuit — or c'est la nuit que
+     * les délais expirent. Le désactiver est un choix d'exploitation (un
+     * déploiement où un autre processus s'en charge), pas un réglage de
+     * confort.
+     */
+    maintenanceEnabled: (process.env.TOUMA_MAINTENANCE_ENABLED ?? 'true') === 'true',
+    maintenanceCron: {
+      /** Le stock réservé doit revenir vite : un article hors catalogue ne se vend pas. */
+      reservations: process.env.TOUMA_CRON_RESERVATIONS ?? '*/2 * * * *',
+      settlements: process.env.TOUMA_CRON_SETTLEMENTS ?? '*/10 * * * *',
+      disputes: process.env.TOUMA_CRON_DISPUTES ?? '*/15 * * * *',
+      /** Les purges n'ont aucune urgence : une fois par nuit suffit. */
+      purges: process.env.TOUMA_CRON_PURGES ?? '30 3 * * *',
+    },
+    /**
+     * Conservation des traces de webhook, en jours.
+     *
+     * Une durée d'exploitation, pas une réponse à la question de conservation
+     * des données financières — celle-là attend le conseil juridique
+     * (`docs/payments/compliance-boundaries.md`).
+     */
+    webhookRetentionDays: Number(process.env.TOUMA_WEBHOOK_RETENTION_DAYS ?? 90),
+    /**
      * Fenêtre d'acceptation d'un webhook, en secondes (défaut 5 min).
      *
      * Au-delà, un webhook correctement signé est refusé : sans cette borne, un

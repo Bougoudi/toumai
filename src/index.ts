@@ -2,6 +2,7 @@ import { createApp } from './app.js';
 import { env, isProd } from './config/env.js';
 import { runFullCycle } from './automation/autopilot.js';
 import { startScheduler } from './automation/scheduler.js';
+import { startToumaMaintenance } from './touma/maintenance.js';
 import { ensureFirstAdmin } from './bootstrap/firstAdmin.js';
 import { prisma } from './db/prisma.js';
 import { loadSettings } from './modules/settings/settings.service.js';
@@ -34,6 +35,11 @@ async function main() {
     // eslint-disable-next-line no-console
     console.log(`\n  🚀 Application Toumai : http://localhost:${env.port}\n`);
   });
+
+  // Entretien du domaine TOUMA : il ne dépend pas du planificateur du produit
+  // historique. Les deux sont indépendants, et couper l'un ne doit pas laisser
+  // du stock réservé hors catalogue jusqu'au matin.
+  startToumaMaintenance();
 
   if (env.scheduler.enabled) {
     startScheduler();

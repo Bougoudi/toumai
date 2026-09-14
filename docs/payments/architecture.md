@@ -138,6 +138,30 @@ qui s'arrête doit le dire** — c'est la version, côté exploitation, de la r�
 qui gouverne tout le reste : ne jamais laisser croire que quelque chose a été
 fait.
 
+### Les délais expirent aussi la nuit
+
+Les balayages étaient **opportunistes** : déclenchés par le trafic, avec un
+verrou de fréquence en mémoire. Cela marche très bien la journée et pas du tout
+la nuit — or c'est précisément quand personne ne navigue que les délais
+expirent. Une part dont la fenêtre de protection s'achève à 3 h du matin
+n'était éligible qu'au réveil de la place de marché, et l'écran affichait
+« réglable le 12 » pour une part qui ne l'était que le 13.
+
+`src/touma/maintenance.ts` les joue sur une horloge. Les balayages opportunistes
+restent : ils ne coûtent rien et servent de filet.
+
+Deux purges y étaient écrites, exportées, et **appelées nulle part** — celle des
+clés d'idempotence, qui grossissent à chaque requête touchant à l'argent, et
+celle des traces de webhook, qui grossissent de ce qu'un tiers **non
+authentifié** y poste. Écrire une purge pour une table qu'un inconnu peut faire
+enfler, puis ne pas la brancher, revient à ne pas l'avoir écrite.
+
+**Ce n'est pas une file de travaux.** Deux instances qui balaient en même temps
+ne se gênent pas — chaque opération est conditionnée à l'état qu'elle corrige —
+mais il n'y a ni reprise après échec ni garantie d'exécution. Un travail qui a
+besoin de cela (envoyer un courriel, produire un document) demande une vraie
+file, et elle n'est pas là.
+
 ### Rien ne se décide tout seul
 
 Aucun remboursement automatique, aucun versement automatique, aucune sanction
