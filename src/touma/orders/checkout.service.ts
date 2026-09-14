@@ -4,6 +4,7 @@ import { prisma } from '../../db/prisma.js';
 import { env } from '../../config/env.js';
 import { applyRate, assertSameCurrency, roundTo, sum, ZERO } from '../lib/money.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
+import { generatePickupCode, hashPickupCode } from '../logistics/pickup-code.js';
 import { notify } from '../lib/notifications.js';
 import { logisticsService } from '../logistics/logistics.service.js';
 import { couponService, type BasketStoreLine } from '../promotions/coupon.service.js';
@@ -268,6 +269,11 @@ export const checkoutService = {
         : null,
     };
 
+    // Codes de retrait, en clair, le temps de la requête seulement. Ils sont
+    // rendus une fois à l'acheteur et ne sont jamais relus depuis la base, qui
+    // n'en garde que l'empreinte.
+    const pickupCodes = new Map<string, string>();
+
     // 7/8/9. Création du groupe, des sous-commandes et décrément du stock,
     //        dans UNE transaction : tout réussit ou rien n'est écrit.
     const groupId = await prisma.$transaction(async (tx) => {
@@ -344,6 +350,19 @@ export const checkoutService = {
             checkoutKey: input.idempotencyKey ?? null,
           },
         });
+
+        // Retrait en point relais : le code est tiré maintenant, parce que son
+        // empreinte lie le code à **cette** commande — un code valable ailleurs
+        // ne vaut rien ici. Seule l'empreinte est écrite ; le code en clair est
+        // rendu une fois à l'acheteur et n'est jamais relu depuis la base.
+        if (pickupPoint) {
+          const code = generatePickupCode();
+          pickupCodes.set(order.id, code);
+          await tx.toumaOrder.update({
+            where: { id: order.id },
+            data: { pickupCodeHash: hashPickupCode(code, order.id), pickupCodeSetAt: new Date() },
+          });
+        }
 
         for (const line of lines) {
           const { item } = line;
@@ -452,6 +471,14 @@ export const checkoutService = {
       ),
     ]);
 
-    return { group, orders, idempotent: false as const };
+    return {
+      group,
+      orders,
+      // Le code n'apparaît que dans cette réponse. L'acheteur le présente au
+      // comptoir ; si la réponse est perdue, seul un vendeur ou l'administration
+      // peut en émettre un nouveau — c'est le prix d'un code qui protège.
+      pickupCodes: orders.filter((o) => pickupCodes.has(o.id)).map((o) => ({ orderId: o.id, orderNumber: o.orderNumber, code: pickupCodes.get(o.id)! })),
+      idempotent: false as const,
+    };
   },
 };

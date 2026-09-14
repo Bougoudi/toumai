@@ -46,8 +46,13 @@ const orderInclude = {
 };
 
 function serialize(order: Awaited<ReturnType<typeof prisma.toumaOrder.findFirstOrThrow>> & Record<string, unknown>) {
+  // L'empreinte du code de retrait ne sort jamais. Ce n'est pas le code, mais
+  // rien ne justifie de la servir : une valeur dérivée d'un secret qui n'a
+  // aucun usage côté client n'a rien à faire dans une réponse. Trouvé par le
+  // test qui vérifiait que le code ne fuit pas.
+  const { pickupCodeHash: _hash, ...sansSecret } = order as Record<string, unknown> & { pickupCodeHash?: string | null };
   return {
-    ...order,
+    ...(sansSecret as typeof order),
     subtotal: order.subtotal.toString(),
     shippingTotal: order.shippingTotal.toString(),
     commissionTotal: order.commissionTotal.toString(),

@@ -245,6 +245,12 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  /// Encaissements à la livraison constatés par cette personne.
+  cashCollections ToumaCashCollection[] @relation("CashCollector")
+
+  /// Colis remis par cette personne en point relais.
+  pickupReleases ToumaOrder[] @relation("PickupRelease")
+
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -660,6 +666,98 @@ enum ToumaOrderStatus {
   DISPUTED
 }
 
+/// États d'un encaissement à la livraison.
+///
+/// Les noms viennent du cahier des charges (§28) et sont portés **par
+/// l'encaissement**, non par la commande. Ajouter trois statuts à
+/// `ToumaOrderStatus` aurait traversé la machine d'état, le calcul du statut de
+/// groupe, la réputation et chaque liste de « statuts payés » — pour dire une
+/// chose qui ne concerne que l'argent. La commande, elle, suit son cours
+/// normal : ce qui ne doit pas arriver, c'est qu'elle soit dite « payée ».
+enum CashCollectionStatus {
+  /// Commande acceptée, argent pas encore collecté.
+  COD_PENDING
+  /// Le vendeur ou le transporteur confirme qu'il collectera.
+  COD_CONFIRMED
+  /// L'argent est réellement entre les mains du vendeur. C'est **seulement
+  /// ici** que le paiement devient un paiement.
+  COD_COLLECTED
+  /// Refus au seuil de la porte, destinataire introuvable, colis retourné.
+  COD_FAILED
+}
+
+/// Encaissement à la livraison.
+///
+/// **Le défaut corrigé.** `CASH_ON_DELIVERY` était proposé comme n'importe
+/// quelle autre méthode, et l'adaptateur de démonstration le confirmait
+/// `SUCCEEDED`. Conséquence, dans l'ordre : la commande passait à « payée », la
+/// facture et le reçu étaient émis, le vendeur recevait « commande payée :
+/// préparez l'expédition », et la vente entrait au registre comptable — **avant
+/// qu'un seul franc ait été collecté**. Au Tchad, où le paiement à la livraison
+/// est courant, cela revenait à mentir sur l'argent à grande échelle.
+model ToumaCashCollection {
+  id        String @id @default(cuid())
+  paymentId String @unique
+  payment   ToumaPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  status CashCollectionStatus @default(COD_PENDING)
+  /// Montant à collecter, figé à la création. Le suivre est l'exigence même du
+  /// §28 : sans lui, personne ne sait combien le livreur doit rapporter.
+  amountDue Decimal @db.Decimal(18, 4)
+  /// Montant réellement collecté. Nul tant que rien n'a été remis.
+  amountCollected Decimal? @db.Decimal(18, 4)
+  currency        String
+
+  /// Qui a constaté l'encaissement. Un mouvement d'argent sans auteur n'est pas
+  /// vérifiable.
+  collectedById String?
+  collectedBy   User?   @relation("CashCollector", fields: [collectedById], references: [id], onDelete: SetNull)
+  collectedAt   DateTime?
+  /// Motif d'un échec (refus, destinataire absent…).
+  failureReason String?
+  note          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("touma_cash_collections")
+}
+
+/// Règle d'ouverture du paiement à la livraison (§26).
+///
+/// Le paiement à la livraison ne s'active pas d'un bloc : il dépend de qui
+/// livre, où, et de combien d'argent un livreur peut raisonnablement porter.
+/// Une règle sans province s'applique à tout le pays ; une règle sans boutique
+/// s'applique à toutes. La règle la plus précise l'emporte.
+model ToumaCodRule {
+  id          String  @id @default(cuid())
+  countryCode String
+  provinceId  String?
+  province    ToumaProvince? @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  storeId     String?
+  store       ToumaStore?    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    ToumaCategory? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  /// Plafond au-delà duquel le paiement à la livraison n'est pas proposé. Nul
+  /// veut dire « sans plafond », ce qui doit rester un choix explicite.
+  maxAmount Decimal? @db.Decimal(18, 4)
+  /// Une règle peut aussi **interdire** : c'est ainsi qu'on ferme une province
+  /// sans toucher au reste.
+  allowed   Boolean  @default(true)
+  active    Boolean  @default(true)
+  note      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([countryCode])
+  @@index([provinceId])
+  @@index([storeId])
+  @@map("touma_cod_rules")
+}
+
 enum PaymentStatus {
   PENDING
   PROCESSING
@@ -963,6 +1061,8 @@ model ToumaProvince {
   stores      ToumaStore[]
   pickupPoints ToumaPickupPoint[]
 
+  codRules    ToumaCodRule[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1158,6 +1258,8 @@ model ToumaStore {
   rfqInvitations ToumaRfqInvitation[]
   ledger         ToumaLedgerEntry[]
 
+  codRules       ToumaCodRule[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1221,6 +1323,8 @@ model ToumaCategory {
 
   @@index([parentId])
   @@map("touma_categories")
+  codRules ToumaCodRule[]
+
 }
 
 /// Produit publié par une boutique.
@@ -1423,6 +1527,17 @@ model ToumaOrder {
   deliveryMethod DeliveryMethod    @default(HOME)
   pickupPointId  String?
   pickupPoint    ToumaPickupPoint? @relation(fields: [pickupPointId], references: [id], onDelete: SetNull)
+  /// Empreinte du code de retrait. **Jamais le code lui-même** : une base lue
+  /// par un tiers ne doit pas lui permettre de retirer les colis des autres.
+  /// Sans ce code, rien ne distinguait le destinataire de quiconque connaissait
+  /// le numéro de commande — et le numéro de commande figure sur tous les
+  /// écrans et tous les e-mails.
+  pickupCodeHash String?
+  pickupCodeSetAt DateTime?
+  pickupCollectedAt DateTime?
+  /// Qui a remis le colis. Un retrait sans auteur ne se conteste pas.
+  pickupReleasedById String?
+  pickupReleasedBy   User?  @relation("PickupRelease", fields: [pickupReleasedById], references: [id], onDelete: SetNull)
 
   currency             String
   /// Somme des lignes (hors livraison).
@@ -1556,6 +1671,9 @@ model ToumaPayment {
   @@index([orderGroupId])
   @@index([status])
   @@map("touma_payments")
+  /// Encaissement à la livraison, quand c'est la méthode retenue.
+  cashCollection ToumaCashCollection?
+
 }
 
 /// Journal d'audit d'un paiement (création, webhooks, remboursements).

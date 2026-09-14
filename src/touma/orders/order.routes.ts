@@ -37,6 +37,13 @@ function serializeCheckout(result: Awaited<ReturnType<typeof checkoutService.che
       total: o.total.toString(),
       commissionTotal: o.commissionTotal.toString(),
     })),
+    /**
+     * Codes de retrait, **rendus une seule fois**. Ils ne figurent dans aucune
+     * lecture ultérieure : la base n'en garde que l'empreinte. Sans eux, le
+     * colis se remettait à qui connaissait le numéro de commande — numéro qui
+     * est sur tous les écrans et dans tous les e-mails.
+     */
+    pickupCodes: 'pickupCodes' in result ? (result.pickupCodes ?? []) : [],
     idempotent: result.idempotent,
   };
 }

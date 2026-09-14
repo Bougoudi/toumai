@@ -3,7 +3,8 @@ import express from 'express';
 import { z } from 'zod';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
 import { authenticate, currentUser, requireAdmin } from '../middleware/toumaAuth.js';
-import { paymentService } from './payment.service.js';
+import { applySuccess, paymentService } from './payment.service.js';
+import { codService } from './cod.service.js';
 
 export const paymentRouter = Router();
 
@@ -26,6 +27,49 @@ const confirmSchema = z.object({
 const refundSchema = z.object({ paymentId: z.string().cuid(), amount: z.string().regex(/^\d+(\.\d{1,4})?$/).optional() });
 
 paymentRouter.get('/providers', asyncHandler(async (_req, res) => res.json({ items: paymentService.listProviders() })));
+
+/**
+ * Encaissement à la livraison.
+ *
+ * Trois actes distincts, et un seul fait entrer de l'argent. Le vendeur
+ * s'engage (`confirm`), constate la remise (`collect`) — c'est là, et seulement
+ * là, que la vente entre au registre — ou déclare l'échec (`fail`). L'acheteur
+ * ne constate jamais lui-même avoir payé : ce serait une preuve de paiement
+ * fournie par celui qui doit payer.
+ */
+paymentRouter.get(
+  '/:id/cash',
+  authenticate,
+  asyncHandler(async (req, res) => res.json(await codService.get(currentUser(req), req.params.id))),
+);
+
+paymentRouter.post(
+  '/:id/cash/confirm',
+  authenticate,
+  asyncHandler(async (req, res) => res.json(await codService.confirm(currentUser(req), req.params.id))),
+);
+
+paymentRouter.post(
+  '/:id/cash/collect',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const amount = typeof req.body?.amount === 'string' ? req.body.amount : undefined;
+    const note = typeof req.body?.note === 'string' ? req.body.note : undefined;
+    const result = await codService.collect(currentUser(req), req.params.id, { amount, note });
+    // L'argent est constaté : la vente entre au registre par le chemin commun.
+    if (result.shouldApplyPayment) await applySuccess(req.params.id, null, { cashCollected: true });
+    res.json(result.collection);
+  }),
+);
+
+paymentRouter.post(
+  '/:id/cash/fail',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason : '';
+    res.json(await codService.fail(currentUser(req), req.params.id, reason));
+  }),
+);
 
 paymentRouter.post(
   '/create',

@@ -8,6 +8,7 @@ import { audit } from '../lib/audit.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { notify } from '../lib/notifications.js';
 import { documentService } from '../documents/document.service.js';
+import { codAvailability, openCashCollection } from './cod.service.js';
 import { MockPaymentProvider } from './providers/mock.provider.js';
 import type { PaymentMethod, PaymentProvider, ProviderPaymentStatus } from './payment.types.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
@@ -47,7 +48,13 @@ function toPaymentStatus(status: ProviderPaymentStatus): PaymentStatus {
  * (panier multi-vendeurs, payé en une fois). Dans les deux cas l'opération est
  * idempotente : rejouer un webhook ne double ni les commandes ni les commissions.
  */
-async function applySuccess(paymentId: string, providerRef: string | null, metadata: Record<string, unknown> = {}) {
+/**
+ * Applique la réussite d'un paiement : registre, commission, documents,
+ * notifications. Exporté parce que l'encaissement à la livraison doit passer
+ * par **ce** chemin et pas par un second — deux entrées au registre, c'est deux
+ * occasions de diverger.
+ */
+export async function applySuccess(paymentId: string, providerRef: string | null, metadata: Record<string, unknown> = {}) {
   const result = await prisma.$transaction(async (tx) => {
     const payment = await tx.toumaPayment.findUnique({
       where: { id: paymentId },
@@ -221,6 +228,27 @@ export const paymentService = {
     if (!provider.methods.includes(input.method)) {
       throw badRequest(`Le prestataire ${provider.code} ne propose pas la méthode ${input.method}.`);
     }
+
+    // Le paiement à la livraison n'est pas une méthode comme les autres :
+    // encaisser du liquide engage un vendeur et un livreur, et cela ne s'ouvre
+    // pas par défaut. Fermé tant qu'aucune règle ne l'autorise (§26).
+    if (input.method === 'CASH_ON_DELIVERY') {
+      // La destination décide : c'est là que le livreur devra encaisser.
+      const addressId = coveredOrders[0].shippingAddressId;
+      const destination = addressId
+        ? await prisma.toumaAddress.findUnique({ where: { id: addressId }, select: { countryCode: true, provinceId: true } })
+        : null;
+      if (!destination) {
+        throw badRequest('Le paiement à la livraison demande une adresse de livraison connue.');
+      }
+      const ouverture = await codAvailability({
+        countryCode: destination.countryCode,
+        provinceId: destination.provinceId,
+        storeIds: coveredOrders.map((o) => o.storeId),
+        amount,
+      });
+      if (!ouverture.allowed) throw badRequest(ouverture.reason ?? 'Paiement à la livraison indisponible.');
+    }
     const buyer = await prisma.user.findUniqueOrThrow({
       where: { id: buyerId },
       select: { id: true, email: true, name: true, phone: true, countryCode: true },
@@ -252,6 +280,13 @@ export const paymentService = {
         metadata: { checkoutUrl: created.checkoutUrl ?? null, instructions: created.instructions ?? {} } as object,
       },
     });
+    // Paiement à la livraison : on ouvre le suivi du montant à collecter. Sans
+    // lui, personne ne sait combien le livreur doit rapporter — c'est
+    // exactement l'exigence du §28.
+    if (input.method === 'CASH_ON_DELIVERY') {
+      await openCashCollection(payment.id, amount, currency);
+    }
+
     await prisma.toumaPaymentEvent.create({
       data: { paymentId: payment.id, type: 'payment.created', payload: { providerRef: created.providerRef, status: created.status } as object },
     });
@@ -282,6 +317,17 @@ export const paymentService = {
     if (payment.status === 'SUCCEEDED') return payment;
     if (['FAILED', 'CANCELLED', 'REFUNDED'].includes(payment.status)) {
       throw conflict(`Ce paiement est déjà au statut ${payment.status}.`);
+    }
+
+    // **Un paiement à la livraison ne se confirme pas ici.** C'était le défaut :
+    // l'adaptateur répondait SUCCEEDED comme pour n'importe quelle méthode, et
+    // la commande passait à « payée » avant qu'un franc ait été collecté. Il
+    // n'entre au registre qu'au moment où un vendeur constate la remise, et
+    // c'est une autre route.
+    if (payment.method === 'CASH_ON_DELIVERY') {
+      throw conflict(
+        'Un paiement à la livraison se constate à la remise de l’argent, par le vendeur : POST /payments/:id/cash/collect.',
+      );
     }
 
     const provider = getPaymentProvider(payment.provider);
