@@ -8,23 +8,27 @@
  * ⚠️ Comptes de démonstration : mots de passe volontairement explicites, à
  * n'utiliser qu'en développement. Aucun secret réel n'est présent ici.
  */
+import { existsSync } from 'node:fs';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../src/db/prisma.js';
+import { geographyDatasetPath, loadGeography } from '../src/touma/geo/geography.loader.js';
 import { hashPassword } from '../src/utils/auth.js';
 import { slugify } from '../src/touma/lib/slug.js';
 
 const DEV_PASSWORD = 'touma-dev-1234';
 
+// Le fuseau compte : une date de livraison rendue dans le fuseau du serveur est
+// fausse pour celui qui attend le colis.
 const COUNTRIES = [
-  { code: 'TD', name: 'Tchad', currency: 'XAF', dialCode: '+235', active: true },
-  { code: 'CM', name: 'Cameroun', currency: 'XAF', dialCode: '+237', active: true },
+  { code: 'TD', name: 'Tchad', currency: 'XAF', dialCode: '+235', timezone: 'Africa/Ndjamena', active: true },
+  { code: 'CM', name: 'Cameroun', currency: 'XAF', dialCode: '+237', timezone: 'Africa/Douala', active: true },
   // Marchés suivants : présents dans le référentiel, désactivés tant que le
   // corridor pilote n'est pas validé.
-  { code: 'NG', name: 'Nigeria', currency: 'NGN', dialCode: '+234', active: false },
-  { code: 'CI', name: "Côte d'Ivoire", currency: 'XOF', dialCode: '+225', active: false },
-  { code: 'SN', name: 'Sénégal', currency: 'XOF', dialCode: '+221', active: false },
-  { code: 'GH', name: 'Ghana', currency: 'GHS', dialCode: '+233', active: false },
-  { code: 'KE', name: 'Kenya', currency: 'KES', dialCode: '+254', active: false },
+  { code: 'NG', name: 'Nigeria', currency: 'NGN', dialCode: '+234', timezone: 'Africa/Lagos', active: false },
+  { code: 'CI', name: "Côte d'Ivoire", currency: 'XOF', dialCode: '+225', timezone: 'Africa/Abidjan', active: false },
+  { code: 'SN', name: 'Sénégal', currency: 'XOF', dialCode: '+221', timezone: 'Africa/Dakar', active: false },
+  { code: 'GH', name: 'Ghana', currency: 'GHS', dialCode: '+233', timezone: 'Africa/Accra', active: false },
+  { code: 'KE', name: 'Kenya', currency: 'KES', dialCode: '+254', timezone: 'Africa/Nairobi', active: false },
 ];
 
 const CATEGORIES = [
@@ -233,9 +237,24 @@ async function main() {
   for (const c of COUNTRIES) {
     await prisma.country.upsert({
       where: { code: c.code },
-      update: { name: c.name, currency: c.currency, dialCode: c.dialCode, active: c.active },
+      update: { name: c.name, currency: c.currency, dialCode: c.dialCode, active: c.active, timezone: c.timezone },
       create: { ...c, buyingEnabled: c.active, sellingEnabled: c.active },
     });
+  }
+
+  console.log('→ [Touma] Géographie administrative du Tchad (source GeoNames, CC BY 4.0)…');
+  if (existsSync(geographyDatasetPath())) {
+    const geo = await loadGeography('TD');
+    console.log(
+      `   ${geo.provinces} provinces, ${geo.departments} départements, ${geo.localities} localités ` +
+        `(dont ${geo.localitiesWithoutDepartment} sans département dans la source — jamais devinées` +
+        `${geo.localitiesSkipped > 0 ? ` ; ${geo.localitiesSkipped} écartées faute de province identifiable` : ''}).`,
+    );
+  } else {
+    // On ne remplace pas un jeu de données absent par des valeurs inventées :
+    // on le dit, et le reste du seed continue.
+    console.log(`   Jeu de données absent (${geographyDatasetPath()}) : géographie non chargée.`);
+    console.log('   Régénérez-le avec scripts/build-chad-geography.mjs — voir docs/chad-geography-sources.md.');
   }
 
   console.log('→ [Touma] Catégories du catalogue…');

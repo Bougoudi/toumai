@@ -18,6 +18,11 @@ const publicSelect = {
   bannerUrl: true,
   countryCode: true,
   city: true,
+  /// Où se trouve la boutique. Un acheteur de Moundou veut le savoir avant le
+  /// prix : la province décide du délai et, souvent, de la possibilité même de
+  /// livrer.
+  province: { select: { id: true, code: true, name: true, nameAr: true } },
+  locality: { select: { id: true, name: true, nameAr: true } },
   status: true,
   verificationStatus: true,
   ratingAverage: true,
@@ -27,12 +32,37 @@ const publicSelect = {
 
 export const storeService = {
   /** Liste publique : uniquement les boutiques actives. */
-  async list(query: { q?: string; country?: string; verified?: string; page?: unknown; limit?: unknown }) {
+  /**
+   * Liste publique : uniquement les boutiques actives.
+   *
+   * Le filtre par province (§12) répond à « vendeurs au Ouaddaï », « vendeurs à
+   * N'Djamena ». Il accepte aussi bien l'identifiant que le code officiel de la
+   * province, parce qu'une page publique comme `/chad/ouaddai` connaît le code,
+   * pas l'identifiant interne.
+   *
+   * **Il n'exclut jamais personne.** Le §14 est explicite : la proximité est un
+   * ordre de présentation, pas un mur. Sans filtre demandé, toutes les
+   * boutiques du pays sont rendues — un vendeur de Sarh reste visible pour un
+   * acheteur d'Abéché.
+   */
+  async list(query: {
+    q?: string;
+    country?: string;
+    verified?: string;
+    province?: string;
+    locality?: string;
+    page?: unknown;
+    limit?: unknown;
+  }) {
     const page = pageParams(query);
     const where = {
       status: 'ACTIVE' as StoreStatus,
       ...(query.country ? { countryCode: query.country.toUpperCase() } : {}),
       ...(query.verified === 'true' ? { verificationStatus: 'APPROVED' as const } : {}),
+      ...(query.province
+        ? { province: { OR: [{ id: query.province }, { code: query.province }] } }
+        : {}),
+      ...(query.locality ? { localityId: query.locality } : {}),
       ...(query.q
         ? {
             OR: [

@@ -11,6 +11,7 @@ import { checkoutRouter, orderRouter } from './orders/order.routes.js';
 import { paymentRouter } from './payments/payment.routes.js';
 import { shippingRouter } from './logistics/logistics.routes.js';
 import { storeRouter } from './stores/store.routes.js';
+import { geoRouter } from './geo/geo.routes.js';
 import { verificationRouter } from './verification/verification.routes.js';
 import { reviewRouter } from './reviews/review.routes.js';
 import { disputeRouter } from './disputes/dispute.routes.js';
@@ -94,6 +95,7 @@ toumaV1Router.get('/', (_req, res) =>
 toumaV1Router.use('/auth', toumaAuthRouter);
 toumaV1Router.use('/countries', countryRouter);
 toumaV1Router.use('/categories', categoryRouter);
+toumaV1Router.use('/geo', geoRouter);
 toumaV1Router.use('/stores', storeRouter);
 toumaV1Router.use('/products', productRouter);
 toumaV1Router.use('/cart', cartRouter);

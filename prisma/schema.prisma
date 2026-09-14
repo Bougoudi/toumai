@@ -890,6 +890,9 @@ model Country {
   currency       String
   /// Indicatif téléphonique international (ex. +235).
   dialCode       String  @default("")
+  /// Fuseau horaire IANA (ex. Africa/Ndjamena). Une date de livraison affichée
+  /// dans le fuseau du serveur est fausse pour celui qui attend le colis.
+  timezone       String  @default("UTC")
   /// Le pays accepte-t-il les commandes / les vendeurs ?
   buyingEnabled  Boolean @default(true)
   sellingEnabled Boolean @default(true)
@@ -899,11 +902,159 @@ model Country {
   stores    ToumaStore[]
   addresses ToumaAddress[]
   products  ToumaProduct[]
+  provinces ToumaProvince[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("touma_countries")
+}
+
+// ── Géographie administrative ────────────────────────────────────────────────
+//
+// Jusqu'ici une localisation était une chaîne saisie à la main : « N'Djamena »,
+// « Ndjamena » et « N’Djaména » étaient trois villes différentes pour la base,
+// et aucun regroupement, aucun filtre, aucune statistique par province n'était
+// possible. Ces quatre tables remplacent le texte libre par une hiérarchie
+// officielle.
+//
+// Les données viennent de GeoNames (CC BY 4.0) et sont chargées par un seed
+// reproductible. Ce que la source ne dit pas n'est pas inventé : voir
+// docs/chad-geography-sources.md.
+
+/// Type d'une localité. Prudent par construction : la source distingue la
+/// capitale et les chefs-lieux, mais ne dit pas si un lieu habité est une ville
+/// ou un village. Tout le reste est donc LOCALITY plutôt qu'affirmé.
+enum LocalityType {
+  CITY
+  TOWN
+  /// Section d'une ville — les arrondissements de N'Djamena en relèvent.
+  DISTRICT
+  VILLAGE
+  RURAL_AREA
+  /// Lieu habité que la source ne qualifie pas davantage.
+  LOCALITY
+  OTHER
+}
+
+/// Premier niveau administratif (ADM1). 23 au Tchad.
+model ToumaProvince {
+  id          String  @id @default(cuid())
+  countryCode String
+  country     Country @relation(fields: [countryCode], references: [code], onDelete: Cascade)
+  /// Code officiel du niveau dans la source (ex. « 21 » pour N'Djamena).
+  code        String
+  name        String
+  /// Nom arabe, seconde langue officielle du Tchad. Nul quand la source ne le
+  /// donne pas : un nom translittéré au hasard vaut moins que rien.
+  nameAr      String?
+  /// Identifiant GeoNames : permet de retrouver la ligne d'origine et de
+  /// rejouer une mise à jour de la source sans deviner les correspondances.
+  sourceId    String?
+  latitude    Decimal? @db.Decimal(9, 6)
+  longitude   Decimal? @db.Decimal(9, 6)
+  /// Une province désactivée n'est plus proposée à la saisie — mais les
+  /// commandes qui la référencent restent lisibles.
+  active      Boolean @default(true)
+
+  departments ToumaDepartment[]
+  localities  ToumaLocality[]
+  addresses   ToumaAddress[]
+  stores      ToumaStore[]
+  pickupPoints ToumaPickupPoint[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([countryCode, code])
+  @@index([countryCode])
+  @@map("touma_provinces")
+}
+
+/// Deuxième niveau administratif (ADM2). 133 au Tchad.
+model ToumaDepartment {
+  id         String        @id @default(cuid())
+  provinceId String
+  province   ToumaProvince @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  code       String
+  name       String
+  nameAr     String?
+  sourceId   String?
+  active     Boolean       @default(true)
+
+  subPrefectures ToumaSubPrefecture[]
+  localities     ToumaLocality[]
+  addresses      ToumaAddress[]
+  pickupPoints   ToumaPickupPoint[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provinceId, code])
+  @@index([provinceId])
+  @@map("touma_departments")
+}
+
+/// Troisième niveau administratif.
+///
+/// **Cette table est volontairement vide au Tchad.** Aucune source exploitable
+/// ne descend à ce niveau, et remplir de mémoire les sous-préfectures d'un État
+/// reviendrait à inventer une donnée officielle. Le modèle existe pour que le
+/// jour où une source paraît, rien n'ait à être remanié.
+model ToumaSubPrefecture {
+  id           String          @id @default(cuid())
+  departmentId String
+  department   ToumaDepartment @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name         String
+  nameAr       String?
+  sourceId     String?
+  active       Boolean         @default(true)
+
+  localities ToumaLocality[]
+  addresses  ToumaAddress[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([departmentId])
+  @@map("touma_sub_prefectures")
+}
+
+/// Lieu habité : ville, quartier, village.
+model ToumaLocality {
+  id              String              @id @default(cuid())
+  provinceId      String
+  province        ToumaProvince       @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  /// Nul dans l'immense majorité des cas : la source rattache les localités à
+  /// leur province, presque jamais à leur département. Les rattacher « au plus
+  /// proche » serait une invention de masse présentée comme officielle.
+  departmentId    String?
+  department      ToumaDepartment?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  subPrefectureId String?
+  subPrefecture   ToumaSubPrefecture? @relation(fields: [subPrefectureId], references: [id], onDelete: SetNull)
+
+  name       String
+  nameAr     String?
+  type       LocalityType @default(LOCALITY)
+  sourceId   String?      @unique
+  latitude   Decimal?     @db.Decimal(9, 6)
+  longitude  Decimal?     @db.Decimal(9, 6)
+  /// Population quand la source la connaît. Nulle veut dire « inconnue », pas
+  /// « personne n'y habite » : sur 12 277 localités, 75 seulement sont chiffrées.
+  population Int?
+  active     Boolean      @default(true)
+
+  addresses    ToumaAddress[]
+  stores       ToumaStore[]
+  pickupPoints ToumaPickupPoint[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([provinceId])
+  @@index([departmentId])
+  @@index([provinceId, name])
+  @@map("touma_localities")
 }
 
 /// Adresse d'un utilisateur (livraison, facturation, enlèvement).
@@ -929,6 +1080,24 @@ model ToumaAddress {
   district     String?
   landmark     String?
   instructions String?
+
+  /// Rattachement à la géographie officielle. Tout est nullable : les adresses
+  /// créées avant cette version n'en ont pas, et une adresse saisie hors d'un
+  /// pays cartographié n'en aura pas non plus. Le texte libre (`city`,
+  /// `region`) reste la valeur de repli — on ne rend pas inaccessible une
+  /// adresse existante pour faire propre.
+  provinceId      String?
+  province        ToumaProvince?      @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  departmentId    String?
+  department      ToumaDepartment?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  subPrefectureId String?
+  subPrefecture   ToumaSubPrefecture? @relation(fields: [subPrefectureId], references: [id], onDelete: SetNull)
+  localityId      String?
+  locality        ToumaLocality?      @relation(fields: [localityId], references: [id], onDelete: SetNull)
+
+  /// Second numéro : au Tchad, joindre le destinataire tient souvent au fait
+  /// d'avoir deux opérateurs.
+  alternativePhone String?
   /// Coordonnées facultatives. Donnée sensible : jamais exposée publiquement,
   /// transmise au seul transporteur de la commande concernée.
   latitude     Decimal? @db.Decimal(9, 6)
@@ -940,6 +1109,8 @@ model ToumaAddress {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([provinceId])
+  @@index([localityId])
   @@map("touma_addresses")
 }
 
@@ -958,6 +1129,12 @@ model ToumaStore {
   countryCode        String
   country            Country            @relation(fields: [countryCode], references: [code])
   city               String?
+  /// Où se trouve réellement la boutique. Sans cela, « vendeurs au Ouaddaï »
+  /// n'est pas une requête possible.
+  provinceId         String?
+  province           ToumaProvince?     @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  localityId         String?
+  locality           ToumaLocality?     @relation(fields: [localityId], references: [id], onDelete: SetNull)
   phone              String?
   status             StoreStatus        @default(DRAFT)
   /// Confiance Touma Verified (dénormalisé depuis la dernière vérification).
@@ -987,6 +1164,8 @@ model ToumaStore {
   @@index([ownerId])
   @@index([status])
   @@index([countryCode])
+  @@index([provinceId])
+  @@index([countryCode, provinceId])
   @@map("touma_stores")
 }
 
@@ -2009,6 +2188,12 @@ model ToumaPickupPoint {
   code         String   @unique
   name         String
   countryCode  String
+  provinceId   String?
+  province     ToumaProvince?   @relation(fields: [provinceId], references: [id], onDelete: SetNull)
+  departmentId String?
+  department   ToumaDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  localityId   String?
+  locality     ToumaLocality?   @relation(fields: [localityId], references: [id], onDelete: SetNull)
   city         String
   district     String?
   landmark     String?
@@ -2026,6 +2211,7 @@ model ToumaPickupPoint {
   updatedAt DateTime @updatedAt
 
   @@index([countryCode, city])
+  @@index([provinceId])
   @@map("touma_pickup_points")
 }
 
