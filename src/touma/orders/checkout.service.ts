@@ -143,7 +143,15 @@ export const checkoutService = {
       }
       const quotes = await logisticsService.quote({
         origin: { countryCode: store.countryCode, city: store.city },
-        destination: { countryCode: address.countryCode, city: pickupPoint?.city ?? address.city },
+        destination: {
+          countryCode: address.countryCode,
+          city: pickupPoint?.city ?? address.city,
+          // La géographie du point de remise réel : le point relais quand il y
+          // en a un, l'adresse sinon. C'est elle qui décide de la zone.
+          provinceId: pickupPoint?.provinceId ?? address.provinceId,
+          departmentId: pickupPoint?.departmentId ?? address.departmentId,
+          localityId: pickupPoint?.localityId ?? address.localityId,
+        },
         parcel: { weightGrams },
         currency,
       });

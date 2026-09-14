@@ -8,6 +8,7 @@ import { documentService } from '../documents/document.service.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { reputationService } from '../reputation/reputation.service.js';
 import { MockLogisticsProvider } from './providers/mock.provider.js';
+import { ZoneLogisticsProvider } from './providers/zone.provider.js';
 import type { LogisticsProvider, QuoteRequest, ShippingQuoteResult } from './logistics.types.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 
@@ -22,6 +23,11 @@ export function registerLogisticsProvider(provider: LogisticsProvider): void {
 }
 
 registerLogisticsProvider(new MockLogisticsProvider());
+// Transport par zones configurées : c'est celui qui doit servir en production,
+// parce qu'il ne rend un délai que si un exploitant l'a déclaré. Il n'est pas le
+// défaut pour ne pas rendre le développement impraticable — une base neuve n'a
+// aucune zone, et sans zone il ne répond rien, ce qui est précisément sa vertu.
+registerLogisticsProvider(new ZoneLogisticsProvider());
 
 /**
  * Transporteur configuré. Aucun repli silencieux : un code inconnu lève une

@@ -10,6 +10,15 @@ export interface ShippingPoint {
   countryCode: string;
   city?: string | null;
   postalCode?: string | null;
+  /**
+   * Rattachement géographique, quand l'appelant le connaît. C'est lui qui permet
+   * à un transporteur de dire « je dessers le Ouaddaï mais pas le Tibesti » —
+   * une ville saisie à la main ne le permet pas, parce que « N'Djamena » et
+   * « Ndjamena » ne sont pas le même mot.
+   */
+  provinceId?: string | null;
+  departmentId?: string | null;
+  localityId?: string | null;
 }
 
 export interface Parcel {

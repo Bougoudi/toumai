@@ -674,6 +674,70 @@ enum ToumaOrderStatus {
 /// groupe, la réputation et chaque liste de « statuts payés » — pour dire une
 /// chose qui ne concerne que l'argent. La commande, elle, suit son cours
 /// normal : ce qui ne doit pas arriver, c'est qu'elle soit dite « payée ».
+/// État d'une zone de livraison.
+enum DeliveryZoneStatus {
+  /// Desservie : le transporteur y va, au tarif et au délai configurés.
+  SERVED
+  /// Desservie sur demande : il faut convenir du passage. Un délai est rendu,
+  /// mais l'interface doit dire que ce n'est pas une tournée régulière.
+  ON_REQUEST
+  /// Non desservie. Le dire est plus utile que d'afficher un délai inventé.
+  UNSERVED
+}
+
+/// Zone de livraison d'un transporteur (§15).
+///
+/// **Le défaut corrigé.** L'unique transporteur branché facturait et datait
+/// toutes les livraisons nationales à l'identique : 1 500 de prise en charge,
+/// 1 200 par kilogramme, 1 à 3 jours. Autrement dit, N'Djamena → N'Djamena et
+/// N'Djamena → Faya-Largeau — un millier de kilomètres de piste saharienne —
+/// recevaient le **même prix et le même délai**. Le fichier était honnêtement
+/// nommé « mock », mais c'était le seul, donc l'acheteur voyait toujours une
+/// estimation, et cette estimation n'avait aucun fondement.
+///
+/// Une zone est une déclaration d'exploitant : « ce transporteur dessert cette
+/// province, à ce prix, en tant de jours ». Rien n'est deviné. Quand aucune zone
+/// ne couvre une destination, le système **ne sait pas** — et le dit.
+model ToumaDeliveryZone {
+  id           String @id @default(cuid())
+  /// Code du transporteur concerné.
+  providerCode String
+  countryCode  String
+  /// Portée : de la plus large (pays seul) à la plus fine (localité). La plus
+  /// précise l'emporte.
+  provinceId   String?
+  province     ToumaProvince?   @relation(fields: [provinceId], references: [id], onDelete: Cascade)
+  departmentId String?
+  department   ToumaDepartment? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  localityId   String?
+  locality     ToumaLocality?   @relation(fields: [localityId], references: [id], onDelete: Cascade)
+
+  status DeliveryZoneStatus @default(SERVED)
+
+  /// Délais annoncés par l'exploitant, en jours.
+  estimatedMinDays Int
+  estimatedMaxDays Int
+
+  /// Prise en charge, et supplément par kilogramme entamé. Les deux sont
+  /// configurés : aucun tarif n'est calculé par le code.
+  basePrice  Decimal  @db.Decimal(18, 4)
+  pricePerKg Decimal? @db.Decimal(18, 4)
+  currency   String
+
+  /// Nom du service tel qu'il doit apparaître à l'acheteur.
+  serviceName String @default("Standard")
+  active      Boolean @default(true)
+  note        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([providerCode, countryCode])
+  @@index([provinceId])
+  @@index([localityId])
+  @@map("touma_delivery_zones")
+}
+
 enum CashCollectionStatus {
   /// Commande acceptée, argent pas encore collecté.
   COD_PENDING
@@ -1062,6 +1126,7 @@ model ToumaProvince {
   pickupPoints ToumaPickupPoint[]
 
   codRules    ToumaCodRule[]
+  deliveryZones ToumaDeliveryZone[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1084,6 +1149,7 @@ model ToumaDepartment {
 
   subPrefectures ToumaSubPrefecture[]
   localities     ToumaLocality[]
+  deliveryZones ToumaDeliveryZone[]
   addresses      ToumaAddress[]
   pickupPoints   ToumaPickupPoint[]
 
@@ -1145,6 +1211,7 @@ model ToumaLocality {
   active     Boolean      @default(true)
 
   addresses    ToumaAddress[]
+  deliveryZones ToumaDeliveryZone[]
   stores       ToumaStore[]
   pickupPoints ToumaPickupPoint[]
 
