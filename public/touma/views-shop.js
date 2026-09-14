@@ -144,34 +144,34 @@ export async function catalog(_params, query) {
   };
 
   return `
-    ${breadcrumb([{ label: 'Accueil', href: '/touma/' }, { label: 'Catalogue' }])}
+    ${breadcrumb([{ label: t('catalog.home'), href: '/touma/' }, { label: t('catalog.title') }])}
     <div class="row-between" style="margin-bottom:var(--space-5)">
       <div>
-        <h1 style="margin-bottom:2px">Catalogue</h1>
+        <h1 style="margin-bottom:2px">${esc(t('catalog.title'))}</h1>
         <p class="muted small" style="margin:0">${result.total} produit(s)${query.get('q') ? ` pour « ${esc(query.get('q'))} »` : ''}</p>
       </div>
-      <button class="btn btn-secondary btn-sm filters-toggle hide-desktop" data-toggle-filters>Filtrer et trier</button>
+      <button class="btn btn-secondary btn-sm filters-toggle hide-desktop" data-toggle-filters>${esc(t('catalog.filterAndSort'))}</button>
     </div>
 
     <div class="catalog-layout">
-      <form class="card filters-panel" id="filters" aria-label="Filtres du catalogue">
+      <form class="card filters-panel" id="filters" aria-label="${esc(t('catalog.filterAndSort'))}">
         <div class="field">
-          <label for="f-q">Mot-clé</label>
+          <label for="f-q">${esc(t('catalog.keyword'))}</label>
           <input id="f-q" name="q" type="search" value="${esc(query.get('q') || '')}" placeholder="sésame, pagne, cartons…" />
         </div>
         <div class="field">
-          <label for="f-category">Catégorie</label>
+          <label for="f-category">${esc(t('catalog.category'))}</label>
           <select id="f-category" name="category">
-            ${opt('', 'Toutes les catégories', query.get('category') || '')}
+            ${opt('', t('catalog.allCategories'), query.get('category') || '')}
             ${(facets?.categories ?? categories.items.map((c) => ({ ...c, count: c.productCount })))
               .map((c) => opt(c.slug, `${c.name} (${c.count})`, query.get('category') || ''))
               .join('')}
           </select>
         </div>
         <div class="field">
-          <label for="f-country">Pays d'expédition</label>
+          <label for="f-country">${esc(t('catalog.shipsFrom'))}</label>
           <select id="f-country" name="country">
-            ${opt('', 'Tous les pays', query.get('country') || '')}
+            ${opt('', t('catalog.allCountries'), query.get('country') || '')}
             ${(facets?.countries ?? countries.items.map((c) => ({ ...c, count: null })))
               .map((c) => opt(c.code, c.count === null ? c.name : `${c.name} (${c.count})`, query.get('country') || ''))
               .join('')}
@@ -180,41 +180,41 @@ export async function catalog(_params, query) {
         ${priceFacet(facets, query)}
         <div class="row" style="gap:var(--space-3)">
           <div class="field" style="flex:1;min-width:110px">
-            <label for="f-min">Prix min.</label>
+            <label for="f-min">${esc(t('catalog.priceMin'))}</label>
             <input id="f-min" name="minPrice" inputmode="numeric" value="${esc(query.get('minPrice') || '')}" />
           </div>
           <div class="field" style="flex:1;min-width:110px">
-            <label for="f-max">Prix max.</label>
+            <label for="f-max">${esc(t('catalog.priceMax'))}</label>
             <input id="f-max" name="maxPrice" inputmode="numeric" value="${esc(query.get('maxPrice') || '')}" />
           </div>
         </div>
         <div class="field">
-          <label for="f-availability">Disponibilité</label>
+          <label for="f-availability">${esc(t('catalog.availability'))}</label>
           <select id="f-availability" name="availability">
-            ${opt('any', 'Tous les produits', query.get('availability') || 'any')}
+            ${opt('any', t('catalog.allProducts'), query.get('availability') || 'any')}
             ${opt(
               'in_stock',
-              facets ? `En stock uniquement (${facets.availability.inStock})` : 'En stock uniquement',
+              facets ? `${t('catalog.inStockOnly')} (${facets.availability.inStock})` : t('catalog.inStockOnly'),
               query.get('availability') || 'any',
             )}
           </select>
         </div>
         <label class="check" style="margin-bottom:var(--space-4)">
           <input type="checkbox" name="verifiedOnly" value="true" ${query.get('verifiedOnly') === 'true' ? 'checked' : ''} />
-          <span class="small">Boutiques vérifiées${facets ? ` (${facets.verified})` : ''}</span>
+          <span class="small">${esc(t('home.verifiedStores'))}${facets ? ` (${facets.verified})` : ''}</span>
         </label>
         <div class="field">
-          <label for="f-sort">Trier par</label>
+          <label for="f-sort">${esc(t('catalog.sortBy'))}</label>
           <select id="f-sort" name="sort">
-            ${opt('recent', 'Plus récents', query.get('sort') || 'recent')}
-            ${opt('popular', 'Les plus vendus', query.get('sort') || 'recent')}
-            ${opt('price_asc', 'Prix croissant', query.get('sort') || 'recent')}
-            ${opt('price_desc', 'Prix décroissant', query.get('sort') || 'recent')}
+            ${opt('recent', t('catalog.sort.recent'), query.get('sort') || 'recent')}
+            ${opt('popular', t('catalog.sort.popular'), query.get('sort') || 'recent')}
+            ${opt('price_asc', t('catalog.sort.priceAsc'), query.get('sort') || 'recent')}
+            ${opt('price_desc', t('catalog.sort.priceDesc'), query.get('sort') || 'recent')}
           </select>
         </div>
         <div class="row">
-          <button class="btn btn-block" type="submit">Appliquer</button>
-          ${[...query.keys()].length ? '<a class="btn btn-ghost btn-block" href="/touma/produits" data-link>Réinitialiser</a>' : ''}
+          <button class="btn btn-block" type="submit">${esc(t('catalog.apply'))}</button>
+          ${[...query.keys()].length ? `<a class="btn btn-ghost btn-block" href="/touma/produits" data-link>${esc(t('catalog.reset'))}</a>` : ''}
         </div>
       </form>
 
@@ -223,9 +223,9 @@ export async function catalog(_params, query) {
           ? `<div class="grid grid-products">${result.items.map((p) => productCard(p)).join('')}</div>
              ${pagination(result, hrefFor)}`
           : emptyState({
-              title: 'Aucun produit ne correspond',
-              body: 'Élargissez vos critères : retirez un filtre, augmentez le prix maximum ou explorez une autre catégorie.',
-              actionLabel: 'Voir tout le catalogue',
+              title: t('catalog.noMatch'),
+              body: t('catalog.noMatchBody'),
+              actionLabel: t('catalog.seeAll'),
               actionHref: '/touma/produits',
               iconName: 'search',
             })}
@@ -256,7 +256,7 @@ function priceFacet(facets, query) {
     (query.get('minPrice') || '') === from && (query.get('maxPrice') || '') === (to ?? '');
 
   return `<div class="field">
-    <span class="small" style="font-weight:var(--weight-semibold);display:block;margin-bottom:var(--space-2)">Tranches de prix</span>
+    <span class="small" style="font-weight:var(--weight-semibold);display:block;margin-bottom:var(--space-2)">${esc(t('catalog.priceRanges'))}</span>
     <div class="chip-row">
       ${price.buckets
         .map(
@@ -278,9 +278,9 @@ export async function product(params) {
 
   return `
     ${breadcrumb([
-      { label: 'Accueil', href: '/touma/' },
-      { label: 'Catalogue', href: '/touma/produits' },
-      { label: p.category?.name ?? 'Produit', href: p.category ? `/touma/produits?category=${p.category.slug}` : undefined },
+      { label: t('catalog.home'), href: '/touma/' },
+      { label: t('catalog.title'), href: '/touma/produits' },
+      { label: p.category?.name ?? t('product.breadcrumb'), href: p.category ? `/touma/produits?category=${p.category.slug}` : undefined },
       { label: p.title },
     ])}
 
@@ -298,8 +298,8 @@ export async function product(params) {
         <h1 style="font-size:var(--text-xl)">${esc(p.title)}</h1>
         <div class="row" style="gap:var(--space-2);margin-bottom:var(--space-3)">
           <a class="badge" href="/touma/boutiques/${esc(p.store.slug)}" data-link>${svg('store')} ${esc(p.store.name)}</a>
-          ${verified ? '<span class="badge badge-verified">Vendeur vérifié</span>' : '<span class="badge">Vérification en cours</span>'}
-          <span class="badge badge-country">Expédié depuis ${esc(p.countryCode)}</span>
+          ${verified ? `<span class="badge badge-verified">${esc(t('product.verifiedSeller'))}</span>` : `<span class="badge">${esc(t('product.verificationPending'))}</span>`}
+          <span class="badge badge-country">${esc(t('product.shipsFrom', { country: p.countryCode }))}</span>
         </div>
         ${stars(p.rating, p.ratingCount)}
 
@@ -308,63 +308,62 @@ export async function product(params) {
           ${p.compareAtPrice ? `<span class="price-compare">${money(p.compareAtPrice, p.currency)}</span>` : ''}
         </div>
         <p class="small muted">
-          ${p.inStock ? `${p.stock} unité(s) disponible(s)` : 'Rupture de stock'}
-          ${p.minOrderQty > 1 ? ` · commande minimale : ${p.minOrderQty}` : ''}
+          ${esc(p.inStock ? t('product.inStock', { count: p.stock }) : t('product.outOfStock'))}
+          ${p.minOrderQty > 1 ? ` · ${esc(t('product.minOrder', { count: p.minOrderQty }))}` : ''}
         </p>
 
         <div class="card">
           ${p.variants.length
             ? `<div class="field">
-                <label for="variant">Variante</label>
+                <label for="variant">${esc(t('product.variant'))}</label>
                 <select id="variant">
-                  ${p.variants.map((v) => `<option value="${esc(v.id)}" data-price="${esc(v.price)}" ${v.stock <= 0 ? 'disabled' : ''}>${esc(v.name)} — ${money(v.price, p.currency)}${v.stock <= 0 ? ' (épuisé)' : ''}</option>`).join('')}
+                  ${p.variants.map((v) => `<option value="${esc(v.id)}" data-price="${esc(v.price)}" ${v.stock <= 0 ? 'disabled' : ''}>${esc(v.name)} — ${money(v.price, p.currency)}${v.stock <= 0 ? ` (${t('product.soldOut')})` : ''}</option>`).join('')}
                 </select>
               </div>`
             : ''}
           <div class="field">
-            <label for="qty">Quantité</label>
+            <label for="qty">${esc(t('product.quantity'))}</label>
             <input id="qty" type="number" min="${p.minOrderQty}" step="1" value="${p.minOrderQty}" inputmode="numeric" />
           </div>
           <div class="row" style="gap:var(--space-2)">
-            <button class="btn btn-accent btn-block" data-buy-now="${esc(p.id)}" ${p.inStock ? '' : 'disabled'}>Acheter maintenant</button>
-            <button class="btn btn-secondary btn-block" data-add-to-cart="${esc(p.id)}" ${p.inStock ? '' : 'disabled'}>Ajouter au panier</button>
+            <button class="btn btn-accent btn-block" data-buy-now="${esc(p.id)}" ${p.inStock ? '' : 'disabled'}>${esc(t('product.buyNow'))}</button>
+            <button class="btn btn-secondary btn-block" data-add-to-cart="${esc(p.id)}" ${p.inStock ? '' : 'disabled'}>${esc(t('product.addToCart'))}</button>
           </div>
-          <button class="btn btn-ghost btn-block btn-sm" data-contact-store="${esc(p.store.id)}">Contacter le vendeur</button>
+          <button class="btn btn-ghost btn-block btn-sm" data-contact-store="${esc(p.store.id)}">${esc(t('product.contactSeller'))}</button>
           <p class="xs muted" style="margin:var(--space-2) 0 0">
-            Besoin d'un volume important ? <a href="/touma/business/appels-offres/nouveau" data-link>Publiez une demande d'achat</a>.
+            ${esc(t('product.bulkPrompt'))} <a href="/touma/business/appels-offres/nouveau" data-link>${esc(t('product.bulkLink'))}</a>.
           </p>
         </div>
 
         <div class="card mt-6">
-          <h3>Livraison</h3>
-          <p class="small muted">Estimez le coût et le délai vers votre pays avant de commander.</p>
+          <h3>${esc(t('product.shipping'))}</h3>
+          <p class="small muted">${esc(t('product.shippingHint'))}</p>
           <div class="row" style="gap:var(--space-2);align-items:flex-end">
             <div class="field" style="flex:1;margin-bottom:0">
-              <label for="ship-country">Livrer vers</label>
+              <label for="ship-country">${esc(t('product.shipTo'))}</label>
               <select id="ship-country">${(await api('/countries')).items.map((c) => `<option value="${esc(c.code)}"${c.code === (session.user?.countryCode ?? '') ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
             </div>
-            <button class="btn btn-secondary" data-estimate="${esc(p.id)}" data-weight="${p.weightGrams}" data-origin="${esc(p.countryCode)}" data-currency="${esc(p.currency)}">Estimer</button>
+            <button class="btn btn-secondary" data-estimate="${esc(p.id)}" data-weight="${p.weightGrams}" data-origin="${esc(p.countryCode)}" data-currency="${esc(p.currency)}">${esc(t('product.estimate'))}</button>
           </div>
           <div id="ship-estimate" class="small mt-6"></div>
         </div>
 
         <div class="card mt-6">
-          <h3>Est-ce que ça arrive chez moi ?</h3>
+          <h3>${esc(t('product.availabilityTitle'))}</h3>
           <p class="small muted">
-            Deux conditions, et les deux doivent être réunies : que la boutique accepte d’envoyer là-bas,
-            et qu’un transporteur y aille.
+            ${esc(t('product.availabilityHint'))}
           </p>
           <div class="row" style="gap:var(--space-2);align-items:flex-end">
             <div class="field" style="flex:1;margin-bottom:0">
-              <label for="avail-province">Province de livraison</label>
+              <label for="avail-province">${esc(t('product.province'))}</label>
               <select id="avail-province">
-                <option value="">Choisissez une province</option>
+                <option value="">${esc(t('product.chooseProvince'))}</option>
                 ${(await api('/geo/provinces?country=TD')).items
                   .map((pr) => `<option value="${esc(pr.id)}">${esc(pr.name)}</option>`)
                   .join('')}
               </select>
             </div>
-            <button class="btn btn-secondary" data-availability="${esc(p.id)}">Vérifier</button>
+            <button class="btn btn-secondary" data-availability="${esc(p.id)}">${esc(t('product.check'))}</button>
           </div>
           <div id="availability-result" class="small mt-6"></div>
         </div>
@@ -372,20 +371,20 @@ export async function product(params) {
     </div>
 
     <section class="section mt-8">
-      <h2>Description</h2>
-      <div class="card"><p style="white-space:pre-line;margin:0">${esc(p.description) || 'Le vendeur n’a pas encore rédigé de description.'}</p></div>
+      <h2>${esc(t('product.description'))}</h2>
+      <div class="card"><p style="white-space:pre-line;margin:0">${esc(p.description) || esc(t('product.noDescription'))}</p></div>
     </section>
 
     <section class="section">
-      <h2>Caractéristiques</h2>
+      <h2>${esc(t('product.specs'))}</h2>
       <div class="card">
         <dl class="spec-list">
-          ${p.brand ? `<div><dt>Marque</dt><dd>${esc(p.brand)}</dd></div>` : ''}
-          ${p.sku ? `<div><dt>Référence</dt><dd>${esc(p.sku)}</dd></div>` : ''}
+          ${p.brand ? `<div><dt>${esc(t('product.brand'))}</dt><dd>${esc(p.brand)}</dd></div>` : ''}
+          ${p.sku ? `<div><dt>${esc(t('product.reference'))}</dt><dd>${esc(p.sku)}</dd></div>` : ''}
           <div><dt>Pays d'expédition</dt><dd>${esc(p.countryCode)}</dd></div>
-          <div><dt>Poids unitaire</dt><dd>${(p.weightGrams / 1000).toFixed(2)} kg</dd></div>
-          <div><dt>Quantité minimale</dt><dd>${p.minOrderQty}</dd></div>
-          <div><dt>Catégorie</dt><dd>${esc(p.category?.name ?? '—')}</dd></div>
+          <div><dt>${esc(t('product.weight'))}</dt><dd>${(p.weightGrams / 1000).toFixed(2)} kg</dd></div>
+          <div><dt>${esc(t('product.minOrderQty'))}</dt><dd>${p.minOrderQty}</dd></div>
+          <div><dt>${esc(t('product.category'))}</dt><dd>${esc(p.category?.name ?? '—')}</dd></div>
         </dl>
       </div>
     </section>
@@ -403,7 +402,7 @@ export async function product(params) {
                 </div>`,
               )
               .join('')
-          : '<p class="muted small" style="margin:0">Aucun avis pour l’instant. Seuls les acheteurs ayant reçu ce produit peuvent en déposer un.</p>'}
+          : `<p class="muted small" style="margin:0">${esc(t('product.noReviews'))}</p>`}
       </div>
     </section>`;
 }

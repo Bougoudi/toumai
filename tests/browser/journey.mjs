@@ -1065,7 +1065,7 @@ await step('langue : aucun débordement en écriture de droite à gauche', async
   }
 });
 
-await step('langue : le panier et les commandes, entièrement en arabe', async () => {
+await step('langue : le parcours d’achat entier en arabe, sans résidu', async () => {
   // Un écran à moitié traduit est pire qu'un écran en français : il a l'air
   // cassé. Ces deux-là sont ceux où un acheteur décide avec son argent, et ils
   // sont donc vérifiés **sans résidu**.
@@ -1084,6 +1084,13 @@ await step('langue : le panier et les commandes, entièrement en arabe', async (
       ['Récapitulatif', 'Sous-total', 'Continuer vers le paiement', 'Retirer', 'Vider le panier', 'Mon panier', 'Votre panier est vide'],
     ],
     ['/commandes', /طلباتي/, ['Mes commandes', 'Toutes', 'Détail', 'Aucune commande']],
+    // Le catalogue et la fiche produit viennent AVANT le panier dans le
+    // parcours : sans eux, « le parcours d'achat est traduit » serait faux.
+    [
+      '/produits',
+      /الكتالوج/,
+      ['Mot-clé', 'Trier par', 'Appliquer', 'Disponibilité', 'Toutes les catégories', 'Tous les pays', 'Boutiques vérifiées'],
+    ],
     // Le tunnel, étape par étape : c'est là que l'argent change de mains, donc
     // l'écran qu'un acheteur ne peut pas se permettre de ne pas lire.
     ['/checkout?etape=0', /أين نوصّل طلبك؟|سلتك فارغة/, ['Où livrer', 'Mode de remise', 'Ajouter une adresse', 'Continuer vers']],
@@ -1104,6 +1111,19 @@ await step('langue : le panier et les commandes, entièrement en arabe', async (
       throw new Error(`${chemin} : débordement horizontal en arabe`);
     }
   }
+  // La fiche produit s'atteint par un clic : son URL dépend du jeu d'essai.
+  await ar.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+  await ar.waitForSelector('.product-card a[href^="/touma/produits/"]', { timeout: 20000 });
+  await ar.locator('.product-card a[href^="/touma/produits/"]').first().click();
+  await ar.waitForSelector('[data-add-to-cart]', { timeout: 20000 });
+  await ar.waitForTimeout(500);
+  const fiche = ((await ar.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+  if (!/الكمية|أضف إلى السلة/.test(fiche)) throw new Error('fiche produit : aucun texte arabe attendu trouvé');
+  const restesFiche = ['Quantité', 'Ajouter au panier', 'Description', 'Caractéristiques', 'Acheter maintenant', 'Marque', 'Vérifier'].filter((r) =>
+    fiche.includes(r),
+  );
+  if (restesFiche.length > 0) throw new Error(`fiche produit : résidus français — ${restesFiche.join(', ')}`);
+
   await ar.screenshot({ path: `${OUT}/53-panier-arabe.png` });
   await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
   await ar.setViewportSize({ width: 1280, height: 900 });
