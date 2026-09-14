@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../db/prisma.js';
 import { asyncHandler } from '../middleware/validate.js';
 import { env } from '../config/env.js';
+import { readiness } from './health.js';
 import { toumaAuthRouter } from './auth/auth.routes.js';
 import { categoryRouter } from './catalog/category.routes.js';
 import { countryRouter } from './catalog/country.routes.js';
@@ -88,6 +89,9 @@ toumaV1Router.get('/', (_req, res) =>
       reputation: '/api/v1/reputation',
       sourcing: '/api/v1/sourcing',
       admin: '/api/v1/admin',
+      health: '/api/v1/health',
+      ready: '/api/v1/ready',
+      paymentMethods: '/api/v1/payments/methods',
       openapi: '/api/v1/openapi.json',
     },
     /**
@@ -97,6 +101,28 @@ toumaV1Router.get('/', (_req, res) =>
      * chiffre unique ici laisserait croire le contraire.
      */
     defaultCommissionRate: env.touma.commissionRate,
+  }),
+);
+
+/**
+ * Sondes sous `/api/v1`.
+ *
+ * `/health` et `/ready` existaient à la racine du serveur. Un client de l'API
+ * v1 — supervision, passerelle, client mobile — n'a pas à connaître la racine
+ * du processus qui l'héberge : la sonde appartient à la version d'API qu'on
+ * interroge.
+ *
+ * `/health` dit que le processus vit. `/ready` vérifie les dépendances et
+ * répond 503 tant qu'une dépendance requise manque — c'est la différence entre
+ * « je réponds » et « je peux servir ».
+ */
+toumaV1Router.get('/health', (_req, res) => res.json({ status: 'ok', service: 'touma', version: 'v1' }));
+
+toumaV1Router.get(
+  '/ready',
+  asyncHandler(async (_req, res) => {
+    const report = await readiness();
+    res.status(report.ready ? 200 : 503).json(report);
   }),
 );
 

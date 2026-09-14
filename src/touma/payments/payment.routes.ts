@@ -7,6 +7,7 @@ import { applySuccess, paymentService } from './payment.service.js';
 import { codService } from './cod.service.js';
 import { refundService } from './refund.service.js';
 import { idempotent } from '../lib/idempotency.js';
+import { paymentMethodsFor } from './methods.service.js';
 
 export const paymentRouter = Router();
 
@@ -44,6 +45,34 @@ const refundSchema = z
   });
 
 paymentRouter.get('/providers', asyncHandler(async (_req, res) => res.json({ items: paymentService.listProviders() })));
+
+/**
+ * Moyens de paiement réellement proposables.
+ *
+ * `/providers` liste les adaptateurs **enregistrés dans le code** ; ce n'est
+ * pas la même question. Un adaptateur qui existe n'est pas un moyen de paiement
+ * ouvert : la disponibilité dépend du prestataire configuré, de
+ * l'environnement, du pays, et — pour le paiement à la livraison — d'une règle
+ * explicite.
+ *
+ * Chaque méthode sort avec son `available` **et** son motif quand c'est non.
+ * Taire les méthodes fermées laisserait l'interface inventer ses explications.
+ */
+paymentRouter.get(
+  '/methods',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : undefined);
+    res.json(
+      await paymentMethodsFor(currentUser(req), {
+        countryCode: str(req.query.country),
+        currency: str(req.query.currency),
+        orderId: str(req.query.order),
+        orderGroupId: str(req.query.group),
+      }),
+    );
+  }),
+);
 
 /**
  * Encaissement à la livraison.

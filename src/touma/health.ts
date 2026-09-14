@@ -1,6 +1,7 @@
 import { createConnection } from 'node:net';
 import { prisma } from '../db/prisma.js';
 import { env } from '../config/env.js';
+import { providerStatus } from './payments/methods.service.js';
 
 /**
  * Sondes de disponibilité Touma.
@@ -57,6 +58,7 @@ async function checkRedis(): Promise<DependencyReport> {
 /** Rapport complet de disponibilité. */
 export async function readiness() {
   const dependencies = await Promise.all([checkPostgres(), checkRedis()]);
+  const paiement = providerStatus();
   const ready = dependencies.every((d) => !d.required || d.status === 'ok');
   return {
     ready,
@@ -64,9 +66,17 @@ export async function readiness() {
     version: 'v1',
     environment: env.nodeEnv,
     dependencies,
-    /** Adaptateurs actifs (utile en exploitation pour savoir ce qui tourne). */
+    /**
+     * Adaptateurs actifs. Le paiement dit en plus **s'il est réel** : un
+     * adaptateur configuré n'est pas un prestataire agréé raccordé, et une
+     * sonde qui laisserait croire le contraire tromperait la personne
+     * d'astreinte au pire moment.
+     */
     adapters: {
-      payments: env.touma.paymentProvider,
+      payments: paiement.code,
+      paymentsReal: paiement.real,
+      paymentsUsable: paiement.usable,
+      paymentsMessage: paiement.message,
       logistics: env.touma.logisticsProvider,
       ai: env.touma.aiProvider,
       storage: env.storage.enabled ? 's3' : 'none',

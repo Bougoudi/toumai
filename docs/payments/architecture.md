@@ -179,6 +179,33 @@ remplacé par son empreinte SHA-256 — assez pour reconnaître deux tentatives
 identiques, pas assez pour qu'un tiers écrive sans borne dans la base. Et la
 table se purge : une table qu'un inconnu fait grossir devient sinon la panne.
 
+## Ce qui est proposé au moment de payer
+
+`GET /payments/methods` répond à une question que `/providers` ne pose pas.
+`/providers` liste les adaptateurs **enregistrés dans le code** ; ce n'est pas la
+même chose qu'un moyen de paiement ouvert.
+
+Chaque méthode sort avec son `available` **et** son motif quand c'est non. Taire
+les méthodes fermées laisserait l'interface inventer ses propres explications —
+et une explication inventée sur un paiement est exactement ce que le §80
+interdit.
+
+L'adaptateur de démonstration est annoncé comme tel : les méthodes qu'il porte
+sortent `simulated: true`, et en production il est refusé — « Provider réel non
+activé — configuration requise ». Transformer une simulation en prétendu
+paiement réel est ce que le §52 interdit nommément.
+
+Le paiement à la livraison ne dépend d'aucun prestataire : il dépend d'une
+règle. Sans destination, la réponse ne statue pas — il dépend du pays, de la
+province, de la boutique et de la catégorie, et deviner produirait la moitié du
+temps une promesse fausse.
+
+Les sondes `/api/v1/health` et `/api/v1/ready` accompagnent l'API plutôt que la
+racine du processus : un client de la v1 n'a pas à connaître le serveur qui
+l'héberge. `/ready` dit aussi si le prestataire de paiement est **réel** — une
+sonde qui laisserait croire qu'un prestataire agréé est raccordé tromperait la
+personne d'astreinte au pire moment.
+
 ## Le paiement à la livraison
 
 Un cas à part, et le plus important au Tchad.
