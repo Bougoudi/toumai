@@ -4,6 +4,7 @@
  */
 import { api, esc, money, formatDate, label, session, statusPill, stars, productImage, svg, emptyState, toast } from './core.js';
 import { productCard, storeCard, breadcrumb, stepper, orderTimeline, trackingTimeline, pagination, featureBlock } from './components.js';
+import { t } from './i18n.js';
 
 // ── Accueil ────────────────────────────────────────────────────────────────
 export async function home() {
@@ -540,29 +541,27 @@ export async function store(params) {
 }
 
 // ── Panier ─────────────────────────────────────────────────────────────────
-const ISSUES = {
-  PRODUCT_UNAVAILABLE: 'Ce produit n’est plus disponible',
-  VARIANT_UNAVAILABLE: 'Cette variante n’est plus disponible',
-  INSUFFICIENT_STOCK: 'Stock insuffisant',
-  PRICE_CHANGED: 'Le prix a changé depuis l’ajout',
-  BELOW_MIN_ORDER_QTY: 'Sous la quantité minimale de commande',
-};
+/**
+ * Anomalies d'une ligne de panier. Le serveur les renvoie sous forme de code :
+ * elles passent donc par le dictionnaire, comme les statuts de commande.
+ */
+const issueLabel = (code) => t(`cart.issue.${code}`);
 
 export async function cart() {
   const data = await api('/cart');
   if (!data.items.length) {
-    return `<h1>Mon panier</h1>${emptyState({
-      title: 'Votre panier est vide',
-      body: 'Parcourez le catalogue pour trouver un fournisseur au Tchad ou au Cameroun.',
-      actionLabel: 'Explorer le catalogue',
+    return `<h1>${esc(t('cart.title'))}</h1>${emptyState({
+      title: t('cart.emptyTitle'),
+      body: t('cart.emptyBody'),
+      actionLabel: t('cart.emptyAction'),
       actionHref: '/touma/produits',
       iconName: 'cart',
     })}`;
   }
 
   return `
-    <h1>Mon panier</h1>
-    <p class="muted small">${data.itemCount} article(s) · ${data.stores.length} boutique(s)</p>
+    <h1>${esc(t('cart.title'))}</h1>
+    <p class="muted small">${esc(t('cart.summaryCount', { items: data.itemCount, stores: data.stores.length }))}</p>
 
     <div class="grid grid-2 mt-6">
       <div class="stack">
@@ -580,40 +579,40 @@ export async function cart() {
                     <div>
                       <a href="/touma/produits/${esc(item.slug)}" data-link><strong>${esc(item.title)}</strong></a>
                       ${item.variantName ? `<div class="small muted">${esc(item.variantName)}</div>` : ''}
-                      <div class="small muted">${money(item.unitPrice, item.currency)} l'unité · ${item.stock} en stock</div>
-                      ${item.issues.map((i) => `<div class="small"><span class="badge badge-warn">${esc(ISSUES[i] ?? i)}</span></div>`).join('')}
+                      <div class="small muted">${esc(t('cart.unitPrice', { price: money(item.unitPrice, item.currency) }))} · ${esc(t('cart.inStock', { count: item.stock }))}</div>
+                      ${item.issues.map((i) => `<div class="small"><span class="badge badge-warn">${esc(issueLabel(i))}</span></div>`).join('')}
                       <div class="cart-line-actions">
                         <div class="qty">
-                          <button type="button" data-qty="-1" data-item="${esc(item.id)}" aria-label="Diminuer la quantité">−</button>
-                          <input type="number" min="0" value="${item.quantity}" data-item-input="${esc(item.id)}" aria-label="Quantité pour ${esc(item.title)}" />
-                          <button type="button" data-qty="1" data-item="${esc(item.id)}" aria-label="Augmenter la quantité">+</button>
+                          <button type="button" data-qty="-1" data-item="${esc(item.id)}" aria-label="${esc(t('cart.decrease'))}">−</button>
+                          <input type="number" min="0" value="${item.quantity}" data-item-input="${esc(item.id)}" aria-label="${esc(t('cart.quantityFor', { title: item.title }))}" />
+                          <button type="button" data-qty="1" data-item="${esc(item.id)}" aria-label="${esc(t('cart.increase'))}">+</button>
                         </div>
                         <strong>${money(item.lineTotal, item.currency)}</strong>
-                        <button class="btn btn-ghost btn-sm" data-remove-item="${esc(item.id)}">Retirer</button>
+                        <button class="btn btn-ghost btn-sm" data-remove-item="${esc(item.id)}">${esc(t('cart.remove'))}</button>
                       </div>
                     </div>
                   </div>`,
                 )
                 .join('')}
-              <div class="summary-line mt-6"><span class="muted">Sous-total ${esc(group.store.name)}</span><strong>${money(group.subtotal, group.currency)}</strong></div>
+              <div class="summary-line mt-6"><span class="muted">${esc(t('cart.subtotalFor', { store: group.store.name }))}</span><strong>${money(group.subtotal, group.currency)}</strong></div>
             </section>`,
           )
           .join('')}
-        <button class="btn btn-ghost btn-sm" data-clear-cart>Vider le panier</button>
+        <button class="btn btn-ghost btn-sm" data-clear-cart>${esc(t('cart.clear'))}</button>
       </div>
 
       <aside>
         <div class="card buybox">
-          <h2 style="font-size:var(--text-md)">Récapitulatif</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('cart.recap'))}</h2>
           <div class="summary">
-            <div class="summary-line"><span>Articles (${data.itemCount})</span><span>${money(data.subtotal, data.currency)}</span></div>
-            <div class="summary-line"><span>Livraison</span><span class="muted small">calculée à l'étape suivante</span></div>
-            <div class="summary-line summary-total"><span>Sous-total</span><span>${money(data.subtotal, data.currency)}</span></div>
+            <div class="summary-line"><span>${esc(t('cart.itemsLine', { count: data.itemCount }))}</span><span>${money(data.subtotal, data.currency)}</span></div>
+            <div class="summary-line"><span>${esc(t('cart.shipping'))}</span><span class="muted small">${esc(t('cart.shippingLater'))}</span></div>
+            <div class="summary-line summary-total"><span>${esc(t('cart.subtotal'))}</span><span>${money(data.subtotal, data.currency)}</span></div>
           </div>
           ${data.checkoutReady
-            ? `<a class="btn btn-accent btn-block btn-lg mt-6" href="/touma/checkout" data-link>Continuer vers le paiement</a>`
-            : `<div class="alert alert-warning mt-6">Corrigez les lignes signalées avant de continuer.</div>`}
-          <p class="xs muted mt-6" style="margin-bottom:0">Une commande distincte est créée par boutique : chaque vendeur gère sa préparation et son expédition.</p>
+            ? `<a class="btn btn-accent btn-block btn-lg mt-6" href="/touma/checkout" data-link>${esc(t('cart.checkout'))}</a>`
+            : `<div class="alert alert-warning mt-6">${esc(t('cart.fixIssues'))}</div>`}
+          <p class="xs muted mt-6" style="margin-bottom:0">${esc(t('cart.onePerStore'))}</p>
         </div>
       </aside>
     </div>`;
@@ -1041,10 +1040,10 @@ export async function orders(_params, query) {
   const result = await api(`/orders?scope=buyer&limit=25${status ? `&status=${status}` : ''}`);
 
   if (!result.items.length && !status) {
-    return `<h1>Mes commandes</h1>${emptyState({
-      title: 'Aucune commande pour l’instant',
-      body: 'Vos achats et leur suivi apparaîtront ici.',
-      actionLabel: 'Explorer le catalogue',
+    return `<h1>${esc(t('orders.title'))}</h1>${emptyState({
+      title: t('orders.emptyTitle'),
+      body: t('orders.emptyBody'),
+      actionLabel: t('orders.emptyAction'),
       actionHref: '/touma/produits',
       iconName: 'box',
     })}`;
@@ -1052,11 +1051,11 @@ export async function orders(_params, query) {
 
   const filters = ['', 'PENDING', 'PAID', 'SHIPPED', 'DELIVERED', 'COMPLETED'];
   return `
-    <h1>Mes commandes</h1>
+    <h1>${esc(t('orders.title'))}</h1>
     <div class="chip-row" style="margin-bottom:var(--space-5)">
       ${filters
         .map(
-          (f) => `<a class="chip" href="/touma/commandes${f ? `?statut=${f}` : ''}" data-link aria-current="${(status ?? '') === f}">${f ? esc(label(f)) : 'Toutes'}</a>`,
+          (f) => `<a class="chip" href="/touma/commandes${f ? `?statut=${f}` : ''}" data-link aria-current="${(status ?? '') === f}">${f ? esc(label(f)) : esc(t('orders.filterAll'))}</a>`,
         )
         .join('')}
     </div>
@@ -1068,21 +1067,21 @@ export async function orders(_params, query) {
                 <div class="row-between">
                   <div>
                     <strong>${esc(o.orderNumber)}</strong>
-                    ${o.crossBorder ? '<span class="badge badge-cross">Transfrontalier</span>' : ''}
-                    <div class="small muted">${esc(o.store.name)} · ${formatDate(o.createdAt)} · ${o.itemCount} article(s)</div>
+                    ${o.crossBorder ? `<span class="badge badge-cross">${esc(t('orders.crossBorder'))}</span>` : ''}
+                    <div class="small muted">${esc(o.store.name)} · ${formatDate(o.createdAt)} · ${esc(t('orders.itemCount', { count: o.itemCount }))}</div>
                   </div>
                   <div class="row" style="gap:var(--space-3)">
                     ${statusPill(o.status)}
                     <strong>${money(o.total, o.currency)}</strong>
-                    <a class="btn btn-secondary btn-sm" href="/touma/commandes/${esc(o.id)}" data-link>Détail</a>
+                    <a class="btn btn-secondary btn-sm" href="/touma/commandes/${esc(o.id)}" data-link>${esc(t('orders.detail'))}</a>
                   </div>
                 </div>
-                ${o.shipment ? `<div class="small muted mt-6">Suivi ${esc(o.shipment.trackingNumber)} · ${esc(label(o.shipment.status))}</div>` : ''}
+                ${o.shipment ? `<div class="small muted mt-6">${esc(t('orders.tracking', { number: o.shipment.trackingNumber }))} · ${esc(label(o.shipment.status))}</div>` : ''}
               </article>`,
             )
             .join('')}
         </div>`
-      : emptyState({ title: 'Aucune commande dans ce statut', body: 'Essayez un autre filtre.', iconName: 'box' })}`;
+      : emptyState({ title: t('orders.noneInStatus'), body: t('orders.tryAnotherFilter'), iconName: 'box' })}`;
 }
 
 export async function order(params) {

@@ -158,6 +158,49 @@ const FR = {
 
   // Marque
   'brand.tagline': 'Connecter le commerce africain',
+
+  // Panier — l'écran où un acheteur décide avec son argent.
+  'cart.title': 'Mon panier',
+  'cart.emptyTitle': 'Votre panier est vide',
+  'cart.emptyBody': 'Parcourez le catalogue pour trouver un fournisseur au Tchad ou au Cameroun.',
+  'cart.emptyAction': 'Explorer le catalogue',
+  'cart.summaryCount': '{items} article(s) · {stores} boutique(s)',
+  'cart.unitPrice': '{price} l’unité',
+  'cart.inStock': '{count} en stock',
+  'cart.decrease': 'Diminuer la quantité',
+  'cart.increase': 'Augmenter la quantité',
+  'cart.quantityFor': 'Quantité pour {title}',
+  'cart.remove': 'Retirer',
+  'cart.subtotalFor': 'Sous-total {store}',
+  'cart.clear': 'Vider le panier',
+  'cart.recap': 'Récapitulatif',
+  'cart.itemsLine': 'Articles ({count})',
+  'cart.shipping': 'Livraison',
+  'cart.shippingLater': 'calculée à l’étape suivante',
+  'cart.subtotal': 'Sous-total',
+  'cart.checkout': 'Continuer vers le paiement',
+  'cart.fixIssues': 'Corrigez les lignes signalées avant de continuer.',
+  'cart.onePerStore': 'Une commande distincte est créée par boutique : chaque vendeur gère sa préparation et son expédition.',
+
+  // Anomalies d'une ligne de panier, renvoyées par le serveur sous forme de code.
+  'cart.issue.PRODUCT_UNAVAILABLE': 'Ce produit n’est plus disponible',
+  'cart.issue.VARIANT_UNAVAILABLE': 'Cette variante n’est plus disponible',
+  'cart.issue.INSUFFICIENT_STOCK': 'Stock insuffisant',
+  'cart.issue.PRICE_CHANGED': 'Le prix a changé depuis l’ajout',
+  'cart.issue.BELOW_MIN_ORDER_QTY': 'Sous la quantité minimale de commande',
+
+  // Liste des commandes.
+  'orders.title': 'Mes commandes',
+  'orders.emptyTitle': 'Aucune commande pour l’instant',
+  'orders.emptyBody': 'Vos achats et leur suivi apparaîtront ici.',
+  'orders.emptyAction': 'Explorer le catalogue',
+  'orders.filterAll': 'Toutes',
+  'orders.crossBorder': 'Transfrontalier',
+  'orders.itemCount': '{count} article(s)',
+  'orders.detail': 'Détail',
+  'orders.tracking': 'Suivi {number}',
+  'orders.noneInStatus': 'Aucune commande dans ce statut',
+  'orders.tryAnotherFilter': 'Essayez un autre filtre.',
 };
 
 /**
@@ -225,6 +268,46 @@ const AR = {
   'error.unauthorized': 'سجّل الدخول للمتابعة.',
 
   'brand.tagline': 'ربط التجارة الأفريقية',
+
+  'cart.title': 'سلتي',
+  'cart.emptyTitle': 'سلتك فارغة',
+  'cart.emptyBody': 'تصفّح الكتالوج للعثور على مورّد في تشاد أو الكاميرون.',
+  'cart.emptyAction': 'استكشاف الكتالوج',
+  'cart.summaryCount': '{items} منتج · {stores} متجر',
+  'cart.unitPrice': '{price} للوحدة',
+  'cart.inStock': '{count} متوفّر',
+  'cart.decrease': 'إنقاص الكمية',
+  'cart.increase': 'زيادة الكمية',
+  'cart.quantityFor': 'الكمية لـ {title}',
+  'cart.remove': 'إزالة',
+  'cart.subtotalFor': 'المجموع الفرعي لـ {store}',
+  'cart.clear': 'إفراغ السلة',
+  'cart.recap': 'الملخّص',
+  'cart.itemsLine': 'المنتجات ({count})',
+  'cart.shipping': 'الشحن',
+  'cart.shippingLater': 'يُحتسب في الخطوة التالية',
+  'cart.subtotal': 'المجموع الفرعي',
+  'cart.checkout': 'المتابعة إلى الدفع',
+  'cart.fixIssues': 'صحّح الأسطر المُشار إليها قبل المتابعة.',
+  'cart.onePerStore': 'يُنشأ طلب منفصل لكل متجر: كل بائع يتولّى تحضيره وشحنه.',
+
+  'cart.issue.PRODUCT_UNAVAILABLE': 'هذا المنتج لم يعد متاحاً',
+  'cart.issue.VARIANT_UNAVAILABLE': 'هذا الخيار لم يعد متاحاً',
+  'cart.issue.INSUFFICIENT_STOCK': 'المخزون غير كافٍ',
+  'cart.issue.PRICE_CHANGED': 'تغيّر السعر منذ الإضافة',
+  'cart.issue.BELOW_MIN_ORDER_QTY': 'أقل من الحد الأدنى للطلب',
+
+  'orders.title': 'طلباتي',
+  'orders.emptyTitle': 'لا توجد طلبات بعد',
+  'orders.emptyBody': 'ستظهر هنا مشترياتك وتتبّعها.',
+  'orders.emptyAction': 'استكشاف الكتالوج',
+  'orders.filterAll': 'الكل',
+  'orders.crossBorder': 'عبر الحدود',
+  'orders.itemCount': '{count} منتج',
+  'orders.detail': 'التفاصيل',
+  'orders.tracking': 'التتبّع {number}',
+  'orders.noneInStatus': 'لا توجد طلبات بهذه الحالة',
+  'orders.tryAnotherFilter': 'جرّب مرشّحاً آخر.',
 };
 
 /**

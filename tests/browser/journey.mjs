@@ -11,8 +11,13 @@
  *
  *   npm i -D playwright && npx playwright install chromium
  *   npm run seed
- *   npm run dev                       # dans un autre terminal
+ *   TOUMA_API_RATE_LIMIT=6000 npm run dev   # dans un autre terminal
  *   TOUMA_URL=http://127.0.0.1:3000/touma/ npm run test:browser
+ *
+ * La marge sur la limitation de débit est **requise** : le parcours émet
+ * plusieurs milliers de requêtes en quelques minutes, et il refuse de démarrer
+ * si le serveur ne la lui laisse pas. La valeur par défaut (300/minute) reste
+ * celle de la production.
  *
  * Les captures sont écrites dans SCR (défaut : ./.captures).
  */
@@ -38,6 +43,53 @@ const OUT = process.env.SCR ?? '.captures';
 const errors = [];
 
 const executablePath = process.env.CHROMIUM_PATH;
+
+/**
+ * Le parcours émet plusieurs milliers de requêtes en quelques minutes.
+ *
+ * La limitation de débit (300/minute par défaut) est une protection qui doit
+ * **rester active en production** : elle n'est pas en cause. Mais quand elle
+ * frappe au milieu d'un scénario, la page suivante n'a pas ses données et
+ * l'étape échoue sur un message qui accuse le produit — « le vendeur ne voit
+ * pas la demande de retour » — alors que la cause est un 429 quinze requêtes
+ * plus tôt. Un signal qui désigne le mauvais coupable est pire qu'un échec
+ * franc.
+ *
+ * On vérifie donc la condition **avant** de commencer, et on refuse de partir
+ * plutôt que de produire un diagnostic faux. L'en-tête vient de la norme
+ * (`standardHeaders: 'draft-7'`), donc du serveur lui-même : rien n'est
+ * supposé.
+ */
+const LIMITE_REQUISE = 2000;
+try {
+  const sonde = await fetch(`${BASE.replace(/\/touma$/, '')}/api/v1/`);
+  // La norme draft-7 envoie un en-tête combiné — « limit=300, remaining=236,
+  // reset=34 » — et non un `RateLimit-Limit`. Les formes plus anciennes sont
+  // acceptées aussi : on lit ce que le serveur envoie, pas ce qu'on espère.
+  const combine = sonde.headers.get('ratelimit') ?? '';
+  const annoncee = Number(
+    /limit=(\d+)/.exec(combine)?.[1] ??
+      sonde.headers.get('ratelimit-limit') ??
+      sonde.headers.get('x-ratelimit-limit') ??
+      0,
+  );
+  if (annoncee > 0 && annoncee < LIMITE_REQUISE) {
+    console.error(
+      `La limitation de débit du serveur est à ${annoncee} requêtes/minute ; ce parcours en émet davantage.\n` +
+        'Sans marge, une étape échouera sur un message qui accuse le produit au lieu de la limitation.\n' +
+        'Relancez le serveur avec une marge — la valeur par défaut, elle, ne bouge pas :\n' +
+        `  TOUMA_API_RATE_LIMIT=${LIMITE_REQUISE * 3} npm run dev`,
+    );
+    process.exit(1);
+  }
+} catch (err) {
+  console.error(
+    `L'application ne répond pas sur ${BASE} : ${err instanceof Error ? err.message : String(err)}\n` +
+      '  npm run dev            # dans un autre terminal',
+  );
+  process.exit(1);
+}
+
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 await mkdir(OUT, { recursive: true });
 
@@ -1011,6 +1063,45 @@ await step('langue : aucun débordement en écriture de droite à gauche', async
     }
     await vue.close();
   }
+});
+
+await step('langue : le panier et les commandes, entièrement en arabe', async () => {
+  // Un écran à moitié traduit est pire qu'un écran en français : il a l'air
+  // cassé. Ces deux-là sont ceux où un acheteur décide avec son argent, et ils
+  // sont donc vérifiés **sans résidu**.
+  // Le panier et les commandes exigent une session : on emploie celle de
+  // l'acheteur du parcours, et on repasse en français à la fin — les étapes
+  // suivantes lisent des libellés français.
+  const ar = await sessionFor('acheteur@touma.dev');
+  await ar.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await ar.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+  await ar.setViewportSize({ width: 390, height: 844 });
+
+  for (const [chemin, attendu, residus] of [
+    [
+      '/panier',
+      /سلتي|سلتك فارغة/,
+      ['Récapitulatif', 'Sous-total', 'Continuer vers le paiement', 'Retirer', 'Vider le panier', 'Mon panier', 'Votre panier est vide'],
+    ],
+    ['/commandes', /طلباتي/, ['Mes commandes', 'Toutes', 'Détail', 'Aucune commande']],
+  ]) {
+    await ar.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+    await ar.waitForTimeout(700);
+
+    if ((await ar.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`${chemin} : le sens d’écriture n’est pas rtl`);
+    const corps = ((await ar.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+    if (!attendu.test(corps)) throw new Error(`${chemin} : aucun texte arabe attendu trouvé`);
+
+    const restes = residus.filter((r) => corps.includes(r));
+    if (restes.length > 0) throw new Error(`${chemin} : résidus français — ${restes.join(', ')}`);
+
+    if (await ar.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) {
+      throw new Error(`${chemin} : débordement horizontal en arabe`);
+    }
+  }
+  await ar.screenshot({ path: `${OUT}/53-panier-arabe.png` });
+  await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+  await ar.setViewportSize({ width: 1280, height: 900 });
 });
 
 await step('langue : les statuts de commande sont traduits partout à la fois', async () => {
