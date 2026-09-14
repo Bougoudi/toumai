@@ -1078,6 +1078,12 @@ await step('langue : le parcours d’achat entier en arabe, sans résidu', async
   await ar.setViewportSize({ width: 390, height: 844 });
 
   for (const [chemin, attendu, residus] of [
+    // L'accueil : la première chose qu'un visiteur voit.
+    [
+      '/',
+      /البيع والشراء بين البلدان الأفريقية/,
+      ['Acheter et vendre', 'Pourquoi TOUMA', 'Comment ça marche', 'Vous achetez', 'Vous vendez', 'Créer mon compte', 'Explorer le catalogue'],
+    ],
     [
       '/panier',
       /سلتي|سلتك فارغة/,

@@ -22,28 +22,25 @@ export async function home() {
     <section class="hero">
       <div class="hero-grid">
         <div>
-          <span class="corridor-pill">🇹🇩 Tchad ↔ 🇨🇲 Cameroun · corridor pilote ouvert</span>
-          <h1>Acheter et vendre entre pays africains, simplement.</h1>
-          <p>
-            TOUMA connecte fournisseurs, commerçants et acheteurs d'un pays à l'autre : catalogue, paiement, transport et
-            suivi de bout en bout.
-          </p>
+          <span class="corridor-pill">${esc(t('home.corridor'))}</span>
+          <h1>${esc(t('home.headline'))}</h1>
+          <p>${esc(t('home.lede'))}</p>
           <div class="row">
-            <a class="btn btn-accent btn-lg" href="/touma/produits" data-link>Explorer le catalogue</a>
-            <a class="btn btn-secondary btn-lg" href="/touma/inscription" data-link>Ouvrir une boutique</a>
+            <a class="btn btn-accent btn-lg" href="/touma/produits" data-link>${esc(t('home.exploreCatalog'))}</a>
+            <a class="btn btn-secondary btn-lg" href="/touma/inscription" data-link>${esc(t('home.openStore'))}</a>
           </div>
         </div>
         <div class="hero-visual" aria-hidden="true">
-          <div class="hero-card"><span class="feature-icon">${svg('store')}</span><span><strong>${verifiedStores.total ?? verifiedStores.items.length} boutique(s) vérifiée(s)</strong><span>Entreprises contrôlées par notre équipe</span></span></div>
-          <div class="hero-card"><span class="feature-icon">${svg('box')}</span><span><strong>${latest.total} produit(s) en ligne</strong><span>Gros et détail, ${esc(corridor)}</span></span></div>
-          <div class="hero-card"><span class="feature-icon">${svg('truck')}</span><span><strong>Livraison suivie</strong><span>Tarif et délai calculés pour le corridor réel</span></span></div>
+          <div class="hero-card"><span class="feature-icon">${svg('store')}</span><span><strong>${esc(t('home.verifiedCount', { count: verifiedStores.total ?? verifiedStores.items.length }))}</strong><span>${esc(t('home.verifiedCountHint'))}</span></span></div>
+          <div class="hero-card"><span class="feature-icon">${svg('box')}</span><span><strong>${esc(t('home.productCount', { count: latest.total }))}</strong><span>${esc(t('home.productCountHint', { corridor }))}</span></span></div>
+          <div class="hero-card"><span class="feature-icon">${svg('truck')}</span><span><strong>${esc(t('home.trackedDelivery'))}</strong><span>${esc(t('home.trackedDeliveryHint'))}</span></span></div>
         </div>
       </div>
     </section>
 
     ${topCategories.length
       ? `<section class="section">
-          <div class="section-head"><h2>Catégories</h2><a class="small" href="/touma/produits" data-link>Tout voir</a></div>
+          <div class="section-head"><h2>${esc(t('home.categories'))}</h2><a class="small" href="/touma/produits" data-link>${esc(t('home.seeAll'))}</a></div>
           <div class="chip-row">
             ${topCategories.map((c) => `<a class="chip" href="/touma/produits?category=${esc(c.slug)}" data-link>${esc(c.name)} <span class="muted">${c.productCount}</span></a>`).join('')}
           </div>
@@ -53,8 +50,8 @@ export async function home() {
     ${popular.items.length
       ? `<section class="section">
           <div class="section-head">
-            <h2>Produits populaires</h2>
-            <p>Les plus commandés sur le corridor</p>
+            <h2>${esc(t('home.popular'))}</h2>
+            <p>${esc(t('home.popularHint'))}</p>
           </div>
           <div class="grid grid-products">${popular.items.map((p) => productCard(p)).join('')}</div>
         </section>`
@@ -63,8 +60,8 @@ export async function home() {
     ${verifiedStores.items.length
       ? `<section class="section">
           <div class="section-head">
-            <h2>Boutiques vérifiées</h2>
-            <a class="small" href="/touma/boutiques" data-link>Toutes les boutiques</a>
+            <h2>${esc(t('home.verifiedStores'))}</h2>
+            <a class="small" href="/touma/boutiques" data-link>${esc(t('home.allStores'))}</a>
           </div>
           <div class="grid grid-cards">${verifiedStores.items.map(storeCard).join('')}</div>
         </section>`
@@ -72,49 +69,49 @@ export async function home() {
 
     ${latest.items.length
       ? `<section class="section">
-          <div class="section-head"><h2>Derniers produits publiés</h2></div>
+          <div class="section-head"><h2>${esc(t('home.latest'))}</h2></div>
           <div class="grid grid-products">${latest.items.map((p) => productCard(p)).join('')}</div>
         </section>`
-      : emptyState({ title: 'Le catalogue démarre', body: 'Aucun produit publié pour le moment. Ouvrez une boutique et publiez le premier.', actionLabel: 'Ouvrir une boutique', actionHref: '/touma/inscription', iconName: 'store' })}
+      : emptyState({ title: t('home.emptyTitle'), body: t('home.emptyBody'), actionLabel: t('home.openStore'), actionHref: '/touma/inscription', iconName: 'store' })}
 
     <section class="section">
-      <div class="section-head"><h2>Pourquoi TOUMA ?</h2></div>
+      <div class="section-head"><h2>${esc(t('home.why'))}</h2></div>
       <div class="grid grid-cards">
-        <div class="card">${featureBlock('store', 'Vendeurs identifiés', 'Chaque boutique déclare son pays, sa ville et peut faire vérifier son entreprise par notre équipe (Touma Verified).')}</div>
-        <div class="card">${featureBlock('card', 'Paiement encadré', 'Le paiement est confirmé par le serveur TOUMA auprès du prestataire, jamais par le navigateur. Chaque étape est tracée.')}</div>
-        <div class="card">${featureBlock('truck', 'Transport transfrontalier', 'Tarif et délai calculés pour le corridor réel, étiquette et numéro de suivi générés, colis suivi jusqu’à la livraison.')}</div>
-        <div class="card">${featureBlock('shield', 'Litiges arbitrés', 'Un problème sur une commande ? Ouvrez un litige : messages, preuves et décision motivée, consignés dans un journal d’audit.')}</div>
+        <div class="card">${featureBlock('store', t('home.why.sellers'), t('home.why.sellersBody'))}</div>
+        <div class="card">${featureBlock('card', t('home.why.payment'), t('home.why.paymentBody'))}</div>
+        <div class="card">${featureBlock('truck', t('home.why.shipping'), t('home.why.shippingBody'))}</div>
+        <div class="card">${featureBlock('shield', t('home.why.disputes'), t('home.why.disputesBody'))}</div>
       </div>
     </section>
 
     <section class="section">
-      <div class="section-head"><h2>Comment ça marche ?</h2></div>
+      <div class="section-head"><h2>${esc(t('home.how'))}</h2></div>
       <div class="grid grid-2">
         <div class="card">
-          <h3 style="margin-bottom:var(--space-4)">Vous achetez</h3>
+          <h3 style="margin-bottom:var(--space-4)">${esc(t('home.youBuy'))}</h3>
           <div class="steps">
-            <div class="step"><div><h3>Trouvez un fournisseur</h3><p>Filtrez par pays, catégorie, prix et disponibilité.</p></div></div>
-            <div class="step"><div><h3>Commandez et payez</h3><p>Le prix, le transport et le total sont affichés avant validation.</p></div></div>
-            <div class="step"><div><h3>Suivez la livraison</h3><p>Numéro de suivi et étapes du colis jusqu’à réception.</p></div></div>
+            <div class="step"><div><h3>${esc(t('home.buy1'))}</h3><p>${esc(t('home.buy1Body'))}</p></div></div>
+            <div class="step"><div><h3>${esc(t('home.buy2'))}</h3><p>${esc(t('home.buy2Body'))}</p></div></div>
+            <div class="step"><div><h3>${esc(t('home.buy3'))}</h3><p>${esc(t('home.buy3Body'))}</p></div></div>
           </div>
         </div>
         <div class="card">
-          <h3 style="margin-bottom:var(--space-4)">Vous vendez</h3>
+          <h3 style="margin-bottom:var(--space-4)">${esc(t('home.youSell'))}</h3>
           <div class="steps">
-            <div class="step"><div><h3>Ouvrez votre boutique</h3><p>Nom, pays, ville : votre vitrine est en ligne immédiatement.</p></div></div>
-            <div class="step"><div><h3>Publiez vos produits</h3><p>Prix, stock, quantité minimale de commande, variantes.</p></div></div>
-            <div class="step"><div><h3>Expédiez et encaissez</h3><p>Créez l’expédition en un clic, suivez vos ventes et votre stock.</p></div></div>
+            <div class="step"><div><h3>${esc(t('home.sell1'))}</h3><p>${esc(t('home.sell1Body'))}</p></div></div>
+            <div class="step"><div><h3>${esc(t('home.sell2'))}</h3><p>${esc(t('home.sell2Body'))}</p></div></div>
+            <div class="step"><div><h3>${esc(t('home.sell3'))}</h3><p>${esc(t('home.sell3Body'))}</p></div></div>
           </div>
         </div>
       </div>
     </section>
 
     <section class="cta-band">
-      <h2>Prêt à commercer entre ${esc(corridor)} ?</h2>
-      <p class="muted">Créez un compte gratuitement : le même compte permet d'acheter et de vendre.</p>
+      <h2>${esc(t('home.ctaTitle', { corridor }))}</h2>
+      <p class="muted">${esc(t('home.ctaBody'))}</p>
       <div class="row" style="justify-content:center">
-        <a class="btn btn-accent btn-lg" href="/touma/inscription" data-link>Créer mon compte</a>
-        <a class="btn btn-secondary btn-lg" href="/touma/produits" data-link>Voir le catalogue</a>
+        <a class="btn btn-accent btn-lg" href="/touma/inscription" data-link>${esc(t('home.createAccount'))}</a>
+        <a class="btn btn-secondary btn-lg" href="/touma/produits" data-link>${esc(t('home.seeCatalog'))}</a>
       </div>
     </section>`;
 }
