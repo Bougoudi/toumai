@@ -873,6 +873,75 @@ await step('administration : TOUMA Intelligence', async () => {
   if (!admin.url().includes('jours=7')) throw new Error('le changement de période n’a pas pris');
 });
 
+// ── Le pays, vu de l'intérieur (V17) ────────────────────────────────────────
+
+await step('provinces : les 23 pages existent, avec leur nom arabe', async () => {
+  await page.goto(`${BASE}/provinces`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#view .card', { timeout: 20000 });
+
+  const cartes = await page.locator('#view .grid-3 > a.card').count();
+  if (cartes !== 23) throw new Error(`23 provinces attendues, ${cartes} affichées`);
+
+  // Le Tchad a deux langues officielles ; les 23 provinces portent leur nom
+  // arabe, et la page doit le rendre dans le bon sens d'écriture.
+  const rtl = await page.locator('#view [dir="rtl"][lang="ar"]').count();
+  if (rtl !== 23) throw new Error(`nom arabe attendu sur les 23 provinces, ${rtl} rendus`);
+  await page.screenshot({ path: `${OUT}/45-provinces.png` });
+});
+
+await step('province : sa page dit ce qui existe, et ce qui n’existe pas', async () => {
+  await page.goto(`${BASE}/provinces`, { waitUntil: 'networkidle' });
+  await page.locator('#view .grid-3 > a.card').first().click();
+  await page.waitForSelector('#view h1', { timeout: 20000 });
+
+  const body = ((await page.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+  if (!/Localités recensées/.test(body)) throw new Error('le décompte des localités est absent');
+  if (!/GeoNames/.test(body)) throw new Error('la source géographique n’est pas créditée');
+  // Le trou est annoncé, pas comblé.
+  if (!/absentes plutôt qu’inventées/.test(body)) throw new Error('l’absence des sous-préfectures n’est pas dite');
+
+  // Livraison : soit des délais déclarés, soit « estimation indisponible ».
+  // Jamais un délai sans zone.
+  const sansZone = /estimation indisponible/i.test(body);
+  const avecDelai = /jours/.test(body);
+  if (sansZone && avecDelai) throw new Error('un délai est affiché alors qu’aucune zone n’est déclarée');
+  if (!sansZone && !avecDelai) throw new Error('ni délai ni motif d’indisponibilité');
+  await page.screenshot({ path: `${OUT}/46-province.png` });
+});
+
+await step('administration : tableau de bord national, zéro compris', async () => {
+  const admin = await sessionFor('admin@touma.dev');
+  await admin.goto(`${BASE}/admin/national`, { waitUntil: 'networkidle' });
+  await admin.waitForSelector('.admin-sidebar a[aria-current="page"]', { timeout: 20000 });
+
+  const lignes = await admin.locator('#view table tbody tr').count();
+  if (lignes !== 23) throw new Error(`23 lignes attendues, ${lignes} affichées`);
+
+  const body = ((await admin.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+  // La distinction qui compte, et qu'on perdrait en fusionnant les deux états.
+  if (!/aucune zone déclarée/.test(body)) throw new Error('l’état « aucune zone » n’est pas rendu');
+  if (!/n’est pas « non desservie »/.test(body)) throw new Error('la distinction n’est pas expliquée');
+  if (!/jamais additionnés entre devises/.test(body)) throw new Error('la règle des devises n’est pas annoncée');
+  await admin.screenshot({ path: `${OUT}/47-national.png` });
+});
+
+await step('géographie : pas de débordement horizontal sur mobile', async () => {
+  const admin = await sessionFor('admin@touma.dev');
+  for (const [width, height] of [
+    [360, 780],
+    [390, 844],
+  ]) {
+    await admin.setViewportSize({ width, height });
+    for (const path of ['/provinces', '/admin/national']) {
+      await admin.goto(`${BASE}${path}`, { waitUntil: 'networkidle' });
+      await admin.waitForTimeout(600);
+      const overflow = await admin.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+      if (overflow) throw new Error(`débordement horizontal sur ${path} à ${width}px`);
+    }
+  }
+  await admin.setViewportSize({ width: 1280, height: 900 });
+});
+
 // ── Finance : ce qui est dû, quand, et pourquoi pas encore (V20) ────────────
 
 await step('vendeur : l’écran Finance dit ce qui lui revient, par devise', async () => {

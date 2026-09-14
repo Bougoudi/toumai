@@ -82,6 +82,12 @@ const ROUTES = [
   { path: '/touma/vendeur/litiges/:id', module: 'disputes', name: 'sellerDisputeDetail', auth: true, role: 'SELLER' },
   { path: '/touma/admin/litiges/:id', module: 'disputes', name: 'adminDisputeDetail', auth: true, role: 'ADMIN' },
 
+  // Le pays, vu de l'intérieur : pages publiques par province et tableau de
+  // bord national. « Provinces » avant le motif générique.
+  { path: '/touma/provinces', module: 'geo', name: 'provinces' },
+  { path: '/touma/provinces/:code', module: 'geo', name: 'province' },
+  { path: '/touma/admin/national', module: 'geo', name: 'national', auth: true, role: 'ADMIN' },
+
   // Finance : ce qui est dû, quand, et pourquoi pas encore. Le moteur de
   // règlement existait ; aucun écran ne le montrait.
   { path: '/touma/vendeur/finance', module: 'finance', name: 'sellerFinance', auth: true, role: 'SELLER' },
@@ -152,6 +158,7 @@ const LOADERS = {
   sourcing: () => import('./views-sourcing.js'),
   disputes: () => import('./views-disputes.js'),
   finance: () => import('./views-finance.js'),
+  geo: () => import('./views-geo.js'),
 };
 
 async function loadModule(name) {

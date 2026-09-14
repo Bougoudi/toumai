@@ -20,6 +20,18 @@ geoRouter.get(
   }),
 );
 
+/**
+ * Fiche d'une province, par identifiant **ou par code officiel**.
+ *
+ * Le code accepté n'est pas un raccourci de confort : une page publique de
+ * province doit avoir une URL stable et lisible — `/provinces/21` plutôt qu'un
+ * cuid — pour être partagée et indexée.
+ */
+geoRouter.get(
+  '/provinces/:idOrCode',
+  asyncHandler(async (req, res) => res.json(await geoService.province(req.params.idOrCode, str(req.query.country) ?? 'TD'))),
+);
+
 geoRouter.get(
   '/provinces/:id/departments',
   asyncHandler(async (req, res) => res.json(await geoService.departments(req.params.id))),

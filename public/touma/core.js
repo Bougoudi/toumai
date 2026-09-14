@@ -207,6 +207,7 @@ export const icon = {
   inbox: '<path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M4.5 5h15L21 13v6H3v-6z"/>',
   spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
   back: '<path d="M19 12H5"/><path d="m11 6-6 6 6 6"/>',
+  map: '<path d="m9 4 6 2 5-2v14l-5 2-6-2-5 2V6z"/><path d="M9 4v14M15 6v14"/>',
 };
 
 export const svg = (name, cls = '') =>

@@ -6,6 +6,7 @@ import { asyncHandler, parseBody } from '../../middleware/validate.js';
 import { auditRequest } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { authenticate, requireAdmin } from '../middleware/toumaAuth.js';
+import { nationalOverview } from './geo.service.js';
 
 /**
  * Administration de la géographie et des zones de livraison (§54).
@@ -229,5 +230,20 @@ adminGeoRouter.patch(
     });
     await auditRequest(req, 'geo.pickup.updated', 'ToumaPickupPoint', point.id, {});
     res.json(updated);
+  }),
+);
+
+/**
+ * Tableau de bord national : le pays province par province.
+ *
+ * Ce que le tableau **ne sait pas** sort avec lui — commandes dont l'adresse
+ * n'est rattachée à aucune province, provinces sans zone déclarée. Une case
+ * vide expliquée vaut mieux qu'une case remplie au jugé.
+ */
+adminGeoRouter.get(
+  '/national',
+  asyncHandler(async (req, res) => {
+    const pays = typeof req.query.country === 'string' && req.query.country.length === 2 ? req.query.country : 'TD';
+    res.json(await nationalOverview(pays));
   }),
 );

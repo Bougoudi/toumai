@@ -29,6 +29,7 @@ const SECTIONS = [
       ['/touma/admin/expeditions', 'Expéditions', 'truck'],
       ['/touma/admin/promotions', 'Promotions', 'spark'],
       ['/touma/admin/finance', 'Finance', 'card'],
+      ['/touma/admin/national', 'National', 'map'],
       ['/touma/admin/versements', 'Versements', 'card'],
     ],
   },
