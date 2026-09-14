@@ -619,7 +619,7 @@ export async function cart() {
 }
 
 // ── Tunnel de commande ─────────────────────────────────────────────────────
-const CHECKOUT_STEPS = ['Adresse', 'Livraison', 'Paiement', 'Confirmation'];
+const checkoutSteps = () => [t('checkout.step.address'), t('checkout.step.shipping'), t('checkout.step.payment'), t('checkout.step.done')];
 
 /** État du tunnel, conservé le temps de la session de navigation. */
 export const checkoutState = {
@@ -643,16 +643,16 @@ export async function checkout(_params, query) {
   const [data, me, countries] = await Promise.all([api('/cart'), api('/auth/me'), api('/countries')]);
 
   if (!data.items.length && step < 3) {
-    return `<h1>Commande</h1>${emptyState({
-      title: 'Votre panier est vide',
-      body: 'Ajoutez des produits avant de passer commande.',
-      actionLabel: 'Explorer le catalogue',
+    return `<h1>${esc(t('checkout.title'))}</h1>${emptyState({
+      title: t('checkout.emptyTitle'),
+      body: t('checkout.emptyBody'),
+      actionLabel: t('checkout.emptyAction'),
       actionHref: '/touma/produits',
       iconName: 'cart',
     })}`;
   }
 
-  const header = `<h1>Commande</h1>${stepper(CHECKOUT_STEPS, step)}`;
+  const header = `<h1>${esc(t('checkout.title'))}</h1>${stepper(checkoutSteps(), step)}`;
 
   // Étape 1 — adresse et mode de remise
   if (step === 0) {
@@ -661,7 +661,7 @@ export async function checkout(_params, query) {
     return `${header}
       <div class="grid grid-2">
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Où livrer votre commande ?</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('checkout.whereToDeliver'))}</h2>
           ${me.addresses.length
             ? `<div class="stack" id="address-list">
                 ${me.addresses
@@ -678,49 +678,49 @@ export async function checkout(_params, query) {
                   )
                   .join('')}
               </div>`
-            : '<p class="muted small">Aucune adresse enregistrée. Ajoutez-en une ci-dessous.</p>'}
+            : `<p class="muted small">${esc(t('checkout.noAddress'))}</p>`}
 
           <details ${me.addresses.length ? '' : 'open'} style="margin-top:var(--space-4)">
-            <summary class="strong">Ajouter une adresse</summary>
+            <summary class="strong">${esc(t('checkout.addAddress'))}</summary>
             <form id="address-form" style="margin-top:var(--space-4)">
-              <div class="field"><label for="a-name">Nom complet</label><input id="a-name" name="fullName" required autocomplete="name" /></div>
-              <div class="field"><label for="a-phone">Téléphone</label><input id="a-phone" name="phone" required inputmode="tel" placeholder="+235…" autocomplete="tel" /></div>
-              <div class="field"><label for="a-line1">Adresse ou rue</label><input id="a-line1" name="line1" required autocomplete="address-line1" /></div>
+              <div class="field"><label for="a-name">${esc(t('checkout.fullName'))}</label><input id="a-name" name="fullName" required autocomplete="name" /></div>
+              <div class="field"><label for="a-phone">${esc(t('checkout.phone'))}</label><input id="a-phone" name="phone" required inputmode="tel" placeholder="+235…" autocomplete="tel" /></div>
+              <div class="field"><label for="a-line1">${esc(t('checkout.line1'))}</label><input id="a-line1" name="line1" required autocomplete="address-line1" /></div>
               <div class="field">
-                <label for="a-district">Quartier</label>
+                <label for="a-district">${esc(t('checkout.district'))}</label>
                 <input id="a-district" name="district" placeholder="Klemat, Akwa, Moursal…" />
-                <span class="field-hint">Souvent plus utile que le nom de rue pour trouver l'adresse.</span>
+                <span class="field-hint">${esc(t('checkout.districtHint'))}</span>
               </div>
               <div class="field">
-                <label for="a-landmark">Point de repère</label>
-                <input id="a-landmark" name="landmark" placeholder="Face à la station Total, près du marché…" />
+                <label for="a-landmark">${esc(t('checkout.landmark'))}</label>
+                <input id="a-landmark" name="landmark" placeholder="${esc(t('checkout.landmarkPlaceholder'))}" />
               </div>
-              <div class="field"><label for="a-city">Ville</label><input id="a-city" name="city" required autocomplete="address-level2" /></div>
-              <div class="field"><label for="a-country">Pays</label>
+              <div class="field"><label for="a-city">${esc(t('checkout.city'))}</label><input id="a-city" name="city" required autocomplete="address-level2" /></div>
+              <div class="field"><label for="a-country">${esc(t('checkout.country'))}</label>
                 <select id="a-country" name="countryCode">${countries.items.map((c) => `<option value="${esc(c.code)}"${c.code === me.countryCode ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
               </div>
-              <div class="field"><label for="a-instructions">Instructions pour le livreur</label><input id="a-instructions" name="instructions" placeholder="Appeler avant de passer…" /></div>
-              <button class="btn btn-secondary" type="submit">Enregistrer l'adresse</button>
+              <div class="field"><label for="a-instructions">${esc(t('checkout.instructions'))}</label><input id="a-instructions" name="instructions" placeholder="${esc(t('checkout.instructionsPlaceholder'))}" /></div>
+              <button class="btn btn-secondary" type="submit">${esc(t('checkout.saveAddress'))}</button>
             </form>
           </details>
         </section>
 
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Mode de remise</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('checkout.deliveryMode'))}</h2>
           <div class="stack">
             <label class="check" data-selected="true">
               <input type="radio" name="delivery" value="HOME" checked />
-              <span><strong>Livraison à mon adresse</strong><br /><span class="small muted">Le transporteur vient au lieu indiqué.</span></span>
+              <span><strong>${esc(t('checkout.home'))}</strong><br /><span class="small muted">${esc(t('checkout.homeHint'))}</span></span>
             </label>
             <label class="check" ${pickupPoints.items.length ? '' : 'aria-disabled="true"'}>
               <input type="radio" name="delivery" value="PICKUP_POINT" ${pickupPoints.items.length ? '' : 'disabled'} />
-              <span><strong>Retrait en point relais</strong><br /><span class="small muted">
-                ${pickupPoints.items.length ? 'Souvent plus fiable et moins cher.' : 'Aucun point relais dans votre pays pour l’instant.'}
+              <span><strong>${esc(t('checkout.pickup'))}</strong><br /><span class="small muted">
+                ${esc(pickupPoints.items.length ? t('checkout.pickupHint') : t('checkout.pickupNone'))}
               </span></span>
             </label>
           </div>
           <div class="field mt-6" id="pickup-choice" hidden>
-            <label for="pickup-point">Point relais</label>
+            <label for="pickup-point">${esc(t('checkout.pickupPoint'))}</label>
             <select id="pickup-point">
               ${pickupPoints.items
                 .map(
@@ -728,21 +728,21 @@ export async function checkout(_params, query) {
                 )
                 .join('')}
             </select>
-            <span class="field-hint">Vous serez prévenu dès que le colis y sera déposé.</span>
+            <span class="field-hint">${esc(t('checkout.pickupNotice'))}</span>
           </div>
         </section>
 
       </div>
       <div class="card buybox mt-6">
         ${summaryBlock(data)}
-        <button class="btn btn-accent btn-block btn-lg mt-6" data-checkout-next="1" ${me.addresses.length ? '' : 'disabled'}>Continuer vers la livraison</button>
+        <button class="btn btn-accent btn-block btn-lg mt-6" data-checkout-next="1" ${me.addresses.length ? '' : 'disabled'}>${esc(t('checkout.toShipping'))}</button>
       </div>`;
   }
 
   // Étape 2 — choix du transport, boutique par boutique
   if (step === 1) {
     const address = me.addresses.find((a) => a.id === checkoutState.addressId) ?? me.addresses[0];
-    if (!address) return `${header}<div class="alert alert-error">Choisissez d'abord une adresse de livraison.</div>`;
+    if (!address) return `${header}<div class="alert alert-error">${esc(t('checkout.chooseAddressFirst'))}</div>`;
     checkoutState.addressId = address.id;
 
     const groups = await Promise.all(
@@ -776,9 +776,9 @@ export async function checkout(_params, query) {
       <div class="grid grid-2">
         <div class="stack">
           <div class="card">
-            <h2 style="font-size:var(--text-md)">Adresse de livraison</h2>
+            <h2 style="font-size:var(--text-md)">${esc(t('checkout.deliveryAddress'))}</h2>
             <p class="small" style="margin:0">${esc(address.fullName)} — ${esc(address.line1)}, ${esc(address.city)} (${esc(address.countryCode)})</p>
-            <a class="small" href="/touma/checkout?etape=0" data-link>Modifier</a>
+            <a class="small" href="/touma/checkout?etape=0" data-link>${esc(t('checkout.edit'))}</a>
           </div>
           ${groups
             .map(
@@ -787,7 +787,7 @@ export async function checkout(_params, query) {
                   <h2 style="font-size:var(--text-md)">${esc(group.store.name)}</h2>
                   <span class="badge badge-country">${esc(group.store.countryCode)} → ${esc(address.countryCode)}</span>
                 </div>
-                ${group.store.countryCode !== address.countryCode ? '<p class="small"><span class="badge badge-cross">Expédition transfrontalière</span></p>' : ''}
+                ${group.store.countryCode !== address.countryCode ? `<p class="small"><span class="badge badge-cross">${esc(t('checkout.crossBorder'))}</span></p>` : ''}
                 <div class="stack">
                   ${quotes
                     .map(
@@ -795,7 +795,7 @@ export async function checkout(_params, query) {
                         <input type="radio" name="quote-${esc(group.store.id)}" value="${esc(q.id)}" data-store="${esc(group.store.id)}" ${checkoutState.quotes[group.store.id] === q.id ? 'checked' : ''} />
                         <span style="flex:1">
                           <strong>${esc(q.serviceName)}</strong><br />
-                          <span class="small muted">Livraison estimée en ${q.etaMinDays} à ${q.etaMaxDays} jours · transporteur ${esc(q.providerCode)}</span>
+                          <span class="small muted">${esc(t('checkout.eta', { min: q.etaMinDays, max: q.etaMaxDays, carrier: q.providerCode }))}</span>
                         </span>
                         <strong>${money(q.amount, q.currency)}</strong>
                       </label>`,
@@ -810,8 +810,8 @@ export async function checkout(_params, query) {
         <aside>
           <div class="card buybox">
             ${summaryBlock(data, groups)}
-            <button class="btn btn-accent btn-block btn-lg mt-6" data-checkout-next="2">Continuer vers le paiement</button>
-            <a class="btn btn-ghost btn-block btn-sm" href="/touma/checkout?etape=0" data-link>Retour</a>
+            <button class="btn btn-accent btn-block btn-lg mt-6" data-checkout-next="2">${esc(t('checkout.toPayment'))}</button>
+            <a class="btn btn-ghost btn-block btn-sm" href="/touma/checkout?etape=0" data-link>${esc(t('checkout.back'))}</a>
           </div>
         </aside>
       </div>`;
@@ -826,38 +826,38 @@ export async function checkout(_params, query) {
       <div class="grid grid-2">
         <div class="stack">
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Réductions</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('checkout.discounts'))}</h2>
           <form id="coupon-form" class="row" style="gap:var(--space-2);align-items:flex-end">
             <div class="field" style="flex:1;margin:0">
-              <label for="c-code">Code de réduction</label>
+              <label for="c-code">${esc(t('checkout.couponCode'))}</label>
               <input id="c-code" maxlength="40" placeholder="BIENVENUE10" value="${esc(checkoutState.coupon?.code ?? '')}" autocomplete="off" />
             </div>
-            <button class="btn btn-secondary" type="submit">Appliquer</button>
+            <button class="btn btn-secondary" type="submit">${esc(t('checkout.apply'))}</button>
           </form>
           ${checkoutState.coupon
             ? `<p class="small" style="color:var(--success);margin:var(--space-3) 0 0">
-                ${esc(checkoutState.coupon.label)} appliqué${checkoutState.coupon.description ? ` — ${esc(checkoutState.coupon.description)}` : ''}.
-                <button class="btn btn-ghost btn-sm" data-remove-coupon>Retirer</button>
+                ${esc(t('checkout.couponApplied', { label: checkoutState.coupon.label }))}${checkoutState.coupon.description ? ` — ${esc(checkoutState.coupon.description)}` : ''}.
+                <button class="btn btn-ghost btn-sm" data-remove-coupon>${esc(t('checkout.removeCoupon'))}</button>
               </p>`
             : ''}
 
           ${usable > 0
             ? `<form id="loyalty-form" class="mt-6">
                 <div class="field" style="margin:0">
-                  <label for="c-points">Points de fidélité (${usable} utilisable(s), soit ${money(loyalty.value, loyalty.currency)})</label>
+                  <label for="c-points">${esc(t('checkout.loyaltyLabel', { count: usable, value: money(loyalty.value, loyalty.currency) }))}</label>
                   <div class="row" style="gap:var(--space-2)">
                     <input id="c-points" type="number" min="0" max="${usable}" step="1" value="${checkoutState.loyaltyPoints || 0}" style="flex:1" />
-                    <button class="btn btn-secondary" type="submit">Utiliser</button>
+                    <button class="btn btn-secondary" type="submit">${esc(t('checkout.use'))}</button>
                   </div>
-                  <span class="field-hint">Vos points valent une remise immédiate sur cette commande.</span>
+                  <span class="field-hint">${esc(t('checkout.loyaltyHint'))}</span>
                 </div>
               </form>`
-            : '<p class="xs muted" style="margin:var(--space-3) 0 0">Aucun point de fidélité utilisable sur ce panier.</p>'}
+            : `<p class="xs muted" style="margin:var(--space-3) 0 0">${esc(t('checkout.loyaltyNone'))}</p>`}
         </section>
 
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Moyen de paiement</h2>
-          <p class="small muted">Le paiement est confirmé par le serveur TOUMA auprès du prestataire. Aucune donnée bancaire n'est stockée par TOUMA.</p>
+          <h2 style="font-size:var(--text-md)">${esc(t('checkout.paymentMethod'))}</h2>
+          <p class="small muted">${esc(t('checkout.paymentNotice'))}</p>
           <div class="stack" id="payment-methods">
             ${methods
               .filter((m) => m !== 'MOCK')
@@ -875,8 +875,8 @@ export async function checkout(_params, query) {
         <aside>
           <div class="card buybox">
             ${summaryBlock(data)}
-            <button class="btn btn-accent btn-block btn-lg mt-6" data-place-order>Payer et confirmer la commande</button>
-            <a class="btn btn-ghost btn-block btn-sm" href="/touma/checkout?etape=1" data-link>Retour</a>
+            <button class="btn btn-accent btn-block btn-lg mt-6" data-place-order>${esc(t('checkout.pay'))}</button>
+            <a class="btn btn-ghost btn-block btn-sm" href="/touma/checkout?etape=1" data-link>${esc(t('checkout.back'))}</a>
           </div>
         </aside>
       </div>`;
@@ -888,34 +888,30 @@ export async function checkout(_params, query) {
   return `${header}
     <div class="card center">
       <div class="state-icon" style="background:var(--success-soft);color:var(--success)">${svg('shield')}</div>
-      <h2>Merci, votre commande est enregistrée</h2>
-      <p class="muted">${orders.length > 1 ? `${orders.length} commandes ont été créées, une par boutique.` : 'Votre commande a été transmise au vendeur.'}</p>
+      <h2>${esc(t('checkout.thanks'))}</h2>
+      <p class="muted">${esc(orders.length > 1 ? t('checkout.severalOrders', { count: orders.length }) : t('checkout.oneOrder'))}</p>
       <div class="stack mt-6">
         ${orders
           .map(
             (o) => `<div class="row-between card" style="box-shadow:none">
               <div><strong>${esc(o.orderNumber)}</strong><div class="small muted">${money(o.total, o.currency)}</div></div>
               ${statusPill(o.status)}
-              <a class="btn btn-secondary btn-sm" href="/touma/commandes/${esc(o.id)}" data-link>Suivre ma commande</a>
+              <a class="btn btn-secondary btn-sm" href="/touma/commandes/${esc(o.id)}" data-link>${esc(t('checkout.trackOrder'))}</a>
             </div>`,
           )
           .join('')}
       </div>
       <div class="row" style="justify-content:center;margin-top:var(--space-6)">
-        ${group ? `<a class="btn" href="/touma/commandes/groupe/${esc(group.id)}" data-link>Récapitulatif du panier</a>` : ''}
-        <a class="btn btn-secondary" href="/touma/commandes" data-link>Mes commandes</a>
-        <a class="btn btn-ghost" href="/touma/produits" data-link>Continuer mes achats</a>
+        ${group ? `<a class="btn" href="/touma/commandes/groupe/${esc(group.id)}" data-link>${esc(t('checkout.groupRecap'))}</a>` : ''}
+        <a class="btn btn-secondary" href="/touma/commandes" data-link>${esc(t('checkout.myOrders'))}</a>
+        <a class="btn btn-ghost" href="/touma/produits" data-link>${esc(t('checkout.keepShopping'))}</a>
       </div>
     </div>`;
 }
 
+/** Une phrase par moyen de paiement, dans la langue courante. */
 function paymentHint(method) {
-  return {
-    MOBILE_MONEY: 'Paiement depuis votre portefeuille mobile.',
-    CARD: 'Carte bancaire via une page sécurisée du prestataire.',
-    BANK_TRANSFER: 'Virement bancaire avec référence de commande.',
-    CASH_ON_DELIVERY: 'Réglez au livreur à la réception.',
-  }[method] ?? '';
+  return ['MOBILE_MONEY', 'CARD', 'BANK_TRANSFER', 'CASH_ON_DELIVERY'].includes(method) ? t(`checkout.hint.${method}`) : '';
 }
 
 function summaryBlock(data, groups = null) {
@@ -936,26 +932,26 @@ function summaryBlock(data, groups = null) {
   const gross = shipping === null ? Number(data.subtotal) : Number(data.subtotal) + shipping;
   const total = Math.max(0, gross - discount);
 
-  return `<h2 style="font-size:var(--text-md)">Récapitulatif</h2>
+  return `<h2 style="font-size:var(--text-md)">${esc(t('summary.title'))}</h2>
     <div class="summary">
-      <div class="summary-line"><span>Articles (${data.itemCount})</span><span>${money(data.subtotal, data.currency)}</span></div>
+      <div class="summary-line"><span>${esc(t('summary.items', { count: data.itemCount }))}</span><span>${money(data.subtotal, data.currency)}</span></div>
       <div class="summary-line">
-        <span>Livraison</span>
-        <span>${shipping === null ? '<span class="muted small">à l\'étape suivante</span>' : money(shipping, data.currency)}</span>
+        <span>${esc(t('summary.shipping'))}</span>
+        <span>${shipping === null ? `<span class="muted small">${esc(t('summary.shippingNext'))}</span>` : money(shipping, data.currency)}</span>
       </div>
       ${couponDiscount || freeShipping
         ? `<div class="summary-line" style="color:var(--success)">
-            <span>Code ${esc(checkoutState.coupon.code)}</span>
+            <span>${esc(t('summary.couponCode', { code: checkoutState.coupon.code }))}</span>
             <span>− ${money(couponDiscount + freeShipping, data.currency)}</span>
           </div>`
         : ''}
       ${pointsValue
         ? `<div class="summary-line" style="color:var(--success)">
-            <span>${checkoutState.loyaltyPoints} point(s) de fidélité</span>
+            <span>${esc(t('summary.loyaltyPoints', { count: checkoutState.loyaltyPoints }))}</span>
             <span>− ${money(pointsValue, data.currency)}</span>
           </div>`
         : ''}
-      <div class="summary-line summary-total"><span>Total</span><span>${money(total, data.currency)}</span></div>
+      <div class="summary-line summary-total"><span>${esc(t('summary.total'))}</span><span>${money(total, data.currency)}</span></div>
     </div>`;
 }
 

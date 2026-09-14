@@ -1084,6 +1084,11 @@ await step('langue : le panier et les commandes, entièrement en arabe', async (
       ['Récapitulatif', 'Sous-total', 'Continuer vers le paiement', 'Retirer', 'Vider le panier', 'Mon panier', 'Votre panier est vide'],
     ],
     ['/commandes', /طلباتي/, ['Mes commandes', 'Toutes', 'Détail', 'Aucune commande']],
+    // Le tunnel, étape par étape : c'est là que l'argent change de mains, donc
+    // l'écran qu'un acheteur ne peut pas se permettre de ne pas lire.
+    ['/checkout?etape=0', /أين نوصّل طلبك؟|سلتك فارغة/, ['Où livrer', 'Mode de remise', 'Ajouter une adresse', 'Continuer vers']],
+    ['/checkout?etape=1', /عنوان التوصيل|الملخّص|اختر أولاً/, ['Adresse de livraison', 'Récapitulatif', 'Modifier', 'Retour']],
+    ['/checkout?etape=2', /وسيلة الدفع|التخفيضات|سلتك فارغة/, ['Moyen de paiement', 'Réductions', 'Payer et confirmer', 'Total']],
   ]) {
     await ar.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
     await ar.waitForTimeout(700);
