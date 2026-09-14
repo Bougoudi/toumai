@@ -346,6 +346,46 @@ await step('suivi de commande (chronologie)', async () => {
   await page.screenshot({ path: `${OUT}/09-commande.png` });
 });
 
+await step('facture : lisible à l’écran, et propre au papier', async () => {
+  // Le bouton « Imprimer / enregistrer en PDF » et sa feuille @media print
+  // existaient sans qu'aucun contrôle ne vérifie leur effet. Une feuille
+  // d'impression cassée ne se voit pas à l'écran : elle se découvre sur la
+  // facture qu'un vendeur envoie à son client.
+  await page.goto(`${BASE}/documents`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#view a[href^="/touma/documents/"]', { timeout: 20000 });
+  await page.locator('#view a[href^="/touma/documents/"]').first().click();
+  await page.waitForSelector('.document', { timeout: 20000 });
+
+  if ((await page.locator('[data-print]').count()) !== 1) throw new Error('le bouton d’impression est absent');
+  if (!(await page.locator('.header').isVisible())) throw new Error('l’en-tête devrait être visible à l’écran');
+
+  // Le document porte la mention qui dit qu'aucune TVA n'est calculée : un
+  // montant de taxe inventé serait pire qu'une absence de ligne.
+  const corps = ((await page.textContent('.document')) ?? '').replace(/\s+/g, ' ');
+  if (!/Aucun régime de TVA|aucune taxe/i.test(corps)) throw new Error('la mention fiscale est absente du document');
+
+  await page.emulateMedia({ media: 'print' });
+  await page.waitForTimeout(300);
+  for (const [selecteur, nom] of [
+    ['.header', 'l’en-tête'],
+    ['.bottom-nav', 'la navigation basse'],
+    ['.no-print', 'le bloc d’actions'],
+  ]) {
+    const noeud = page.locator(selecteur).first();
+    if ((await noeud.count()) > 0 && (await noeud.isVisible())) throw new Error(`${nom} survit à l’impression`);
+  }
+  if (!(await page.locator('.document').isVisible())) throw new Error('le document lui-même disparaît à l’impression');
+
+  // Et le résultat est un vrai PDF : c'est ce que produit le navigateur quand
+  // l'utilisateur choisit « enregistrer en PDF ».
+  const pdf = await page.pdf({ format: 'A4' });
+  if (!pdf.toString('latin1').startsWith('%PDF-')) throw new Error('la sortie n’est pas un PDF');
+  if (pdf.length < 1000) throw new Error(`PDF suspect : ${pdf.length} octets`);
+
+  await page.emulateMedia({ media: 'screen' });
+  await page.screenshot({ path: `${OUT}/52-facture.png` });
+});
+
 await step('espace vendeur', async () => {
   const seller = await sessionFor('vendeur.cm@touma.dev');
   await seller.goto(`${BASE}/vendeur`, { waitUntil: 'networkidle' });
