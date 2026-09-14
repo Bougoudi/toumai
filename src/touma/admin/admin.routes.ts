@@ -151,6 +151,35 @@ adminRouter.get(
   }),
 );
 
+/**
+ * Tentatives de webhook — acceptées **et refusées**.
+ *
+ * C'est la vue qui manquait : un webhook rejeté pour signature invalide était
+ * journalisé puis perdu. Le filtre par issue sert d'abord à isoler les rejets,
+ * et le compte par issue dit d'un coup d'œil si une série de tentatives est en
+ * cours.
+ */
+adminRouter.get(
+  '/webhooks',
+  asyncHandler(async (req, res) => {
+    const page = pageParams(req.query);
+    const outcome = typeof req.query.outcome === 'string' && req.query.outcome.length > 0 ? req.query.outcome : undefined;
+    const provider = typeof req.query.provider === 'string' && req.query.provider.length > 0 ? req.query.provider : undefined;
+    const where = { ...(outcome ? { outcome: outcome as never } : {}), ...(provider ? { provider } : {}) };
+
+    const [rows, total, parIssue] = await Promise.all([
+      prisma.toumaWebhookDelivery.findMany({ where, orderBy: { createdAt: 'desc' }, skip: page.skip, take: page.limit }),
+      prisma.toumaWebhookDelivery.count({ where }),
+      prisma.toumaWebhookDelivery.groupBy({ by: ['outcome'], _count: { _all: true } }),
+    ]);
+
+    res.json({
+      ...paginated(rows, total, page),
+      byOutcome: parIssue.map((r) => ({ outcome: r.outcome, count: r._count._all })),
+    });
+  }),
+);
+
 adminRouter.get(
   '/shipments',
   asyncHandler(async (req, res) => {

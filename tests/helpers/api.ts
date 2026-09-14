@@ -103,10 +103,18 @@ export function uniqueEmail(prefix: string): string {
   return `${prefix}-${randomUUID().slice(0, 8)}@touma.test`;
 }
 
-/** Signe un webhook de paiement comme le ferait un prestataire réel. */
-export function signWebhook(payload: unknown, secret: string): { raw: Buffer; signature: string } {
+/**
+ * Signe un webhook de paiement comme le ferait un prestataire réel :
+ * `t=<secondes unix>,v1=<hmac de "<t>.<corps brut>">`.
+ *
+ * `at` permet de dater la signature dans le passé ou le futur, pour vérifier
+ * que la fenêtre d'acceptation est bien appliquée.
+ */
+export function signWebhook(payload: unknown, secret: string, at: Date = new Date()): { raw: Buffer; signature: string } {
   const raw = Buffer.from(JSON.stringify(payload));
-  return { raw, signature: `sha256=${createHmac('sha256', secret).update(raw).digest('hex')}` };
+  const t = Math.floor(at.getTime() / 1000);
+  const signed = Buffer.concat([Buffer.from(`${t}.`, 'utf8'), raw]);
+  return { raw, signature: `t=${t},v1=${createHmac('sha256', secret).update(signed).digest('hex')}` };
 }
 
 /** Crée un compte et renvoie ses jetons. */

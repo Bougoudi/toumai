@@ -11,6 +11,7 @@ import { notify } from '../lib/notifications.js';
 import { documentService } from '../documents/document.service.js';
 import { codAvailability, openCashCollection } from './cod.service.js';
 import { MockPaymentProvider } from './providers/mock.provider.js';
+import { recordWebhookDelivery } from './webhook-log.js';
 import type { PaymentMethod, PaymentProvider, ProviderPaymentStatus } from './payment.types.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 
@@ -385,22 +386,119 @@ export const paymentService = {
    * Webhook prestataire : la signature est vérifiée sur le corps **brut** et
    * chaque événement n'est traité qu'une fois (contrainte d'unicité `externalId`).
    */
-  async handleWebhook(providerCode: string, rawBody: Buffer, headers: Record<string, string | string[] | undefined>) {
-    const provider = getPaymentProvider(providerCode);
+  /**
+   * Webhook prestataire.
+   *
+   * Chaque réception laisse une trace, **quelle que soit son issue**. Un
+   * webhook refusé pour signature invalide n'en laissait aucune : il était
+   * journalisé puis perdu, alors que c'est précisément celui qu'on voudra
+   * relire le jour où quelqu'un tente d'en forger un.
+   *
+   * L'appelant, lui, n'apprend rien du motif : lui dire *pourquoi* sa signature
+   * est refusée l'aiderait à en produire une valide.
+   */
+  async handleWebhook(
+    providerCode: string,
+    rawBody: Buffer,
+    headers: Record<string, string | string[] | undefined>,
+    context: { ip?: string | null; userAgent?: string | null } = {},
+  ) {
+    const trace = {
+      provider: providerCode,
+      body: rawBody,
+      sourceIp: context.ip ?? null,
+      userAgent: context.userAgent ?? null,
+    };
+
+    let provider: PaymentProvider;
+    try {
+      provider = getPaymentProvider(providerCode);
+    } catch {
+      // Un code de prestataire inconnu est soit une erreur de configuration,
+      // soit un balayage. Dans les deux cas on veut le savoir.
+      await recordWebhookDelivery({ ...trace, outcome: 'UNKNOWN_PROVIDER', signatureValid: false, reason: 'Prestataire inconnu.' });
+      throw notFound('Prestataire inconnu.');
+    }
+
     const verification = provider.verifyWebhook(rawBody, headers);
     if (!verification.valid) {
       logger.error('Webhook de paiement rejeté : signature invalide', { provider: provider.code });
+      await recordWebhookDelivery({
+        ...trace,
+        provider: provider.code,
+        outcome: 'INVALID_SIGNATURE',
+        signatureValid: false,
+        reason: verification.reason ?? 'Signature invalide.',
+      });
       throw forbidden('Signature de webhook invalide.');
     }
-    if (!verification.providerRef) throw badRequest('Webhook sans référence de paiement.');
+
+    // Fenêtre temporelle. L'anti-rejeu par identifiant ne couvre pas tout : un
+    // webhook valide jamais délivré, capté en transit puis injecté des mois
+    // plus tard, porte un identifiant jamais vu et passerait sans elle.
+    const requiresTimestamp = verification.requiresTimestamp !== false;
+    const ageSeconds = verification.timestamp ? Math.round((Date.now() - verification.timestamp.getTime()) / 1000) : null;
+
+    if (requiresTimestamp && ageSeconds === null) {
+      await recordWebhookDelivery({
+        ...trace,
+        provider: provider.code,
+        outcome: 'STALE',
+        signatureValid: true,
+        eventId: verification.eventId,
+        eventType: verification.type,
+        providerRef: verification.providerRef,
+        reason: 'Horodatage signé absent alors que le protocole l’exige.',
+      });
+      throw forbidden('Signature de webhook invalide.');
+    }
+
+    // Un horodatage dans le futur est tout aussi suspect qu'un horodatage
+    // périmé : il trahit une horloge fausse ou une tentative de prolonger la
+    // fenêtre. La valeur absolue les traite de la même façon.
+    if (ageSeconds !== null && Math.abs(ageSeconds) > env.touma.webhookToleranceSeconds) {
+      await recordWebhookDelivery({
+        ...trace,
+        provider: provider.code,
+        outcome: 'STALE',
+        signatureValid: true,
+        signatureAgeSeconds: ageSeconds,
+        eventId: verification.eventId,
+        eventType: verification.type,
+        providerRef: verification.providerRef,
+        reason: `Horodatage hors fenêtre (${ageSeconds} s, tolérance ${env.touma.webhookToleranceSeconds} s).`,
+      });
+      throw forbidden('Signature de webhook invalide.');
+    }
+
+    const commun = {
+      ...trace,
+      provider: provider.code,
+      signatureValid: true,
+      signatureAgeSeconds: ageSeconds,
+      eventId: verification.eventId,
+      eventType: verification.type,
+      providerRef: verification.providerRef,
+    };
+
+    if (!verification.providerRef) {
+      await recordWebhookDelivery({ ...commun, outcome: 'MALFORMED', reason: 'Webhook sans référence de paiement.' });
+      throw badRequest('Webhook sans référence de paiement.');
+    }
 
     const payment = await prisma.toumaPayment.findFirst({ where: { provider: provider.code, providerRef: verification.providerRef } });
-    if (!payment) throw notFound('Paiement inconnu pour ce webhook.');
+    if (!payment) {
+      await recordWebhookDelivery({ ...commun, outcome: 'UNKNOWN_PAYMENT', reason: 'Aucun paiement ne porte cette référence.' });
+      throw notFound('Paiement inconnu pour ce webhook.');
+    }
 
     // Anti-rejeu : un même événement prestataire n'est appliqué qu'une seule fois.
     if (verification.eventId) {
       const seen = await prisma.toumaPaymentEvent.findUnique({ where: { externalId: verification.eventId } });
-      if (seen) return { duplicate: true as const, paymentId: payment.id };
+      if (seen) {
+        await recordWebhookDelivery({ ...commun, outcome: 'DUPLICATE', paymentId: payment.id, reason: 'Événement déjà appliqué.' });
+        return { duplicate: true as const, paymentId: payment.id };
+      }
     }
     await prisma.toumaPaymentEvent.create({
       data: {
@@ -416,6 +514,7 @@ export const paymentService = {
     } else if (verification.status) {
       await prisma.toumaPayment.update({ where: { id: payment.id }, data: { status: toPaymentStatus(verification.status) } });
     }
+    await recordWebhookDelivery({ ...commun, outcome: 'ACCEPTED', paymentId: payment.id });
     return { duplicate: false as const, paymentId: payment.id };
   },
 

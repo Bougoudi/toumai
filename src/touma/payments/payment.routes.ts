@@ -164,7 +164,13 @@ paymentWebhookRouter.post(
   express.raw({ type: '*/*', limit: '512kb' }),
   asyncHandler(async (req, res) => {
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
-    const result = await paymentService.handleWebhook(req.params.provider, raw, req.headers);
+    // L'origine est consignée avec la tentative : sans elle, « on a reçu douze
+    // webhooks mal signés » ne se distingue pas de « douze appelants distincts
+    // ont essayé ».
+    const result = await paymentService.handleWebhook(req.params.provider, raw, req.headers, {
+      ip: req.ip ?? null,
+      userAgent: req.get('user-agent') ?? null,
+    });
     res.json({ received: true, ...result });
   }),
 );

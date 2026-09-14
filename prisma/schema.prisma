@@ -217,8 +217,8 @@ model User {
   reviewedVerifications ToumaSellerVerification[] @relation("VerificationReviewer")
 
   orderGroups         ToumaOrderGroup[]
-  evidenceUploaded    ToumaDisputeEvidence[] @relation("EvidenceAuthor")
-  disputesAssigned    ToumaDispute[]         @relation("DisputeAssignee")
+  evidenceUploaded    ToumaDisputeEvidence[]         @relation("EvidenceAuthor")
+  disputesAssigned    ToumaDispute[]                 @relation("DisputeAssignee")
   businessProfile     ToumaBusinessProfile?
   rfqs                ToumaRfq[]
   quotes              ToumaQuote[]                   @relation("QuoteSeller")
@@ -243,8 +243,8 @@ model User {
   documents         ToumaDocument[]
   rfqInvitations    ToumaRfqInvitation[]    @relation("InvitationAuthor")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
   /// Encaissements à la livraison constatés par cette personne.
   cashCollections ToumaCashCollection[] @relation("CashCollector")
 
@@ -256,7 +256,6 @@ model User {
 
   /// Versements décidés par cette personne.
   payoutDecisions ToumaSellerPayout[] @relation("PayoutDecider")
-
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -705,7 +704,7 @@ enum DeliveryZoneStatus {
 /// province, à ce prix, en tant de jours ». Rien n'est deviné. Quand aucune zone
 /// ne couvre une destination, le système **ne sait pas** — et le dit.
 model ToumaDeliveryZone {
-  id           String @id @default(cuid())
+  id           String           @id @default(cuid())
   /// Code du transporteur concerné.
   providerCode String
   countryCode  String
@@ -731,7 +730,7 @@ model ToumaDeliveryZone {
   currency   String
 
   /// Nom du service tel qu'il doit apparaître à l'acheteur.
-  serviceName String @default("Standard")
+  serviceName String  @default("Standard")
   active      Boolean @default(true)
   note        String?
 
@@ -759,14 +758,14 @@ model ToumaDeliveryZone {
 /// d'un vendeur : cette table dit ce qui lui est **dû**, pas ce qu'il possède
 /// chez TOUMA. Voir `docs/payments/compliance-boundaries.md`.
 model ToumaSettlementAllocation {
-  id        String @id @default(cuid())
+  id        String       @id @default(cuid())
   paymentId String
   payment   ToumaPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
   /// Sous-commande d'une boutique : c'est l'unité de règlement.
-  orderId   String @unique
-  order     ToumaOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId   String       @unique
+  order     ToumaOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   storeId   String
-  store     ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store     ToumaStore   @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   /// Montants figés au moment de l'encaissement, sauf le remboursement qui suit
   /// la vie de la commande.
@@ -776,7 +775,7 @@ model ToumaSettlementAllocation {
   refundedAmount   Decimal @default(0) @db.Decimal(18, 4)
   currency         String
 
-  status SettlementStatus @default(PENDING)
+  status     SettlementStatus @default(PENDING)
   /// Date à partir de laquelle la part devient réglable, si rien ne s'y oppose.
   eligibleAt DateTime?
 
@@ -816,12 +815,12 @@ enum IdempotencyStatus {
 /// L'empreinte du corps est conservée : réutiliser une clé pour une **autre**
 /// requête est une erreur du client, et elle est signalée plutôt que servie.
 model ToumaIdempotencyKey {
-  id     String @id @default(cuid())
+  id        String @id @default(cuid())
   /// Clé fournie par le client (en-tête `Idempotency-Key`).
-  key    String
+  key       String
   /// Portée au demandeur : deux clients peuvent employer la même clé.
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   /// Opération concernée : une même clé ne vaut pas d'une route à l'autre.
   operation String
 
@@ -867,22 +866,22 @@ enum CashCollectionStatus {
 /// qu'un seul franc ait été collecté**. Au Tchad, où le paiement à la livraison
 /// est courant, cela revenait à mentir sur l'argent à grande échelle.
 model ToumaCashCollection {
-  id        String @id @default(cuid())
-  paymentId String @unique
+  id        String       @id @default(cuid())
+  paymentId String       @unique
   payment   ToumaPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
-  status CashCollectionStatus @default(COD_PENDING)
+  status          CashCollectionStatus @default(COD_PENDING)
   /// Montant à collecter, figé à la création. Le suivre est l'exigence même du
   /// §28 : sans lui, personne ne sait combien le livreur doit rapporter.
-  amountDue Decimal @db.Decimal(18, 4)
+  amountDue       Decimal              @db.Decimal(18, 4)
   /// Montant réellement collecté. Nul tant que rien n'a été remis.
-  amountCollected Decimal? @db.Decimal(18, 4)
+  amountCollected Decimal?             @db.Decimal(18, 4)
   currency        String
 
   /// Qui a constaté l'encaissement. Un mouvement d'argent sans auteur n'est pas
   /// vérifiable.
   collectedById String?
-  collectedBy   User?   @relation("CashCollector", fields: [collectedById], references: [id], onDelete: SetNull)
+  collectedBy   User?     @relation("CashCollector", fields: [collectedById], references: [id], onDelete: SetNull)
   collectedAt   DateTime?
   /// Motif d'un échec (refus, destinataire absent…).
   failureReason String?
@@ -902,7 +901,7 @@ model ToumaCashCollection {
 /// Une règle sans province s'applique à tout le pays ; une règle sans boutique
 /// s'applique à toutes. La règle la plus précise l'emporte.
 model ToumaCodRule {
-  id          String  @id @default(cuid())
+  id          String         @id @default(cuid())
   countryCode String
   provinceId  String?
   province    ToumaProvince? @relation(fields: [provinceId], references: [id], onDelete: Cascade)
@@ -1228,9 +1227,9 @@ enum LocalityType {
 
 /// Premier niveau administratif (ADM1). 23 au Tchad.
 model ToumaProvince {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
   countryCode String
-  country     Country @relation(fields: [countryCode], references: [code], onDelete: Cascade)
+  country     Country  @relation(fields: [countryCode], references: [code], onDelete: Cascade)
   /// Code officiel du niveau dans la source (ex. « 21 » pour N'Djamena).
   code        String
   name        String
@@ -1244,15 +1243,15 @@ model ToumaProvince {
   longitude   Decimal? @db.Decimal(9, 6)
   /// Une province désactivée n'est plus proposée à la saisie — mais les
   /// commandes qui la référencent restent lisibles.
-  active      Boolean @default(true)
+  active      Boolean  @default(true)
 
-  departments ToumaDepartment[]
-  localities  ToumaLocality[]
-  addresses   ToumaAddress[]
-  stores      ToumaStore[]
+  departments  ToumaDepartment[]
+  localities   ToumaLocality[]
+  addresses    ToumaAddress[]
+  stores       ToumaStore[]
   pickupPoints ToumaPickupPoint[]
 
-  codRules    ToumaCodRule[]
+  codRules      ToumaCodRule[]
   deliveryZones ToumaDeliveryZone[]
 
   createdAt DateTime @default(now())
@@ -1276,7 +1275,7 @@ model ToumaDepartment {
 
   subPrefectures ToumaSubPrefecture[]
   localities     ToumaLocality[]
-  deliveryZones ToumaDeliveryZone[]
+  deliveryZones  ToumaDeliveryZone[]
   addresses      ToumaAddress[]
   pickupPoints   ToumaPickupPoint[]
 
@@ -1337,10 +1336,10 @@ model ToumaLocality {
   population Int?
   active     Boolean      @default(true)
 
-  addresses    ToumaAddress[]
+  addresses     ToumaAddress[]
   deliveryZones ToumaDeliveryZone[]
-  stores       ToumaStore[]
-  pickupPoints ToumaPickupPoint[]
+  stores        ToumaStore[]
+  pickupPoints  ToumaPickupPoint[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1394,8 +1393,8 @@ model ToumaAddress {
   alternativePhone String?
   /// Coordonnées facultatives. Donnée sensible : jamais exposée publiquement,
   /// transmise au seul transporteur de la commande concernée.
-  latitude     Decimal? @db.Decimal(9, 6)
-  longitude    Decimal? @db.Decimal(9, 6)
+  latitude         Decimal? @db.Decimal(9, 6)
+  longitude        Decimal? @db.Decimal(9, 6)
 
   orders ToumaOrder[]
 
@@ -1451,9 +1450,9 @@ model ToumaStore {
   reputation     ToumaStoreReputation?
   rfqInvitations ToumaRfqInvitation[]
   ledger         ToumaLedgerEntry[]
-  allocations ToumaSettlementAllocation[]
+  allocations    ToumaSettlementAllocation[]
 
-  codRules       ToumaCodRule[]
+  codRules ToumaCodRule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1513,13 +1512,12 @@ model ToumaCategory {
 
   products ToumaProduct[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  codRules  ToumaCodRule[]
 
   @@index([parentId])
   @@map("touma_categories")
-  codRules ToumaCodRule[]
-
 }
 
 /// Produit publié par une boutique.
@@ -1582,9 +1580,9 @@ model ToumaProduct {
 /// mille. Le palier retenu est **toujours choisi par le serveur** à partir de la
 /// quantité commandée — un client qui réclamerait un palier est ignoré.
 model ToumaPriceTier {
-  id        String       @id @default(cuid())
+  id        String               @id @default(cuid())
   productId String
-  product   ToumaProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   ToumaProduct         @relation(fields: [productId], references: [id], onDelete: Cascade)
   /// Variante concernée, ou toutes les variantes du produit si vide.
   variantId String?
   variant   ToumaProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
@@ -1719,20 +1717,20 @@ model ToumaOrder {
   group   ToumaOrderGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
 
   /// Mode de remise : domicile, point relais ou retrait chez le vendeur.
-  deliveryMethod DeliveryMethod    @default(HOME)
-  pickupPointId  String?
-  pickupPoint    ToumaPickupPoint? @relation(fields: [pickupPointId], references: [id], onDelete: SetNull)
+  deliveryMethod     DeliveryMethod    @default(HOME)
+  pickupPointId      String?
+  pickupPoint        ToumaPickupPoint? @relation(fields: [pickupPointId], references: [id], onDelete: SetNull)
   /// Empreinte du code de retrait. **Jamais le code lui-même** : une base lue
   /// par un tiers ne doit pas lui permettre de retirer les colis des autres.
   /// Sans ce code, rien ne distinguait le destinataire de quiconque connaissait
   /// le numéro de commande — et le numéro de commande figure sur tous les
   /// écrans et tous les e-mails.
-  pickupCodeHash String?
-  pickupCodeSetAt DateTime?
-  pickupCollectedAt DateTime?
+  pickupCodeHash     String?
+  pickupCodeSetAt    DateTime?
+  pickupCollectedAt  DateTime?
   /// Qui a remis le colis. Un retrait sans auteur ne se conteste pas.
   pickupReleasedById String?
-  pickupReleasedBy   User?  @relation("PickupRelease", fields: [pickupReleasedById], references: [id], onDelete: SetNull)
+  pickupReleasedBy   User?             @relation("PickupRelease", fields: [pickupReleasedById], references: [id], onDelete: SetNull)
 
   currency             String
   /// Somme des lignes (hors livraison).
@@ -1857,21 +1855,21 @@ model ToumaPayment {
   metadata       Json             @default("{}")
   failureReason  String?
 
-  events  ToumaPaymentEvent[]
-  allocations ToumaSettlementAllocation[]
-  refunds ToumaRefund[]
+  events            ToumaPaymentEvent[]
+  allocations       ToumaSettlementAllocation[]
+  refunds           ToumaRefund[]
+  webhookDeliveries ToumaWebhookDelivery[]
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  succeededAt DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  succeededAt    DateTime?
+  /// Encaissement à la livraison, quand c'est la méthode retenue.
+  cashCollection ToumaCashCollection?
 
   @@index([orderId])
   @@index([orderGroupId])
   @@index([status])
   @@map("touma_payments")
-  /// Encaissement à la livraison, quand c'est la méthode retenue.
-  cashCollection ToumaCashCollection?
-
 }
 
 /// Journal d'audit d'un paiement (création, webhooks, remboursements).
@@ -1888,6 +1886,72 @@ model ToumaPaymentEvent {
 
   @@index([paymentId])
   @@map("touma_payment_events")
+}
+
+/// Issue d'un webhook reçu. Le rejet est une issue comme une autre : c'est même
+/// la seule qu'on regrette de ne pas avoir tracée.
+enum WebhookOutcome {
+  ACCEPTED
+  DUPLICATE
+  INVALID_SIGNATURE
+  STALE
+  MALFORMED
+  UNKNOWN_PROVIDER
+  UNKNOWN_PAYMENT
+  ERROR
+}
+
+/// Trace de **chaque** webhook reçu, accepté ou refusé.
+///
+/// `ToumaPaymentEvent` ne consigne que les événements appliqués : un webhook
+/// rejeté pour signature invalide n'y laissait aucune trace. C'est pourtant
+/// exactement celle qu'on voudra le jour où quelqu'un tente d'en forger un —
+/// combien de tentatives, depuis quand, sur quelle référence.
+///
+/// Le point d'entrée est public et non authentifié : le corps n'est donc jamais
+/// conservé tel quel. Il est rédigé, tronqué, et remplacé par son empreinte
+/// pour corréler deux tentatives sans offrir une écriture sans borne en base.
+model ToumaWebhookDelivery {
+  id       String @id @default(cuid())
+  provider String
+
+  outcome WebhookOutcome
+  /// Motif du rejet, pour l'exploitation. Jamais renvoyé à l'appelant : lui
+  /// dire *pourquoi* sa signature est refusée l'aide à en forger une valide.
+  reason  String?
+
+  /// Renseignés seulement si le corps a pu être lu et vérifié.
+  eventId     String?
+  eventType   String?
+  providerRef String?
+
+  /// Nullable : un webhook refusé ne désigne aucun paiement connu. `SetNull`
+  /// plutôt que `Cascade` — la trace d'une tentative doit survivre à la
+  /// disparition de la commande qu'elle visait.
+  paymentId String?
+  payment   ToumaPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  signatureValid      Boolean
+  /// Âge de l'horodatage signé à la réception, en secondes. Négatif = futur.
+  signatureAgeSeconds Int?
+
+  /// Empreinte SHA-256 du corps brut : deux tentatives identiques se repèrent
+  /// sans conserver deux fois le corps.
+  bodySha256  String
+  bodyBytes   Int
+  /// Extrait rédigé et borné. Ni jeton, ni secret, ni numéro de carte.
+  bodyExcerpt String?
+
+  sourceIp  String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([provider, createdAt])
+  @@index([outcome, createdAt])
+  @@index([bodySha256])
+  @@index([paymentId])
+  @@map("touma_webhook_deliveries")
 }
 
 /// Commission Touma calculée sur une commande (part plateforme).
@@ -1927,7 +1991,7 @@ model ToumaCommission {
 /// Ce qu'il n'est PAS : une comptabilité légale. Il ne remplace ni un livre
 /// comptable, ni un expert-comptable, ni les obligations fiscales d'un vendeur.
 model ToumaLedgerEntry {
-  id      String     @id @default(cuid())
+  id      String      @id @default(cuid())
   storeId String?
   store   ToumaStore? @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
@@ -1990,12 +2054,12 @@ model ToumaSellerPayout {
 
   /// Qui a exécuté, retenu ou annulé — et pourquoi. Un mouvement d'argent sans
   /// auteur ne se conteste pas.
-  decidedById String?
-  decidedBy   User?   @relation("PayoutDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedById   String?
+  decidedBy     User?   @relation("PayoutDecider", fields: [decidedById], references: [id], onDelete: SetNull)
   holdReason    String?
   failureReason String?
   /// Référence du virement chez le prestataire, quand il y en a un.
-  providerRef String?
+  providerRef   String?
 
   commissions ToumaCommission[]
   allocations ToumaSettlementAllocation[]
@@ -2133,22 +2197,22 @@ model ToumaReview {
 
 /// Litige ouvert sur une commande.
 model ToumaDispute {
-  id           String        @id @default(cuid())
-  orderId      String
-  order        ToumaOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  openedById   String
-  openedBy     User          @relation(fields: [openedById], references: [id], onDelete: Cascade)
-  reason       String
-  details      String?
-  status       DisputeStatus @default(OPEN)
-  category     DisputeCategory @default(OTHER)
+  id         String          @id @default(cuid())
+  orderId    String
+  order      ToumaOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  openedById String
+  openedBy   User            @relation(fields: [openedById], references: [id], onDelete: Cascade)
+  reason     String
+  details    String?
+  status     DisputeStatus   @default(OPEN)
+  category   DisputeCategory @default(OTHER)
   /// Priorité **calculée** (montant, récidive, catégorie). Ce n'est pas une
   /// décision : c'est un ordre de passage. Le §18 le dit, et le code aussi.
-  priority     DisputePriority @default(NORMAL)
+  priority   DisputePriority @default(NORMAL)
 
   /// Agent d'assistance en charge, s'il y en a un.
   assignedToId String?
-  assignedTo   User?  @relation("DisputeAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo   User?   @relation("DisputeAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
 
   /// Délais de réponse. Passés, le litige est escaladé par un balayage serveur —
   /// jamais par le navigateur. Un vendeur qui ne répond jamais ne doit pas
@@ -2158,13 +2222,13 @@ model ToumaDispute {
   escalatedAt            DateTime?
 
   /// Décision de l'administrateur (auditée dans ToumaAuditLog).
-  resolution     String?
-  resolutionType DisputeResolutionType?
+  resolution         String?
+  resolutionType     DisputeResolutionType?
   /// Instantané figé de la décision : montant, devise, preuves retenues,
   /// agent, horodatage. Une résolution ne se réécrit pas en silence.
   resolutionSnapshot Json?
-  refundAmount Decimal?      @db.Decimal(18, 4)
-  resolvedAt   DateTime?
+  refundAmount       Decimal?               @db.Decimal(18, 4)
+  resolvedAt         DateTime?
 
   messages    ToumaDisputeMessage[]
   evidence    ToumaDisputeEvidence[]
@@ -2208,9 +2272,9 @@ model ToumaDisputeMessage {
 /// qui la **marque** retirée : on ne supprime pas une pièce d'un dossier après
 /// qu'une décision a été prise dessus.
 model ToumaDisputeEvidence {
-  id        String        @id @default(cuid())
-  disputeId String?
-  dispute   ToumaDispute? @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  id              String              @id @default(cuid())
+  disputeId       String?
+  dispute         ToumaDispute?       @relation(fields: [disputeId], references: [id], onDelete: Cascade)
   /// Une preuve peut appartenir à un retour avant qu'un litige n'existe.
   returnRequestId String?
   returnRequest   ToumaReturnRequest? @relation(fields: [returnRequestId], references: [id], onDelete: Cascade)
@@ -2510,8 +2574,8 @@ model ToumaOrderGroup {
 /// Point relais partenaire : essentiel là où la livraison à domicile est peu
 /// fiable. Les horaires et le point de repère comptent autant que l'adresse.
 model ToumaPickupPoint {
-  id           String   @id @default(cuid())
-  code         String   @unique
+  id           String           @id @default(cuid())
+  code         String           @unique
   name         String
   countryCode  String
   provinceId   String?
@@ -2527,9 +2591,9 @@ model ToumaPickupPoint {
   phone        String?
   /// Horaires d'ouverture en clair (ex. « Lun–Sam 8h–18h »).
   openingHours String?
-  latitude     Decimal? @db.Decimal(9, 6)
-  longitude    Decimal? @db.Decimal(9, 6)
-  active       Boolean  @default(true)
+  latitude     Decimal?         @db.Decimal(9, 6)
+  longitude    Decimal?         @db.Decimal(9, 6)
+  active       Boolean          @default(true)
 
   orders ToumaOrder[]
 
@@ -2630,13 +2694,13 @@ model ToumaRfq {
   updatedAt DateTime  @updatedAt
   closedAt  DateTime?
 
+  /// Commandes nées de cet appel d'offres.
+  orderGroups ToumaOrderGroup[]
+
   @@index([buyerId])
   @@index([status])
   @@index([countryCode])
   @@map("touma_rfqs")
-
-  /// Commandes nées de cet appel d'offres.
-  orderGroups ToumaOrderGroup[]
 }
 
 /// Ligne d'un appel d'offres (produit recherché et quantité).
@@ -3089,8 +3153,8 @@ model ToumaReturnRequest {
   refundedAt  DateTime?
   closedAt    DateTime?
 
-  items    ToumaReturnItem[]
-  refunds  ToumaRefund[]
+  items         ToumaReturnItem[]
+  refunds       ToumaRefund[]
   evidenceFiles ToumaDisputeEvidence[]
 
   createdAt DateTime @default(now())
@@ -3111,17 +3175,17 @@ model ToumaReturnItem {
   orderItemId     String
   orderItem       ToumaOrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
 
-  titleSnapshot String
-  quantity      Int
-  unitPrice     Decimal @db.Decimal(18, 4)
-  lineTotal     Decimal @db.Decimal(18, 4)
-  currency      String
+  titleSnapshot  String
+  quantity       Int
+  unitPrice      Decimal          @db.Decimal(18, 4)
+  lineTotal      Decimal          @db.Decimal(18, 4)
+  currency       String
   /// État constaté à réception (renseigné par le vendeur).
-  condition        String?
-  conditionGrade   ReturnCondition?
+  condition      String?
+  conditionGrade ReturnCondition?
   /// Motif propre à la ligne : un colis peut contenir un article cassé et un
   /// article simplement en trop.
-  lineReason       ReturnReason?
+  lineReason     ReturnReason?
 
   createdAt DateTime @default(now())
 

@@ -110,6 +110,16 @@ export const env = {
     maxPageSize: Number(process.env.TOUMA_MAX_PAGE_SIZE ?? 100),
     /** Secret de signature des webhooks de paiement (HMAC). */
     paymentWebhookSecret: process.env.TOUMA_PAYMENT_WEBHOOK_SECRET ?? process.env.JWT_SECRET ?? 'dev-secret-change-me',
+    /**
+     * Fenêtre d'acceptation d'un webhook, en secondes (défaut 5 min).
+     *
+     * Au-delà, un webhook correctement signé est refusé : sans cette borne, un
+     * webhook capté puis rejoué des mois plus tard, avec un identifiant jamais
+     * vu, serait accepté. Trop serrée, elle rejetterait des livraisons
+     * légitimement retardées par le réseau — c'est le compromis que règle cette
+     * valeur, et le prestataire réel dira laquelle il tolère.
+     */
+    webhookToleranceSeconds: Number(process.env.TOUMA_WEBHOOK_TOLERANCE_SECONDS ?? 300),
     /** Délai d'ouverture d'une demande de retour après livraison (jours). */
     returnWindowDays: Number(process.env.TOUMA_RETURN_WINDOW_DAYS ?? 14),
     /**

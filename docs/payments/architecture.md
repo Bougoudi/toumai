@@ -122,6 +122,38 @@ Ils seront ajoutés **avec le premier prestataire réel**, parce que c'est lui q
 dira lesquels il emploie réellement. Les inventer d'avance produirait une
 machine d'état qui ne correspond à aucun prestataire.
 
+## Les webhooks
+
+Un webhook est la seule chose qu'un tiers non authentifié peut pousser dans le
+système. Trois règles en découlent.
+
+**La signature couvre l'horodatage.** Le schéma est celui des prestataires
+réels : `t=<secondes unix>,v1=<hmac de "<t>.<corps brut>">`. L'horodatage est
+*dans* la signature — à côté, il serait réécrit par quiconque rejoue la requête,
+et ne prouverait rien.
+
+Au-delà de la fenêtre d'acceptation (5 minutes par défaut), un webhook pourtant
+bien signé est refusé, dans les deux sens : un horodatage dans le futur trahit
+une horloge fausse ou une tentative de prolonger la fenêtre. L'anti-rejeu par
+identifiant ne couvrait pas ce cas — un webhook valide capté en transit, jamais
+délivré, puis injecté des mois plus tard porte un identifiant jamais vu.
+
+**Chaque réception laisse une trace, y compris refusée.** `ToumaWebhookDelivery`
+consigne l'issue (acceptée, doublon, signature invalide, périmée, malformée,
+prestataire inconnu, paiement inconnu), l'origine et l'âge de la signature. Un
+rejet n'était auparavant que journalisé, donc perdu — alors que c'est exactement
+la trace qu'on voudra le jour où quelqu'un tente d'en forger un.
+
+**L'appelant n'apprend rien.** Le motif du refus est dans la trace, jamais dans
+la réponse : dire à quelqu'un *pourquoi* sa signature est refusée l'aide à en
+produire une valide.
+
+Le corps, lui, n'est jamais conservé tel quel. Il est rédigé (`lib/redact.ts` :
+carte, cryptogramme, code secret, clé de prestataire, jeton), tronqué, et
+remplacé par son empreinte SHA-256 — assez pour reconnaître deux tentatives
+identiques, pas assez pour qu'un tiers écrive sans borne dans la base. Et la
+table se purge : une table qu'un inconnu fait grossir devient sinon la panne.
+
 ## Le paiement à la livraison
 
 Un cas à part, et le plus important au Tchad.
@@ -149,12 +181,6 @@ et un livreur — cela ne s'active pas par oubli de configuration.
 - **Aucune réconciliation.** Elle compare le registre TOUMA aux transactions du
   prestataire : sans prestataire, elle n'a rien à comparer. Le jour où il y en a
   un, c'est ce qui manquera en premier.
-- **Table de webhooks dédiée.** Aujourd'hui un webhook **rejeté pour signature
-  invalide ne laisse aucune trace** — il est refusé et journalisé, rien de plus.
-  C'est précisément la trace qu'on voudra le jour où quelqu'un tente d'en forger
-  un.
-- **Validation d'horodatage sur les webhooks.** Un webhook valide capté puis
-  rejoué des mois plus tard avec un identifiant jamais vu serait accepté.
 - **Commission unique.** Un seul taux global. Par vendeur, par catégorie, par
   pays, par période : rien de tout cela n'est possible aujourd'hui.
 

@@ -53,6 +53,25 @@ export interface WebhookVerification {
   providerRef: string | null;
   status: ProviderPaymentStatus | null;
   raw: unknown;
+  /**
+   * Horodatage **signé** par le prestataire, quand son protocole en fournit un.
+   *
+   * Il doit être couvert par la signature, sinon il ne prouve rien : un
+   * horodatage qu'un tiers peut réécrire sans invalider la signature n'est pas
+   * une protection, c'est une décoration. Quand il est absent, le service
+   * l'exige ou non selon `requiresTimestamp`.
+   */
+  timestamp?: Date | null;
+  /**
+   * Le protocole de ce prestataire impose-t-il un horodatage signé ?
+   *
+   * Un adaptateur qui répond `false` déclare que son prestataire n'en fournit
+   * pas — et accepte donc qu'un webhook capté puisse être rejoué plus tard.
+   * C'est un aveu, pas un réglage de confort.
+   */
+  requiresTimestamp?: boolean;
+  /** Motif du rejet, pour la trace. Jamais renvoyé à l'appelant. */
+  reason?: string;
 }
 
 /**
