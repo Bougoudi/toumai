@@ -21,6 +21,7 @@ import {
   svg,
   toast,
 } from './core.js';
+import { applyDocumentLocale, LOCALES, locale, setLocale, t } from './i18n.js';
 import * as shop from './views-shop.js';
 import * as account from './views-account.js';
 
@@ -192,57 +193,80 @@ function matchRoute(pathname) {
 function navLinks() {
   const user = session.user;
   const links = [
-    ['/touma/produits', 'Catalogue'],
-    ['/touma/boutiques', 'Boutiques'],
+    ['/touma/produits', t('nav.catalog')],
+    ['/touma/boutiques', t('nav.stores')],
+    ['/touma/provinces', t('nav.provinces')],
   ];
-  links.push(['/touma/business', 'Business']);
+  links.push(['/touma/business', t('nav.business')]);
   if (user) {
-    links.push(['/touma/commandes', 'Mes commandes']);
-    if (session.isSeller) links.push(['/touma/vendeur', 'Espace vendeur']);
-    if (session.isAdmin) links.push(['/touma/admin', 'Administration']);
+    links.push(['/touma/commandes', t('nav.myOrders')]);
+    if (session.isSeller) links.push(['/touma/vendeur', t('nav.seller')]);
+    if (session.isAdmin) links.push(['/touma/admin', t('nav.admin')]);
   }
   return links;
 }
 
 function renderChrome() {
   const user = session.user;
+
+  // L'ossature HTML est servie en français : elle doit exister avant que le
+  // module ne se charge, sinon un réseau lent laisse une page muette. Ses
+  // quelques chaînes sont donc traduites ici, au premier rendu.
+  applyDocumentLocale();
+  const chercher = document.getElementById('search-input');
+  if (chercher) chercher.setAttribute('placeholder', t('search.placeholder'));
+  const chercherLabel = document.querySelector('label[for="search-input"]');
+  if (chercherLabel) chercherLabel.textContent = t('search.label');
+  const skip = document.querySelector('.skip-link');
+  if (skip) skip.textContent = t('nav.skipToContent');
+  const tagline = document.querySelector('.brand-tagline');
+  if (tagline) tagline.textContent = t('brand.tagline');
+  const menuBtn = document.getElementById('menu-btn');
+  if (menuBtn) menuBtn.setAttribute('aria-label', t('nav.openMenu'));
+  const drawerClose = document.getElementById('drawer-close');
+  if (drawerClose) drawerClose.setAttribute('aria-label', t('nav.closeMenu'));
+  const bottomNav = document.getElementById('bottom-nav');
+  if (bottomNav) bottomNav.setAttribute('aria-label', t('nav.quickNav'));
+
   const current = location.pathname;
   const isCurrent = (href) => (href === '/touma/' ? current === href : current.startsWith(href));
 
   document.getElementById('header-nav').innerHTML = [
     ...navLinks().map(([href, text]) => `<a href="${href}" data-link${isCurrent(href) ? ' aria-current="page"' : ''}>${text}</a>`),
-    user ? '' : '<a class="sell-cta" href="/touma/inscription" data-link>Vendre sur TOUMA</a>',
+    user ? '' : `<a class="sell-cta" href="/touma/inscription" data-link>${t('nav.sell')}</a>`,
   ].join('');
 
   // Tiroir mobile : mêmes destinations, plus les actions de compte.
   const drawerLinks = [...navLinks()];
   if (user) {
-    drawerLinks.splice(2, 0, ['/touma/panier', 'Panier']);
-    drawerLinks.push(['/touma/messages', 'Messages']);
-    if (session.isSeller) drawerLinks.push(['/touma/vendeur/messages', 'Messagerie vendeur']);
-    drawerLinks.push(['/touma/retours', 'Mes retours']);
-    drawerLinks.push(['/touma/litiges', 'Mes litiges']);
-    drawerLinks.push(['/touma/documents', 'Mes documents']);
-    drawerLinks.push(['/touma/aide', 'Assistance']);
-    drawerLinks.push(['/touma/compte', 'Mon compte']);
+    drawerLinks.splice(2, 0, ['/touma/panier', t('nav.cart')]);
+    drawerLinks.push(['/touma/messages', t('nav.messages')]);
+    if (session.isSeller) drawerLinks.push(['/touma/vendeur/messages', t('nav.sellerMessages')]);
+    drawerLinks.push(['/touma/retours', t('nav.returns')]);
+    drawerLinks.push(['/touma/litiges', t('nav.disputes')]);
+    drawerLinks.push(['/touma/documents', t('nav.documents')]);
+    drawerLinks.push(['/touma/aide', t('nav.support')]);
+    drawerLinks.push(['/touma/compte', t('nav.account')]);
   }
   document.getElementById('drawer-nav').innerHTML = [
-    `<a href="/touma/" data-link${current === '/touma/' ? ' aria-current="page"' : ''}>${svg('home')} Accueil</a>`,
+    `<a href="/touma/" data-link${current === '/touma/' ? ' aria-current="page"' : ''}>${svg('home')} ${t('nav.home')}</a>`,
     ...drawerLinks.map(([href, text]) => `<a href="${href}" data-link${isCurrent(href) ? ' aria-current="page"' : ''}>${drawerIcon(href)} ${text}</a>`),
   ].join('');
 
-  document.getElementById('drawer-foot').innerHTML = user
-    ? `<div class="small muted" style="margin-bottom:var(--space-3)">Connecté : <strong>${esc(user.name)}</strong></div>
-       <a class="btn btn-secondary btn-block" href="/touma/deconnexion" data-link>Se déconnecter</a>`
-    : `<a class="btn btn-block" href="/touma/connexion" data-link>Se connecter</a>
-       <a class="btn btn-accent btn-block" style="margin-top:var(--space-2)" href="/touma/inscription" data-link>Vendre sur TOUMA</a>`;
+  document.getElementById('drawer-foot').innerHTML = `${localeSwitcher()}${
+    user
+      ? `<div class="small muted" style="margin-bottom:var(--space-3)">${esc(t('nav.signedInAs', { name: user.name }))}</div>
+         <a class="btn btn-secondary btn-block" href="/touma/deconnexion" data-link>${t('nav.logout')}</a>`
+      : `<a class="btn btn-block" href="/touma/connexion" data-link>${t('nav.login')}</a>
+         <a class="btn btn-accent btn-block" style="margin-top:var(--space-2)" href="/touma/inscription" data-link>${t('nav.sell')}</a>`
+  }`;
 
   const bottom = [
-    ['/touma/', 'Accueil', 'home'],
-    ['/touma/produits', 'Catalogue', 'grid'],
-    ['/touma/panier', 'Panier', 'cart'],
-    ['/touma/commandes', 'Commandes', 'box'],
-    [user ? '/touma/compte' : '/touma/connexion', user ? 'Compte' : 'Connexion', 'user'],
+    ['/touma/', t('nav.home'), 'home'],
+    ['/touma/produits', t('nav.catalog'), 'grid'],
+    ['/touma/panier', t('nav.cart'), 'cart'],
+    ['/touma/commandes', t('nav.orders'), 'box'],
+    [user ? '/touma/compte' : '/touma/connexion', user ? t('nav.accountShort') : t('nav.loginShort'), 'user'],
   ];
   document.getElementById('bottom-nav').innerHTML = bottom
     .map(
@@ -258,6 +282,32 @@ function renderChrome() {
   accountLink.hidden = !user;
   if (user) accountLink.setAttribute('title', user.name);
   refreshCounters();
+}
+
+/**
+ * Sélecteur de langue, dans le pied du tiroir.
+ *
+ * Il annonce **ce qui est traduit**, en arabe, sous les deux boutons. Proposer
+ * « العربية » sans dire que les écrans détaillés restent en français mettrait un
+ * arabophone devant une porte qui s'ouvre sur un mur — la même faute que
+ * d'annoncer un moyen de paiement qui n'existe pas.
+ */
+function localeSwitcher() {
+  const actuelle = locale();
+  const boutons = Object.values(LOCALES)
+    .map(
+      (l) => `<button class="chip${l.code === actuelle ? ' chip-active' : ''}" type="button"
+                data-set-locale="${l.code}" lang="${l.code}" dir="${l.dir}"
+                aria-pressed="${l.code === actuelle}"
+                title="${esc(t('locale.switchTo', { language: l.nativeName }))}">${esc(l.nativeName)}</button>`,
+    )
+    .join('');
+
+  return `<div style="margin-bottom:var(--space-4)">
+    <div class="xs muted" style="margin-bottom:var(--space-2)">${esc(t('locale.label'))}</div>
+    <div class="row" style="gap:var(--space-2)">${boutons}</div>
+    <p class="xs muted" style="margin-top:var(--space-2)" lang="${actuelle}" dir="${LOCALES[actuelle].dir}">${esc(t('locale.coverage'))}</p>
+  </div>`;
 }
 
 function drawerIcon(href) {
@@ -970,6 +1020,17 @@ document.addEventListener('click', (event) => {
       await render();
     });
   }
+  // Changement de langue : l'ossature et le sens d'écriture suivent
+  // immédiatement, sans rechargement — c'est la page qu'on est en train de lire
+  // qu'on veut voir basculer, pas la suivante.
+  if (d.setLocale) {
+    if (setLocale(d.setLocale)) {
+      renderChrome();
+      void render();
+    }
+    return;
+  }
+
   // ── Versements ───────────────────────────────────────────────────────────
   // Aucune de ces actions ne déplace d'argent : TOUMA ne transfère pas de
   // fonds. Elles consignent une décision, et qui l'a prise.

@@ -22,7 +22,11 @@
  * **Une navigation hors ligne aboutit à une page qui l'explique**, pas au
  * dinosaure du navigateur.
  */
-const VERSION = 'touma-v1';
+// La version change dès que la composition de l'ossature change : sans cela,
+// une installation existante garderait un cache où `i18n.js` n'existe pas, et
+// `core.js` échouerait à l'importer — l'application ne s'ouvrirait plus hors
+// ligne.
+const VERSION = 'touma-v2';
 const SHELL_CACHE = `${VERSION}-shell`;
 const IMAGE_CACHE = `${VERSION}-images`;
 
@@ -34,6 +38,8 @@ const SHELL = [
   '/touma/touma.js',
   '/touma/core.js',
   '/touma/components.js',
+  // Importé par le noyau : sans lui, rien ne démarre hors ligne.
+  '/touma/i18n.js',
   '/touma/hors-ligne.html',
   '/touma/img/icon-192.png',
   '/touma/manifest.webmanifest',

@@ -873,6 +873,75 @@ await step('administration : TOUMA Intelligence', async () => {
   if (!admin.url().includes('jours=7')) throw new Error('le changement de période n’a pas pris');
 });
 
+// ── Français et arabe, les deux langues officielles du Tchad (V17) ──────────
+
+await step('langue : l’ossature bascule en arabe, et le sens d’écriture avec', async () => {
+  const ar = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await ar.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+
+  if ((await ar.getAttribute('html', 'dir')) !== 'ltr') throw new Error('le français doit être en écriture latine');
+
+  await ar.click('#menu-btn');
+  await ar.waitForTimeout(400);
+  if ((await ar.locator('[data-set-locale]').count()) !== 2) throw new Error('le sélecteur de langue est absent');
+
+  // La couverture est annoncée : proposer « العربية » sans dire ce qui reste en
+  // français mettrait un arabophone devant une porte ouverte sur un mur.
+  const pied = ((await ar.textContent('#drawer-foot')) ?? '').replace(/\s+/g, ' ');
+  if (!/بالفرنسية|français/.test(pied)) throw new Error('la couverture de la traduction n’est pas annoncée');
+
+  await ar.click('[data-set-locale="ar"]');
+  await ar.waitForTimeout(800);
+
+  if ((await ar.getAttribute('html', 'dir')) !== 'rtl') throw new Error('le sens d’écriture n’a pas basculé');
+  if ((await ar.getAttribute('html', 'lang')) !== 'ar') throw new Error('la langue du document n’a pas changé');
+  if (!/الرئيسية/.test((await ar.textContent('#bottom-nav')) ?? '')) throw new Error('la navigation basse reste en français');
+
+  await ar.screenshot({ path: `${OUT}/48-arabe.png` });
+  await ar.close();
+});
+
+await step('langue : aucun débordement en écriture de droite à gauche', async () => {
+  // Le miroir RTL est le moment où les marges physiques oubliées se voient. La
+  // feuille de style n'emploie que des propriétés logiques : on le vérifie.
+  for (const [width, height] of [
+    [360, 780],
+    [390, 844],
+    [768, 1024],
+    [1280, 900],
+  ]) {
+    const vue = await browser.newPage({ viewport: { width, height } });
+    await vue.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+    await vue.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+    for (const path of ['/', '/produits', '/panier', '/provinces']) {
+      await vue.goto(`${BASE}${path}`, { waitUntil: 'networkidle' });
+      await vue.waitForTimeout(400);
+      if ((await vue.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`la langue n’est pas conservée sur ${path}`);
+      const overflow = await vue.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+      if (overflow) throw new Error(`débordement horizontal en arabe sur ${path} à ${width}px`);
+    }
+    await vue.close();
+  }
+});
+
+await step('langue : les statuts de commande sont traduits partout à la fois', async () => {
+  // Les statuts viennent du serveur sous forme de code : les traduire au seul
+  // endroit qui les rend les traduit sur tous les écrans, y compris ceux dont
+  // le reste du texte est encore en français.
+  const ar = await sessionFor('acheteur@touma.dev');
+  await ar.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+  await ar.goto(`${BASE}/commandes`, { waitUntil: 'networkidle' });
+  await ar.waitForTimeout(800);
+
+  const texte = (await ar.textContent('#view')) ?? '';
+  const statutsArabes = /مدفوعة|مؤكدة|تم التسليم|قيد التحضير|في انتظار الدفع|منتهية|تم شحنها/;
+  if (!statutsArabes.test(texte)) throw new Error('aucun statut de commande n’apparaît en arabe');
+
+  await ar.screenshot({ path: `${OUT}/49-arabe-commandes.png` });
+  // On repasse en français : les étapes suivantes lisent des libellés français.
+  await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+});
+
 // ── Le pays, vu de l'intérieur (V17) ────────────────────────────────────────
 
 await step('provinces : les 23 pages existent, avec leur nom arabe', async () => {

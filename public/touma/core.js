@@ -6,6 +6,8 @@
  * politique de sécurité du contenu (CSP) du serveur.
  */
 
+import { locale, statusLabel, STATUS_FR } from './i18n.js';
+
 export const API = '/api/v1';
 const STORAGE = 'touma.session';
 
@@ -129,7 +131,18 @@ export function esc(value) {
 /** Devises sans subdivision courante en Afrique centrale et de l'Ouest. */
 const ZERO_DECIMAL = new Set(['XAF', 'XOF']);
 
-/** Formate un montant décimal (transmis en chaîne par l'API). Aucune conversion. */
+/**
+ * Formate un montant décimal (transmis en chaîne par l'API). Aucune conversion.
+ *
+ * **Les chiffres restent latins, même en arabe, et c'est délibéré.** Les
+ * chiffres arabo-indiens (٠١٢…) sont d'usage au Tchad, mais un prix est la
+ * seule chaîne de l'interface où une lecture ambiguë coûte de l'argent : un
+ * acheteur qui hésite sur un montant se trompe de commande. Basculer le système
+ * de numération pour les prix est une décision d'exploitation, pas un détail de
+ * localisation — elle se prend avec des utilisateurs réels, pas ici.
+ *
+ * Les dates, elles, suivent la langue : s'y tromper ne coûte rien.
+ */
 export function money(amount, currency) {
   const decimals = ZERO_DECIMAL.has(currency) ? 0 : 2;
   const value = Number(amount ?? 0);
@@ -141,50 +154,27 @@ export function formatDate(value, withTime = false) {
   if (!value) return '—';
   const options = { day: '2-digit', month: 'short', year: 'numeric' };
   if (withTime) Object.assign(options, { hour: '2-digit', minute: '2-digit' });
-  return new Date(value).toLocaleDateString('fr-FR', options);
+  // La date suit la langue de l'interface : un arabophone lit « ١٥ مارس » et
+  // non « 15 mars ». Le calendrier reste grégorien, qui est celui de
+  // l'administration tchadienne.
+  return new Date(value).toLocaleDateString(locale() === 'ar' ? 'ar-TD' : 'fr-FR', options);
 }
 
 /** Libellés lisibles des statuts (jamais de constante technique à l'écran). */
-export const LABELS = {
-  PENDING: 'En attente de paiement',
-  PAID: 'Payée',
-  CONFIRMED: 'Confirmée',
-  PROCESSING: 'En préparation',
-  READY_TO_SHIP: 'Prête à expédier',
-  SHIPPED: 'Expédiée',
-  PARTIALLY_SHIPPED: 'Partiellement expédiée',
-  PARTIALLY_DELIVERED: 'Partiellement livrée',
-  IN_TRANSIT: 'En transit',
-  DELIVERED: 'Livrée',
-  COMPLETED: 'Terminée',
-  CANCELLED: 'Annulée',
-  REFUNDED: 'Remboursée',
-  DISPUTED: 'En litige',
-  LABEL_CREATED: 'Étiquette créée',
-  FAILED: 'Échec',
-  RETURNED: 'Retournée',
-  SUCCEEDED: 'Confirmé',
-  PARTIALLY_REFUNDED: 'Partiellement remboursé',
-  UNVERIFIED: 'Non vérifiée',
-  APPROVED: 'Vérifiée',
-  REJECTED: 'Refusée',
-  ACTIVE: 'Active',
-  SUSPENDED: 'Suspendue',
-  DRAFT: 'Brouillon',
-  ARCHIVED: 'Archivé',
-  CLOSED: 'Fermée',
-  OPEN: 'Ouvert',
-  UNDER_REVIEW: 'En cours d’examen',
-  BUYER: 'Acheteur',
-  SELLER: 'Vendeur',
-  ADMIN: 'Administration',
-  MOBILE_MONEY: 'Mobile money',
-  CARD: 'Carte bancaire',
-  BANK_TRANSFER: 'Virement bancaire',
-  CASH_ON_DELIVERY: 'Paiement à la livraison',
-};
+export const LABELS = STATUS_FR;
 
-export const label = (value) => LABELS[value] ?? value ?? '';
+
+/**
+ * Libellé d'un statut serveur.
+ *
+ * Passe par le dictionnaire de langue : les statuts viennent du serveur sous
+ * forme de code (`SHIPPED`, `MOBILE_MONEY`), les mêmes partout, donc les
+ * traduire à cet endroit les traduit sur **tous** les écrans d'un coup — y
+ * compris ceux dont le reste du texte est encore en français.
+ *
+ * `LABELS` reste exporté : plusieurs vues l'emploient comme table de référence.
+ */
+export const label = (value) => statusLabel(value) || value || '';
 
 export function statusPill(value) {
   return `<span class="status status-${esc(value)}">${esc(label(value))}</span>`;
