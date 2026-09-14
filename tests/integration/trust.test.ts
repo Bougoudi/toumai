@@ -311,3 +311,77 @@ describe('Résolution : figée, et traçable', () => {
     }
   });
 });
+
+describe('Le dossier tel qu’une partie le reçoit', () => {
+  it('ne montre jamais la note interne de l’assistance aux parties', async () => {
+    // La note interne existe pour que l'assistance puisse annoter un dossier
+    // sans que les parties lisent par-dessus son épaule. Elle était filtrée à
+    // l'écriture — un non-administrateur ne peut pas en créer — et pas du tout
+    // à la lecture : acheteur et vendeur la recevaient avec le reste.
+    const { orderId } = await commandeLivree();
+    const litige = await api.post('/api/v1/disputes', { orderId, reason: 'DAMAGED', category: 'DAMAGED_ITEM' }, buyer.accessToken);
+
+    await api.post(`/api/v1/disputes/${litige.body.id}/messages`, { body: 'Photo floue, demander un cliché net.', internal: true }, admin.accessToken);
+    await api.post(`/api/v1/disputes/${litige.body.id}/messages`, { body: 'Bonjour, pouvez-vous préciser ?' }, admin.accessToken);
+
+    for (const partie of [buyer, seller]) {
+      const vue = await api.get(`/api/v1/disputes/${litige.body.id}`, partie.accessToken);
+      assert.equal(vue.status, 200);
+      const corps = vue.body.messages.map((m: any) => m.body).join(' | ');
+      assert.equal(/cliché net/.test(corps), false, 'la note interne ne sort jamais du cercle de l’assistance');
+      assert.ok(/préciser/.test(corps), 'le message public, lui, arrive bien');
+      assert.equal(
+        vue.body.messages.some((m: any) => m.internal === true),
+        false,
+        'aucun message marqué interne ne figure dans le dossier rendu à une partie',
+      );
+    }
+
+    const vueAdmin = await api.get(`/api/v1/disputes/${litige.body.id}`, admin.accessToken);
+    assert.ok(
+      vueAdmin.body.messages.some((m: any) => m.internal === true),
+      'l’assistance, elle, retrouve sa note',
+    );
+  });
+
+  it('sert réellement le contenu de la pièce à l’arbitre', async () => {
+    // Une preuve qu'on ne peut pas ouvrir ne prouve rien. L'URL signée rendue à
+    // la liste doit mener au fichier — pour les parties comme pour
+    // l'administration qui décide sur cette pièce.
+    const { orderId } = await commandeLivree();
+    const litige = await api.post('/api/v1/disputes', { orderId, reason: 'DAMAGED', category: 'DAMAGED_ITEM' }, buyer.accessToken);
+    const versee = await api.upload(`/api/v1/disputes/${litige.body.id}/evidence`, PNG, 'colis.png', buyer.accessToken);
+    assert.equal(versee.status, 201);
+
+    const lien = versee.body.url as string;
+    assert.ok(lien, 'une URL est rendue au dépôt');
+
+    const parLien = await api.get(lien.replace('/api/v1', '/api/v1'));
+    assert.equal(parLien.status, 200, 'le lien signé sert le fichier');
+
+    // Et sans lien signé, une partie authentifiée y accède aussi.
+    const parAdmin = await api.get(`/api/v1/disputes/evidence/${versee.body.id}`, admin.accessToken);
+    assert.equal(parAdmin.status, 200, 'l’administration ouvre la pièce sur laquelle elle décide');
+
+    // Un tiers, lui, ne trouve rien.
+    const parTiers = await api.get(`/api/v1/disputes/evidence/${versee.body.id}`, autreAcheteur.accessToken);
+    assert.equal(parTiers.status, 404, 'la pièce d’un dossier étranger est introuvable, jamais « interdite »');
+  });
+
+  it('ne livre jamais la clé de stockage d’une preuve', async () => {
+    // La clé est le nom de l'objet dans le stockage privé : elle est non
+    // devinable par construction, et c'est cette imprévisibilité qui protège le
+    // fichier. La servir à une partie — dans un litige, l'autre partie est un
+    // adversaire — revient à annuler la précaution. Le service de preuves la
+    // retirait déjà ; le dossier complet la laissait passer.
+    const { orderId } = await commandeLivree();
+    const litige = await api.post('/api/v1/disputes', { orderId, reason: 'DAMAGED', category: 'DAMAGED_ITEM' }, buyer.accessToken);
+    await api.upload(`/api/v1/disputes/${litige.body.id}/evidence`, PNG, 'colis.png', buyer.accessToken);
+
+    for (const partie of [buyer, seller, admin]) {
+      const vue = await api.get(`/api/v1/disputes/${litige.body.id}`, partie.accessToken);
+      assert.equal(/storageKey/.test(JSON.stringify(vue.body)), false, 'aucune clé de stockage dans le dossier');
+      assert.ok(vue.body.evidence[0].checksum, 'l’empreinte, elle, reste lisible : c’est elle qui fait foi');
+    }
+  });
+});

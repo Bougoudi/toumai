@@ -74,6 +74,13 @@ async function parties(
   throw badRequest('Indiquez le litige ou la demande de retour concernée.');
 }
 
+/**
+ * Chemin qui sert le contenu d'une preuve. Distinct de celui des pièces jointes
+ * de la messagerie : ce sont deux tables, et un lien pointé vers la mauvaise ne
+ * trouve rien.
+ */
+const EVIDENCE_PATH = '/api/v1/disputes/evidence';
+
 /** Nombre maximal de pièces par dossier et par personne. */
 const MAX_PAR_PERSONNE = Number(process.env.TOUMA_EVIDENCE_MAX_PER_USER ?? 10);
 
@@ -130,7 +137,7 @@ export const evidenceService = {
       metadata: { checksum: evidence.checksum, dossier: dossier.disputeId ?? dossier.returnRequestId },
     });
 
-    return { ...evidence, url: signedUrl(evidence.id).url };
+    return { ...evidence, url: signedUrl(evidence.id, EVIDENCE_PATH).url };
   },
 
   /** Pièces d'un dossier, avec leurs liens signés à durée courte. */
@@ -160,7 +167,7 @@ export const evidenceService = {
         ...r,
         // Une pièce retirée reste visible dans la liste — avec son motif — mais
         // son contenu n'est plus servi.
-        url: r.removedAt ? null : signedUrl(r.id).url,
+        url: r.removedAt ? null : signedUrl(r.id, EVIDENCE_PATH).url,
       })),
     };
   },

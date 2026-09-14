@@ -145,12 +145,24 @@ function signature(attachmentId: string, expiresAt: number): string {
   return createHmac('sha256', env.touma.accessSecret).update(`${attachmentId}.${expiresAt}`).digest('hex');
 }
 
-/** Fabrique une URL signée, valable quelques minutes, pour un participant. */
-export function signedUrl(attachmentId: string): { url: string; expiresAt: string } {
+/**
+ * Fabrique une URL signée, valable quelques minutes, pour un participant.
+ *
+ * Le chemin est un paramètre parce que deux ressources distinctes se servent de
+ * ce mécanisme : les pièces jointes de la messagerie et les preuves de litige,
+ * qui vivent dans deux tables différentes. Une preuve pointée vers le chemin des
+ * pièces jointes se cherchait dans la mauvaise table et ne se trouvait jamais :
+ * elle pouvait être versée, listée, et **jamais ouverte** — y compris par
+ * l'arbitre qui décidait dessus.
+ *
+ * La signature, elle, reste calculée sur `id.expiration` : les liens déjà émis
+ * continuent de valoir.
+ */
+export function signedUrl(attachmentId: string, basePath = '/api/v1/attachments'): { url: string; expiresAt: string } {
   const expiresAt = Math.floor(Date.now() / 1000) + SIGNED_URL_TTL;
   const sig = signature(attachmentId, expiresAt);
   return {
-    url: `/api/v1/attachments/${attachmentId}?expires=${expiresAt}&signature=${sig}`,
+    url: `${basePath}/${attachmentId}?expires=${expiresAt}&signature=${sig}`,
     expiresAt: new Date(expiresAt * 1000).toISOString(),
   };
 }

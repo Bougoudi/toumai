@@ -5,6 +5,7 @@ import { prisma } from '../../db/prisma.js';
 import { evidenceService } from './evidence.service.js';
 import { computePriority, deadlineFrom, sweepDisputes } from './escalation.js';
 import { entriesFor, holdForDispute, releaseHold } from '../finance/ledger.js';
+import { readAttachment, safeContentType } from '../messaging/attachments.js';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
 import { audit, auditRequest } from '../lib/audit.js';
 import { badRequest, conflict, notFound } from '../lib/errors.js';
@@ -47,6 +48,47 @@ const resolveSchema = z.object({
     .optional(),
 });
 
+/**
+ * Sert le contenu d'une preuve.
+ *
+ * Cette route manquait : une preuve pouvait être versée et listée, et son lien
+ * ne menait nulle part — il pointait vers la table des pièces jointes de la
+ * messagerie, où l'identifiant d'une preuve ne se trouve évidemment pas. Une
+ * preuve qu'on ne peut pas ouvrir ne prouve rien, et c'est l'arbitre qui en
+ * paie le prix : il décidait sur une pièce qu'il ne pouvait pas regarder.
+ *
+ * Deux chemins d'accès, une seule règle : **seules les parties du dossier**
+ * voient le fichier — par contrôle d'appartenance, ou par signature à durée
+ * courte. Déclarée avant `authenticate` parce qu'un lien signé ne porte aucun
+ * jeton.
+ */
+disputeRouter.get(
+  '/evidence/:evidenceId',
+  (req, res, next) => {
+    const signe = typeof req.query.expires === 'string' && typeof req.query.signature === 'string';
+    if (signe) return next();
+    return authenticate(req, res, next);
+  },
+  asyncHandler(async (req, res) => {
+    const expires = typeof req.query.expires === 'string' ? req.query.expires : null;
+    const sig = typeof req.query.signature === 'string' ? req.query.signature : null;
+
+    const evidence = await evidenceService.content(
+      req.params.evidenceId,
+      req.toumaUser ?? null,
+      expires && sig ? { expires, signature: sig } : undefined,
+    );
+
+    const content = await readAttachment(evidence.storageKey);
+    // Jamais rendu comme document actif : téléchargement, sans reniflage de type.
+    res.setHeader('content-type', safeContentType(evidence.mimeType));
+    res.setHeader('content-disposition', `attachment; filename="${evidence.filename.replace(/"/g, '')}"`);
+    res.setHeader('x-content-type-options', 'nosniff');
+    res.setHeader('cache-control', 'private, max-age=60');
+    res.send(content);
+  }),
+);
+
 disputeRouter.use(authenticate);
 
 // Les délais dépassés sont constatés côté serveur, sur le chemin de la
@@ -59,14 +101,51 @@ disputeRouter.use(
   }),
 );
 
-/** Accès : acheteur, vendeur concerné ou administration. */
+/**
+ * Accès : acheteur, vendeur concerné ou administration.
+ *
+ * Deux choses ne sortent jamais vers une partie, et les deux étaient sorties.
+ *
+ * **La note interne de l'assistance.** Elle existe pour qu'un dossier puisse
+ * être annoté sans que les parties lisent par-dessus l'épaule de celui qui
+ * l'instruit. Le filtre était posé à l'écriture — un non-administrateur ne peut
+ * pas en créer — et nulle part à la lecture.
+ *
+ * **La clé de stockage d'une preuve.** C'est le nom de l'objet dans le stockage
+ * privé : non devinable par construction, et c'est cette imprévisibilité qui
+ * protège le fichier. Dans un litige, l'autre partie est un adversaire. Le
+ * service de preuves la retirait déjà de ses réponses ; le dossier complet la
+ * laissait passer, ce qui revenait à annuler la précaution par une autre porte.
+ */
 async function loadDispute(id: string, user: { id: string; role: string }) {
+  const estAdmin = user.role === 'ADMIN';
   const dispute = await prisma.toumaDispute.findUnique({
     where: { id },
     include: {
       order: { include: { store: true } },
-      messages: { orderBy: { createdAt: 'asc' }, include: { author: { select: { id: true, name: true } } } },
-      evidence: true,
+      messages: {
+        where: estAdmin ? {} : { internal: false },
+        orderBy: { createdAt: 'asc' },
+        include: { author: { select: { id: true, name: true } } },
+      },
+      // Champs choisis un par un : `true` ferait entrer toute nouvelle colonne
+      // du modèle dans la réponse sans que personne ne l'ait décidé.
+      evidence: {
+        orderBy: { createdAt: 'asc' },
+        select: {
+          id: true,
+          kind: true,
+          filename: true,
+          mimeType: true,
+          sizeBytes: true,
+          checksum: true,
+          note: true,
+          createdAt: true,
+          removedAt: true,
+          removalReason: true,
+          uploadedBy: { select: { id: true, name: true } },
+        },
+      },
     },
   });
   if (!dispute) throw notFound('Litige introuvable.');

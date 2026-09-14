@@ -117,6 +117,18 @@ export function toumaOpenApiDocument() {
       '/reviews/product/{productId}': { get: op('Avis & litiges', 'Avis d’un produit', { auth: false, params: ['productId'] }) },
       '/disputes': { get: op('Avis & litiges', 'Mes litiges'), post: op('Avis & litiges', 'Ouvrir un litige', { body: true }) },
       '/disputes/{id}/messages': { post: op('Avis & litiges', 'Répondre dans un litige', { params: ['id'], body: true }) },
+      '/disputes/{id}': { get: op('Avis & litiges', 'Le dossier : échanges, pièces, décision', { params: ['id'] }) },
+      '/disputes/{id}/ledger': { get: op('Avis & litiges', 'Mouvements d’argent de la commande en litige', { params: ['id'] }) },
+      '/disputes/{id}/evidence': {
+        get: op('Avis & litiges', 'Pièces du dossier, avec leurs liens signés', { params: ['id'] }),
+        post: op('Avis & litiges', 'Verser une pièce (corps brut)', { params: ['id'], body: true }),
+      },
+      '/disputes/evidence/{evidenceId}': {
+        get: op('Avis & litiges', 'Contenu d’une pièce (URL signée ou partie du dossier)', { auth: false, params: ['evidenceId'], query: ['expires', 'signature'] }),
+      },
+      '/disputes/evidence/{evidenceId}/remove': {
+        post: op('Avis & litiges', 'Écarter une pièce, avec motif (elle reste au dossier)', { params: ['evidenceId'], body: true, role: 'ADMIN' }),
+      },
       '/disputes/{id}/resolve': { post: op('Avis & litiges', 'Trancher un litige', { params: ['id'], body: true, role: 'ADMIN' }) },
       '/business/profile': { get: op('Touma Business', 'Mon profil entreprise'), put: op('Touma Business', 'Enregistrer mon profil entreprise', { body: true }) },
       '/rfqs': {

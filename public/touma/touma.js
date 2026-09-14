@@ -74,6 +74,14 @@ const ROUTES = [
   { path: '/touma/vendeur/retours', module: 'support', name: 'sellerReturns', auth: true, role: 'SELLER' },
   { path: '/touma/admin/assistance', module: 'support', name: 'adminTickets', auth: true, role: 'ADMIN' },
 
+  // Litiges : le même dossier pour les deux parties, plus la décision côté
+  // administration. Le moteur existait ; aucun écran ne le montrait.
+  { path: '/touma/litiges', module: 'disputes', name: 'disputes', auth: true },
+  { path: '/touma/litiges/:id', module: 'disputes', name: 'disputeDetail', auth: true },
+  { path: '/touma/vendeur/litiges', module: 'disputes', name: 'sellerDisputes', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/litiges/:id', module: 'disputes', name: 'sellerDisputeDetail', auth: true, role: 'SELLER' },
+  { path: '/touma/admin/litiges/:id', module: 'disputes', name: 'adminDisputeDetail', auth: true, role: 'ADMIN' },
+
   // Documents commerciaux.
   { path: '/touma/documents', module: 'documents', name: 'documents', auth: true },
   { path: '/touma/documents/:id', module: 'documents', name: 'documentView', auth: true },
@@ -135,6 +143,7 @@ const LOADERS = {
   promotions: () => import('./views-promotions.js'),
   documents: () => import('./views-documents.js'),
   sourcing: () => import('./views-sourcing.js'),
+  disputes: () => import('./views-disputes.js'),
 };
 
 async function loadModule(name) {
@@ -197,6 +206,7 @@ function renderChrome() {
     drawerLinks.push(['/touma/messages', 'Messages']);
     if (session.isSeller) drawerLinks.push(['/touma/vendeur/messages', 'Messagerie vendeur']);
     drawerLinks.push(['/touma/retours', 'Mes retours']);
+    drawerLinks.push(['/touma/litiges', 'Mes litiges']);
     drawerLinks.push(['/touma/documents', 'Mes documents']);
     drawerLinks.push(['/touma/aide', 'Assistance']);
     drawerLinks.push(['/touma/compte', 'Mon compte']);
@@ -919,21 +929,38 @@ document.addEventListener('click', (event) => {
       await render();
     });
   }
+  if (d.removeEvidence) {
+    return run(async () => {
+      // Un motif est obligatoire, et il reste visible au dossier : écarter une
+      // pièce est un acte d'administration, pas un coup de gomme. La pièce
+      // n'est pas supprimée — son contenu cesse d'être servi, et le motif
+      // s'affiche à côté d'elle pour les deux parties.
+      const choix = await chooseDialog({
+        title: 'Écarter cette pièce',
+        body: 'La pièce reste au dossier. Le motif est visible de l’acheteur comme du vendeur.',
+        options: [
+          { value: 'Illisible', label: 'Illisible ou inexploitable' },
+          { value: 'Hors sujet', label: 'Sans rapport avec le litige' },
+          { value: 'Doublon', label: 'Doublon d’une pièce déjà versée' },
+          { value: 'Données personnelles d’un tiers', label: 'Contient les données personnelles d’un tiers' },
+          { value: 'Contenu inapproprié', label: 'Contenu inapproprié' },
+        ],
+        withNote: true,
+        confirmLabel: 'Écarter',
+      });
+      if (!choix) return;
+      const reason = choix.note ? `${choix.value} — ${choix.note}` : choix.value;
+      await api(`/disputes/evidence/${d.removeEvidence}/remove`, { method: 'POST', body: { reason } });
+      toast('Pièce écartée : elle reste au dossier, avec son motif.', 'success');
+      await render();
+    });
+  }
   if (d.rejectVerification) {
     return run(async () => {
       const comment = prompt('Motif du rejet (communiqué au vendeur) :');
       if (!comment) return;
       await api(`/admin/verifications/${d.rejectVerification}/reject`, { method: 'POST', body: { comment } });
       toast('Dossier rejeté.');
-      await render();
-    });
-  }
-  if (d.resolveDispute) {
-    return run(async () => {
-      const resolution = prompt('Motivation de la décision (journalisée) :');
-      if (!resolution) return;
-      await api(`/disputes/${d.resolveDispute}/resolve`, { method: 'POST', body: { decision: d.decision, resolution } });
-      toast('Litige tranché.', 'success');
       await render();
     });
   }
@@ -1626,11 +1653,52 @@ document.addEventListener('submit', (event) => {
     );
   }
 
+  if (form.id === 'dispute-message-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const internal = document.getElementById('dm-internal')?.checked ?? false;
+        await api(`/disputes/${form.dataset.dispute}/messages`, {
+          method: 'POST',
+          body: { body: document.getElementById('dm-body').value, internal },
+        });
+        toast(internal ? 'Note interne enregistrée.' : 'Message envoyé.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'dispute-resolve-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const montant = document.getElementById('dr-amount').value.trim();
+        const nature = document.getElementById('dr-type').value;
+        // Le montant part tel qu'il est saisi : c'est le serveur qui le valide
+        // et le range en décimal. Le convertir ici en nombre JavaScript
+        // introduirait une approximation dans une décision d'argent.
+        await api(`/disputes/${form.dataset.dispute}/resolve`, {
+          method: 'POST',
+          body: {
+            decision: document.getElementById('dr-decision').value,
+            resolution: document.getElementById('dr-resolution').value,
+            resolutionType: nature || undefined,
+            refundAmount: montant || undefined,
+          },
+        });
+        toast('Décision enregistrée et notifiée aux deux parties.', 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
   if (form.id === 'dispute-form') {
     event.preventDefault();
     return run(
       async () => {
-        await api('/disputes', {
+        const litige = await api('/disputes', {
           method: 'POST',
           body: {
             orderId: form.dataset.order,
@@ -1638,8 +1706,11 @@ document.addEventListener('submit', (event) => {
             details: document.getElementById('d-details').value || undefined,
           },
         });
-        toast('Litige ouvert : l’équipe TOUMA examine votre dossier.', 'success');
-        await render();
+        toast('Litige ouvert : vous pouvez y verser vos pièces.', 'success');
+        // On emmène l'acheteur dans son dossier. Jusqu'ici il recevait un
+        // message de confirmation et restait sur sa commande, sans aucun écran
+        // où suivre ce qu'il venait d'ouvrir.
+        return navigate(`/touma/litiges/${litige.id}`);
       },
       { button: submit },
     );
@@ -1967,6 +2038,26 @@ document.addEventListener('change', (event) => {
         body: { category: input.dataset.category, [input.dataset.channel]: input.checked },
       });
       toast('Préférence enregistrée.');
+    });
+  }
+
+  // Pièce versée à un litige. Même mécanisme que la messagerie : le contenu
+  // part brut, et ce sont ses octets qui décident de son type.
+  const preuve = event.target.closest('#d-file');
+  if (preuve?.files?.length) {
+    const chosen = preuve.files[0];
+    const disputeId = preuve.dataset.dispute;
+    preuve.value = '';
+    return run(async () => {
+      const buffer = await chosen.arrayBuffer();
+      await api(`/disputes/${disputeId}/evidence`, {
+        method: 'POST',
+        body: buffer,
+        contentType: 'application/octet-stream',
+        headers: { 'x-file-name': encodeURIComponent(chosen.name) },
+      });
+      toast('Pièce versée au dossier.', 'success');
+      await render();
     });
   }
 

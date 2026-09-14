@@ -145,11 +145,53 @@ remboursement : jusqu'ici il n'existait pas, et l'acheteur ne voyait rien entre
 « reçu » et « remboursé ». Un test verrouille désormais la table — chaque statut
 y figure, et aucune issue ne revient en arrière.
 
+## 7. Les écrans — et trois défauts que seul le fait de les écrire a révélés
+
+Le moteur était complet et **personne ne pouvait le regarder**. Un acheteur
+ouvrait un litige, recevait un message de confirmation, et n'avait plus aucun
+écran : ni l'avancement, ni le moyen de verser une pièce, ni la réponse du
+vendeur. Le vendeur était prévenu sans qu'on lui dise où répondre.
+L'administration tranchait depuis une ligne de liste, avec deux boutons et une
+invite du navigateur — **sans voir une seule preuve**.
+
+Il y a désormais un dossier, le même pour les deux parties : ce qui est
+reproché, les échanges, les pièces avec leur empreinte, les mouvements d'argent,
+le délai en cours et à qui il s'adresse, et la décision une fois rendue. Côté
+administration, s'y ajoute le formulaire de décision — motivation obligatoire,
+car c'est elle que les deux parties liront.
+
+Écrire ces écrans a mis au jour trois défauts du moteur, qu'aucun test ne voyait
+parce qu'aucun appelant ne parcourait ces chemins.
+
+**La note interne de l'assistance était lisible par les parties.** Le filtre
+était posé à l'écriture — un non-administrateur ne peut pas en créer — et nulle
+part à la lecture. La note existe précisément pour qu'un dossier puisse être
+annoté sans que l'acheteur et le vendeur lisent par-dessus l'épaule de celui qui
+l'instruit.
+
+**La clé de stockage d'une preuve sortait dans le dossier complet.** C'est le
+nom de l'objet dans le stockage privé : non devinable par construction, et c'est
+cette imprévisibilité qui protège le fichier. Le service de preuves la retirait
+déjà de ses réponses ; le dossier la laissait passer, ce qui revenait à annuler
+la précaution par une autre porte. Dans un litige, l'autre partie est un
+adversaire.
+
+**Le contenu d'une preuve n'était servi par aucune route.** Le lien signé rendu
+à la liste pointait vers le chemin des pièces jointes de la messagerie — deux
+tables différentes, donc un identifiant qui ne s'y trouvait jamais. Une preuve
+pouvait être versée, listée, et **jamais ouverte** : l'arbitre décidait sur une
+pièce qu'il ne pouvait pas regarder. C'est le plus grave des trois, et c'est
+celui qu'aucune relecture n'avait attrapé — il fallait essayer de cliquer.
+
+Les trois sont verrouillés par des tests qui échouaient avant correction.
+
+---
+
 ---
 
 ## Ce qui est garanti par les tests
 
-**379 tests** au total (89 unitaires, 257 d'intégration, 33 de bout en bout), 20
+**382 tests** au total (89 unitaires, 260 d'intégration, 33 de bout en bout), 23
 ajoutés par cette version.
 
 - une preuve déclarée par URL est **refusée** (400) ;
@@ -172,6 +214,17 @@ ajoutés par cette version.
   litige (403) ;
 - la machine d'état des retours déclare une transition pour **chaque** statut, et
   aucune issue ne repart en arrière.
+- **la note interne de l'assistance ne sort jamais** vers l'acheteur ni vers le
+  vendeur, et le message public, lui, arrive bien ;
+- **aucune clé de stockage** ne figure dans le dossier rendu à une partie ;
+- **le contenu d'une preuve est réellement servi** — par lien signé comme par
+  appartenance au dossier — et reste introuvable pour un tiers.
+
+Et par le parcours navigateur : un acheteur ouvre un litige et **arrive dans son
+dossier**, y verse une pièce qui s'affiche avec son empreinte ; le vendeur la
+retrouve depuis son espace et répond ; l'administration ouvre le dossier, y voit
+les pièces **et** les mouvements d'argent avant de trancher, et le dossier est
+figé après la décision — plus de formulaire, plus de message.
 
 ---
 
@@ -179,10 +232,6 @@ ajoutés par cette version.
 
 Par ordre de ce qui manquerait le plus.
 
-- **Interfaces de litige dédiées** (§29–§33) : les litiges se gèrent par l'API et
-  la file de modération existante. Les écrans acheteur, vendeur et administration
-  décrits par le cahier des charges restent à construire — c'est du travail
-  d'interface, pas de moteur.
 - **Webhook de remboursement** (§14) : le remboursement est synchrone via
   l'adaptateur de démonstration. Le webhook n'a de sens qu'avec un prestataire
   asynchrone réel, et sa signature dépend de celui qu'on raccorde.

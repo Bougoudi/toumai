@@ -212,7 +212,7 @@ const LISTS = {
   litiges: {
     title: 'Litiges',
     path: (q) => `/admin/disputes?limit=25&page=${q.get('page') ?? 1}`,
-    columns: ['Commande', 'Motif', 'Statut', 'Messages', 'Preuves', 'Date', 'Décision'],
+    columns: ['Commande', 'Motif', 'Statut', 'Messages', 'Preuves', 'Date', 'Dossier'],
     row: (d) => `<tr>
       <td>${esc(d.order.orderNumber)}</td>
       <td>${esc(d.reason)}</td>
@@ -220,12 +220,7 @@ const LISTS = {
       <td>${d._count.messages}</td>
       <td>${d._count.evidence}</td>
       <td class="xs muted">${formatDate(d.createdAt)}</td>
-      <td>${['OPEN', 'UNDER_REVIEW'].includes(d.status)
-        ? `<div class="row" style="gap:var(--space-2);flex-wrap:nowrap">
-             <button class="btn btn-ghost btn-sm" data-resolve-dispute="${esc(d.id)}" data-decision="RESOLVED_BUYER">Acheteur</button>
-             <button class="btn btn-ghost btn-sm" data-resolve-dispute="${esc(d.id)}" data-decision="RESOLVED_SELLER">Vendeur</button>
-           </div>`
-        : '—'}</td>
+      <td><a class="btn btn-ghost btn-sm" href="/touma/admin/litiges/${esc(d.id)}" data-link>Ouvrir le dossier</a></td>
     </tr>`,
   },
   audit: {

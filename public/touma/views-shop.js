@@ -1223,7 +1223,8 @@ export async function order(params) {
                 <div class="field"><label for="d-details">Détails</label><textarea id="d-details" rows="3" maxlength="2000"></textarea></div>
                 <button class="btn btn-secondary btn-block" type="submit">Ouvrir un litige</button>
               </form>
-              <a class="btn btn-ghost btn-block btn-sm mt-6" href="/touma/aide/nouveau?commande=${esc(o.id)}&sujet=ORDER" data-link>Contacter l’assistance</a>
+              <a class="btn btn-ghost btn-block btn-sm mt-6" href="/touma/litiges" data-link>Suivre mes litiges</a>
+              <a class="btn btn-ghost btn-block btn-sm" href="/touma/aide/nouveau?commande=${esc(o.id)}&sujet=ORDER" data-link>Contacter l’assistance</a>
             </section>`
           : ''}
       </aside>

@@ -150,10 +150,56 @@ const email = `nav-${Date.now()}@touma.test`;
 let rfqUrl = '';
 let orderId = '';
 let returnId = '';
+let disputeUrl = '';
 let ticketUrl = '';
 let couponCode = '';
 let documentUrl = '';
 const PASSWORD = 'motdepasse-nav-123';
+
+/**
+ * Une seconde commande payée, pour les étapes de litige.
+ *
+ * Ouvrir un litige fait passer la commande en « en litige » : elle ne peut donc
+ * pas être celle qui sert au retour et au remboursement — l'un des deux
+ * parcours échouerait, selon l'ordre. Chaque remède a sa commande, comme dans la
+ * vie.
+ */
+async function commandePayee() {
+  await page.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('.product-card [data-add-to-cart]');
+  await page.click('.product-card [data-add-to-cart]');
+  await page.waitForTimeout(1200);
+
+  await page.goto(`${BASE}/checkout`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  // L'adresse est déjà au carnet depuis le premier passage : le formulaire de
+  // saisie est alors replié. Sa présence dans le document ne dit rien — c'est sa
+  // visibilité qui compte.
+  if (await page.locator('#address-form').isVisible().catch(() => false)) {
+    await page.fill('#a-name', 'Acheteuse Navigateur');
+    await page.fill('#a-phone', '+235900012');
+    await page.fill('#a-line1', 'Avenue Charles de Gaulle');
+    await page.fill('#a-city', "N'Djamena");
+    await page.click('#address-form button[type="submit"]');
+    await page.waitForTimeout(1500);
+  }
+  await page.waitForSelector('[data-checkout-next="1"]:not([disabled])', { timeout: 20000 });
+  await page.click('[data-checkout-next="1"]');
+  await page.waitForSelector('input[name^="quote-"]', { timeout: 20000 });
+  await page.click('[data-checkout-next="2"]');
+  await page.waitForSelector('[data-place-order]', { timeout: 20000 });
+  await page.click('[data-place-order]');
+
+  // On suit le lien de la confirmation : c'est celui de CETTE commande, alors
+  // que le premier lien de la liste pourrait être une autre.
+  await page.waitForSelector('.timeline, a[href^="/touma/commandes/"]', { timeout: 25000 });
+  const lien = page.locator('a[href^="/touma/commandes/"]:not([href*="/groupe/"])').first();
+  if (await lien.count()) {
+    await lien.click();
+    await page.waitForSelector('.timeline', { timeout: 20000 });
+  }
+  return page.url().split('/').pop();
+}
 
 await step('accueil', async () => {
   await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
@@ -471,6 +517,86 @@ await step('vendeur : accepter le retour et rembourser', async () => {
   await seller.waitForTimeout(2500);
   const body = await seller.textContent('#view');
   if (!body.includes('Remboursé')) throw new Error('le retour n’est pas passé à « remboursé »');
+});
+
+await step('acheteur : ouvrir un litige et y verser une pièce', async () => {
+  const commande = await commandePayee();
+  await page.goto(`${BASE}/commandes/${commande}`, { waitUntil: 'networkidle' });
+  await page.waitForSelector('#dispute-form', { timeout: 20000 });
+  await page.selectOption('#d-reason', 'DAMAGED');
+  await page.fill('#d-details', 'Deux sacs sont percés, photos à l’appui.');
+  await page.click('#dispute-form button[type="submit"]');
+
+  // Ouvrir un litige mène au dossier. Avant, l'acheteur recevait un message de
+  // confirmation et restait sur sa commande, sans aucun écran où suivre.
+  await page.waitForURL(/\/touma\/litiges\/[^/]+$/, { timeout: 20000 });
+  disputeUrl = page.url();
+
+  // La pièce part en corps brut : ce sont ses octets qui décident de son type.
+  await page.setInputFiles('#d-file', {
+    name: 'sac-perce.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64'),
+  });
+  await page.locator('.evidence-list a.attachment').first().waitFor({ timeout: 20000 });
+  const empreinte = await page.locator('.evidence-sum').count();
+  if (empreinte === 0) throw new Error('la pièce ne montre pas son empreinte');
+  await page.screenshot({ path: `${OUT}/61-litige-acheteur.png` });
+});
+
+await step('vendeur : répondre au litige depuis son espace', async () => {
+  if (!disputeUrl) throw new Error('aucun litige ouvert');
+  let seller = null;
+  for (const email of ['vendeur.cm@touma.dev', 'vendeur.td@touma.dev']) {
+    const candidate = await sessionFor(email);
+    await candidate.goto(`${BASE}/vendeur/litiges`, { waitUntil: 'networkidle' });
+    await candidate.waitForTimeout(700);
+    if (await candidate.locator('a[href^="/touma/vendeur/litiges/"]').count()) {
+      seller = candidate;
+      break;
+    }
+  }
+  if (!seller) throw new Error('le vendeur ne voit pas le litige ouvert sur sa vente');
+
+  await seller.click('a[href^="/touma/vendeur/litiges/"]');
+  await seller.waitForSelector('#dispute-message-form', { timeout: 20000 });
+  await seller.fill('#dm-body', 'Je renvoie deux sacs aujourd’hui.');
+  await seller.click('#dispute-message-form button[type="submit"]');
+  await seller.locator('.dispute-thread .msg-body', { hasText: 'renvoie deux sacs' }).first().waitFor({ timeout: 20000 });
+  await seller.screenshot({ path: `${OUT}/62-litige-vendeur.png` });
+});
+
+await step('administration : trancher sur pièces, jamais à l’aveugle', async () => {
+  if (!disputeUrl) throw new Error('aucun litige à trancher');
+  const admin = await sessionFor('admin@touma.dev');
+  await admin.goto(`${BASE}/admin/litiges`, { waitUntil: 'networkidle' });
+  await admin.waitForSelector('a[href^="/touma/admin/litiges/"]', { timeout: 20000 });
+  await admin.click('a[href^="/touma/admin/litiges/"]');
+  await admin.waitForSelector('#dispute-resolve-form', { timeout: 20000 });
+
+  // Ce que l'administration doit avoir sous les yeux avant de décider : les
+  // pièces, et où est l'argent. Trancher depuis une ligne de liste, c'est
+  // décider sans regarder.
+  if ((await admin.locator('.evidence-list a.attachment').count()) === 0) {
+    throw new Error('le dossier ne montre aucune pièce à l’administration');
+  }
+  const vue = await admin.textContent('#view');
+  if (!vue.includes('Où est l’argent')) throw new Error('les mouvements d’argent ne sont pas au dossier');
+  await admin.screenshot({ path: `${OUT}/63-litige-admin.png` });
+
+  await admin.selectOption('#dr-decision', 'RESOLVED_BUYER');
+  await admin.selectOption('#dr-type', 'BUYER_REFUND_PARTIAL');
+  await admin.fill('#dr-resolution', 'Deux sacs percés, photos probantes : remboursement partiel accordé.');
+  await admin.click('#dispute-resolve-form button[type="submit"]');
+
+  await admin.waitForSelector('[data-resolution]', { timeout: 20000 });
+  // Un dossier tranché est figé : plus de message, plus de formulaire.
+  if ((await admin.locator('#dispute-resolve-form').count()) !== 0) {
+    throw new Error('le formulaire de décision reste ouvert après la décision');
+  }
+  if ((await admin.locator('#dispute-message-form').count()) !== 0) {
+    throw new Error('un dossier clos accepte encore des messages');
+  }
 });
 
 await step('assistance : ouvrir un ticket et recevoir une réponse', async () => {
