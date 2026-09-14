@@ -3201,8 +3201,15 @@ model ToumaLoyaltyEvent {
 
   createdAt DateTime @default(now())
 
-  /// Un seul gain par commande : rejouer une livraison ne crédite pas deux fois.
-  @@unique([orderId, type])
+  /// Un seul **gain** par commande : rejouer une livraison ne crédite pas deux
+  /// fois. La contrainte est posée en SQL sous forme d'index unique **partiel**
+  /// (`WHERE type = 'EARNED'`), parce qu'elle ne vaut que pour le gain :
+  /// une reprise de points peut légitimement se produire plusieurs fois sur la
+  /// même commande — un remboursement partiel, puis un second. La version
+  /// générale de cette contrainte faisait échouer le deuxième remboursement
+  /// d'une commande, et le serveur répondait 500.
+  /// Voir la migration `touma_v20_finance`.
+  @@index([orderId, type])
   @@index([accountId])
   @@map("touma_loyalty_events")
 }

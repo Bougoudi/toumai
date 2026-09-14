@@ -5,6 +5,7 @@ import { asyncHandler, parseBody } from '../../middleware/validate.js';
 import { authenticate, currentUser, requireAdmin } from '../middleware/toumaAuth.js';
 import { applySuccess, paymentService } from './payment.service.js';
 import { codService } from './cod.service.js';
+import { refundService } from './refund.service.js';
 
 export const paymentRouter = Router();
 
@@ -24,7 +25,22 @@ const confirmSchema = z.object({
   payload: z.record(z.unknown()).optional(),
 });
 
-const refundSchema = z.object({ paymentId: z.string().cuid(), amount: z.string().regex(/^\d+(\.\d{1,4})?$/).optional() });
+/**
+ * Remboursement administratif. `paymentId` rembourse le paiement en le
+ * répartissant sur ses commandes ; `orderId` cible une commande précise — c'est
+ * ce qu'il faut sur un panier multi-vendeurs, où rembourser « le paiement »
+ * sans dire quelle boutique n'aurait aucun sens.
+ */
+const refundSchema = z
+  .object({
+    paymentId: z.string().cuid().optional(),
+    orderId: z.string().cuid().optional(),
+    amount: z.string().regex(/^\d+(\.\d{1,4})?$/).optional(),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .refine((v) => Boolean(v.paymentId) !== Boolean(v.orderId), {
+    message: 'Indiquez soit le paiement, soit la commande à rembourser — pas les deux.',
+  });
 
 paymentRouter.get('/providers', asyncHandler(async (_req, res) => res.json({ items: paymentService.listProviders() })));
 
@@ -107,8 +123,26 @@ paymentRouter.post(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const input = parseBody(refundSchema, req);
-    const payment = await paymentService.refund(currentUser(req), input.paymentId, input.amount);
-    res.json({ ...payment, amount: payment.amount.toString(), refundedAmount: payment.refundedAmount.toString() });
+    const actorId = currentUser(req).id;
+
+    // Un seul moteur de remboursement : celui qui crée la ligne, contre-passe
+    // la commission et écrit au registre. L'ancien chemin faisait aucune des
+    // trois — le registre continuait d'affirmer que la boutique avait gagné
+    // l'argent rendu à l'acheteur.
+    const refunds = input.orderId
+      ? [await refundService.execute({ actorId, orderId: input.orderId, amount: input.amount, reason: input.reason })]
+      : (await refundService.executeForPayment({ actorId, paymentId: input.paymentId!, amount: input.amount, reason: input.reason })).refunds;
+
+    res.status(201).json({
+      refunds: refunds.map((r) => ({
+        id: r.id,
+        reference: r.reference,
+        orderId: r.orderId,
+        amount: r.amount.toString(),
+        currency: r.currency,
+        status: r.status,
+      })),
+    });
   }),
 );
 

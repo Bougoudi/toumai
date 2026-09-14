@@ -82,6 +82,68 @@ export const refundService = {
   refundedTotal,
 
   /**
+   * Rembourse **au niveau du paiement**, en répartissant sur les commandes
+   * qu'il couvre.
+   *
+   * **Le défaut corrigé.** Il existait deux chemins de remboursement qui
+   * s'ignoraient. Celui de l'administration mettait à jour le paiement et
+   * s'arrêtait là : aucune ligne de remboursement créée, **rien au registre
+   * comptable**, et **aucune contre-passation de commission**. Autrement dit,
+   * après un remboursement administratif, le registre continuait d'affirmer que
+   * la boutique avait gagné l'argent rendu à l'acheteur, et TOUMA gardait sa
+   * commission sur une vente annulée.
+   *
+   * Un seul moteur désormais, celui qui tient les deux bouts. La répartition
+   * suit l'ordre des commandes et s'arrête quand le montant est épuisé : une
+   * boutique n'est jamais débitée pour une autre.
+   */
+  async executeForPayment(input: { actorId: string; paymentId: string; amount?: string; reason?: string }) {
+    const payment = await prisma.toumaPayment.findUnique({
+      where: { id: input.paymentId },
+      include: { order: { select: { id: true } }, orderGroup: { include: { orders: { select: { id: true } } } } },
+    });
+    if (!payment) throw notFound('Paiement introuvable.');
+    if (!['SUCCEEDED', 'PARTIALLY_REFUNDED'].includes(payment.status)) {
+      throw conflict('Seul un paiement abouti peut être remboursé.');
+    }
+
+    const orderIds = payment.orderGroup ? payment.orderGroup.orders.map((o) => o.id) : payment.order ? [payment.order.id] : [];
+    if (orderIds.length === 0) throw conflict('Ce paiement ne couvre aucune commande.');
+
+    // Sans montant : on rend tout ce qui reste remboursable, commande par
+    // commande.
+    let reste = input.amount ? roundTo(money(input.amount), payment.currency) : null;
+    if (reste && !reste.greaterThan(0)) throw badRequest('Le montant du remboursement doit être supérieur à zéro.');
+
+    const faits: Awaited<ReturnType<typeof refundService.execute>>[] = [];
+    for (const orderId of orderIds) {
+      if (reste && !reste.greaterThan(0)) break;
+      const remboursable = await refundableAmount(orderId);
+      if (!remboursable.greaterThan(0)) continue;
+
+      const part = reste ? (reste.lessThan(remboursable) ? reste : remboursable) : remboursable;
+      faits.push(
+        await refundService.execute({
+          actorId: input.actorId,
+          orderId,
+          amount: part.toString(),
+          reason: input.reason,
+        }),
+      );
+      if (reste) reste = reste.minus(part);
+    }
+
+    if (faits.length === 0) throw conflict('Il ne reste rien à rembourser sur ce paiement.');
+    if (reste && reste.greaterThan(0)) {
+      // On ne tait pas un reste non réparti : l'appelant a demandé plus que ce
+      // que les commandes permettent de rendre.
+      throw badRequest(`Montant trop élevé : ${reste.toString()} ${payment.currency} n’ont pas pu être répartis sur les commandes de ce paiement.`);
+    }
+
+    return { refunds: faits };
+  },
+
+  /**
    * Exécute un remboursement : contrôle des plafonds, appel au prestataire,
    * puis écriture atomique (remboursement, paiement, commande, commission).
    *
@@ -154,7 +216,6 @@ export const refundService = {
       throw conflict(`Le prestataire a refusé le remboursement : ${failure}`);
     }
 
-    const totalRefunded = payment.refundedAmount.plus(amount);
     const orderFullyRefunded = (await refundedTotal(order.id)).greaterThanOrEqualTo(order.total);
 
     const refund = await prisma.$transaction(async (tx) => {
@@ -163,11 +224,21 @@ export const refundService = {
         data: { status: 'COMPLETED', providerRef, processedAt: new Date() },
       });
 
+      // Incrément atomique, jamais une valeur absolue calculée depuis une
+      // lecture d'avant l'appel au prestataire. Deux remboursements partiels
+      // simultanés lisaient tous deux le même cumul et s'écrasaient l'un
+      // l'autre : le paiement finissait par porter le montant du dernier, pas
+      // la somme.
+      const compte = await tx.toumaPayment.update({
+        where: { id: payment.id },
+        data: { refundedAmount: { increment: amount } },
+        select: { refundedAmount: true, amount: true },
+      });
+      // Le statut se décide sur la valeur relue après incrément, pas avant.
       await tx.toumaPayment.update({
         where: { id: payment.id },
         data: {
-          refundedAmount: totalRefunded,
-          status: totalRefunded.greaterThanOrEqualTo(payment.amount) ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
+          status: compte.refundedAmount.greaterThanOrEqualTo(compte.amount) ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
         },
       });
       await tx.toumaPaymentEvent.create({
