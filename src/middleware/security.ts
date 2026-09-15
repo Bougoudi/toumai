@@ -28,10 +28,23 @@ export const securityHeaders = helmet({
   referrerPolicy: { policy: 'no-referrer' },
 });
 
+/**
+ * En suite de tests automatisés (NODE_ENV=test) la limitation de débit est
+ * neutralisée : elle fausserait les scénarios qui enchaînent des dizaines de
+ * connexions. Elle reste **toujours active** en développement et en production.
+ */
+const skipInTests = () => process.env.NODE_ENV === 'test';
+
 /** Limite globale de l'API : protège contre l'abus / le déni de service léger. */
 export const apiLimiter = rateLimit({
   windowMs: 60_000,
-  limit: 300,
+  /**
+   * 300 requêtes par minute et par IP. Configurable : un poste de
+   * développement qui rejoue un parcours navigateur complet dépasse ce seuil
+   * sans rien abuser. La valeur par défaut, elle, ne bouge pas.
+   */
+  limit: Number(process.env.TOUMA_API_RATE_LIMIT ?? 300),
+  skip: skipInTests,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Trop de requêtes, réessayez dans un instant.' },
@@ -41,6 +54,7 @@ export const apiLimiter = rateLimit({
 export const authLimiter = rateLimit({
   windowMs: 15 * 60_000,
   limit: 10,
+  skip: skipInTests,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' },

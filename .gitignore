@@ -15,3 +15,9 @@ prisma/dev.db-journal
 # Divers
 .DS_Store
 coverage/
+
+# Captures du test navigateur
+.captures/
+
+# Pièces jointes de la messagerie (stockage privé local)
+var/touma-attachments/

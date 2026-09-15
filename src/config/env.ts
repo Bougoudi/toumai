@@ -88,6 +88,135 @@ export const env = {
     jwtTtlSeconds: Number(process.env.JWT_TTL_SECONDS ?? 7 * 24 * 3600),
   },
 
+  /**
+   * TOUMA — place de marché africaine (corridor pilote Tchad ↔ Cameroun).
+   * Rien n'est codé en dur : pays, devises et taux de commission sont
+   * configurables (les pays vivent en base, voir le modèle `Country`).
+   */
+  touma: {
+    /** Secrets distincts pour les jetons d'accès et de rafraîchissement. */
+    accessSecret: process.env.JWT_ACCESS_SECRET ?? process.env.JWT_SECRET ?? 'dev-secret-change-me',
+    refreshSecret: process.env.JWT_REFRESH_SECRET ?? `${process.env.JWT_SECRET ?? 'dev-secret-change-me'}:refresh`,
+    /** Jeton d'accès court (défaut 15 min). */
+    accessTtlSeconds: Number(process.env.TOUMA_ACCESS_TTL_SECONDS ?? 15 * 60),
+    /** Jeton de rafraîchissement (défaut 30 jours), soumis à rotation. */
+    refreshTtlSeconds: Number(process.env.TOUMA_REFRESH_TTL_SECONDS ?? 30 * 24 * 3600),
+    /** Commission plateforme par défaut (0.05 = 5 %). Jamais codée en dur ailleurs. */
+    commissionRate: Number(process.env.TOUMA_COMMISSION_RATE ?? 0.05),
+    /** Devise de repli quand le pays n'en déclare aucune. */
+    defaultCurrency: process.env.TOUMA_DEFAULT_CURRENCY ?? 'XAF',
+    /** Pagination : taille par défaut et maximum autorisé. */
+    pageSize: Number(process.env.TOUMA_PAGE_SIZE ?? 20),
+    maxPageSize: Number(process.env.TOUMA_MAX_PAGE_SIZE ?? 100),
+    /** Secret de signature des webhooks de paiement (HMAC). */
+    paymentWebhookSecret: process.env.TOUMA_PAYMENT_WEBHOOK_SECRET ?? process.env.JWT_SECRET ?? 'dev-secret-change-me',
+    /**
+     * Entretien périodique du domaine (balayages et purges).
+     *
+     * Activé par défaut : les balayages étaient jusqu'ici déclenchés par le
+     * trafic, ce qui marche la journée et pas la nuit — or c'est la nuit que
+     * les délais expirent. Le désactiver est un choix d'exploitation (un
+     * déploiement où un autre processus s'en charge), pas un réglage de
+     * confort.
+     */
+    maintenanceEnabled: (process.env.TOUMA_MAINTENANCE_ENABLED ?? 'true') === 'true',
+    maintenanceCron: {
+      /** Le stock réservé doit revenir vite : un article hors catalogue ne se vend pas. */
+      reservations: process.env.TOUMA_CRON_RESERVATIONS ?? '*/2 * * * *',
+      settlements: process.env.TOUMA_CRON_SETTLEMENTS ?? '*/10 * * * *',
+      disputes: process.env.TOUMA_CRON_DISPUTES ?? '*/15 * * * *',
+      /** Les purges n'ont aucune urgence : une fois par nuit suffit. */
+      purges: process.env.TOUMA_CRON_PURGES ?? '30 3 * * *',
+    },
+    /**
+     * Conservation des traces de webhook, en jours.
+     *
+     * Une durée d'exploitation, pas une réponse à la question de conservation
+     * des données financières — celle-là attend le conseil juridique
+     * (`docs/payments/compliance-boundaries.md`).
+     */
+    webhookRetentionDays: Number(process.env.TOUMA_WEBHOOK_RETENTION_DAYS ?? 90),
+    /**
+     * Fenêtre d'acceptation d'un webhook, en secondes (défaut 5 min).
+     *
+     * Au-delà, un webhook correctement signé est refusé : sans cette borne, un
+     * webhook capté puis rejoué des mois plus tard, avec un identifiant jamais
+     * vu, serait accepté. Trop serrée, elle rejetterait des livraisons
+     * légitimement retardées par le réseau — c'est le compromis que règle cette
+     * valeur, et le prestataire réel dira laquelle il tolère.
+     */
+    webhookToleranceSeconds: Number(process.env.TOUMA_WEBHOOK_TOLERANCE_SECONDS ?? 300),
+    /** Délai d'ouverture d'une demande de retour après livraison (jours). */
+    returnWindowDays: Number(process.env.TOUMA_RETURN_WINDOW_DAYS ?? 14),
+    /**
+     * Fidélité. Les points ne traversent pas les devises : ils ne sont gagnés
+     * que sur les commandes libellées dans `loyaltyCurrency`, faute de taux de
+     * change officiel.
+     */
+    loyaltyEnabled: process.env.TOUMA_LOYALTY_ENABLED !== 'false',
+    loyaltyCurrency: process.env.TOUMA_LOYALTY_CURRENCY ?? process.env.TOUMA_DEFAULT_CURRENCY ?? 'XAF',
+    /** Points gagnés par unité monétaire dépensée (0.01 = 1 point pour 100). */
+    loyaltyEarnRate: Number(process.env.TOUMA_LOYALTY_EARN_RATE ?? 0.01),
+    /** Valeur d'un point à l'usage, en unités monétaires. */
+    loyaltyPointValue: Number(process.env.TOUMA_LOYALTY_POINT_VALUE ?? 1),
+    /** Part maximale du panier réglable en points (0.5 = la moitié). */
+    loyaltyMaxShare: Number(process.env.TOUMA_LOYALTY_MAX_SHARE ?? 0.5),
+    /** Paliers, du plus bas au plus haut : « NOM:pointsCumulés » séparés par des virgules. */
+    loyaltyTiers: process.env.TOUMA_LOYALTY_TIERS ?? 'BRONZE:0,ARGENT:500,OR:2000,PLATINE:10000',
+    /**
+     * Identité légale de TOUMA, portée sur les reçus de paiement. Tant qu'elle
+     * n'est pas renseignée, le document le dit plutôt que d'inventer une
+     * raison sociale ou un numéro d'immatriculation.
+     */
+    companyName: process.env.TOUMA_COMPANY_NAME ?? '',
+    companyLegalName: process.env.TOUMA_COMPANY_LEGAL_NAME ?? '',
+    companyRegistrationNo: process.env.TOUMA_COMPANY_REGISTRATION_NO ?? '',
+    companyTaxId: process.env.TOUMA_COMPANY_TAX_ID ?? '',
+    companyAddress: process.env.TOUMA_COMPANY_ADDRESS ?? '',
+    companyCountry: process.env.TOUMA_COMPANY_COUNTRY ?? '',
+    companyEmail: process.env.TOUMA_COMPANY_EMAIL ?? '',
+    /**
+     * Réputation vendeur. En dessous de `reputationMinOrders` commandes
+     * livrées, aucun indicateur n'est publié : un taux calculé sur deux
+     * commandes ne dit rien et induirait l'acheteur en erreur.
+     */
+    reputationMinOrders: Number(process.env.TOUMA_REPUTATION_MIN_ORDERS ?? 5),
+    /** Durée de validité d'un instantané de réputation (secondes). */
+    reputationTtlSeconds: Number(process.env.TOUMA_REPUTATION_TTL_SECONDS ?? 3600),
+    /** Adaptateurs actifs (mock tant qu'aucun prestataire réel n'est raccordé). */
+    paymentProvider: process.env.TOUMA_PAYMENT_PROVIDER ?? 'mock',
+    logisticsProvider: process.env.TOUMA_LOGISTICS_PROVIDER ?? 'mock',
+    aiProvider: process.env.TOUMA_AI_PROVIDER ?? 'mock',
+  },
+
+  /** Cache / file d'attente (Redis). Optionnel : l'API démarre sans. */
+  redis: {
+    url: process.env.REDIS_URL ?? '',
+    get enabled() {
+      return !!process.env.REDIS_URL;
+    },
+  },
+
+  /** Stockage objet compatible S3 (images produits, documents de vérification). */
+  storage: {
+    endpoint: process.env.S3_ENDPOINT ?? '',
+    bucket: process.env.S3_BUCKET ?? '',
+    accessKey: process.env.S3_ACCESS_KEY ?? '',
+    secretKey: process.env.S3_SECRET_KEY ?? '',
+    region: process.env.S3_REGION ?? 'auto',
+    /** Préfixe des objets, pour cohabiter avec d'autres usages du même bucket. */
+    keyPrefix: (process.env.S3_KEY_PREFIX ?? '').replace(/^\/+|\/+$/g, '') ? `${(process.env.S3_KEY_PREFIX ?? '').replace(/^\/+|\/+$/g, '')}/` : '',
+    /**
+     * Adressage par chemin (`endpoint/bucket/clé`). C'est le mode accepté
+     * partout ; l'adressage par sous-domaine se réserve aux services qui
+     * l'exigent.
+     */
+    forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== 'false',
+    get enabled() {
+      return !!process.env.S3_ENDPOINT && !!process.env.S3_BUCKET;
+    },
+  },
+
   /** Sécurité. */
   security: {
     /** Clé de chiffrement des données sensibles en base (identifiants des canaux). */

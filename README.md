@@ -1,3 +1,70 @@
+# TOUMA
+
+> **« Connecter le commerce africain. »**
+
+Ce dépôt héberge **deux produits** qui partagent un même socle technique
+(TypeScript, Express, Prisma, PostgreSQL) :
+
+| Produit | Ce que c'est | Interface | API |
+| --- | --- | --- | --- |
+| **Touma — place de marché** | Commerce B2B/B2C entre pays africains : catalogue, panier multi-vendeurs, paiements, logistique, points relais, confiance, litiges, messagerie, appels d'offres B2B, retours et remboursements, assistance, promotions, fidélité, documents commerciaux, réputation calculée, sourcing fournisseurs, import de catalogue et IA. Corridor pilote **Tchad ↔ Cameroun**. | `/touma/` | `/api/v1` |
+| **Toumai — automatisation e-commerce** | Le logiciel d'automatisation dropshipping historique (analyse marché, génération de produits, sourcing, canaux de vente). | `/` | `/api` |
+
+Les deux cohabitent sans interférence : la place de marché vit dans
+`src/touma/`, avec ses propres modèles (tables `touma_*`), sa propre
+authentification et ses propres tests.
+
+## Démarrer la place de marché Touma
+
+```bash
+cp .env.example .env          # renseigner JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, ENCRYPTION_KEY
+docker compose up -d          # PostgreSQL + Redis
+npm install
+npx prisma migrate deploy
+npm run seed                  # pays, catégories, comptes et catalogue de démonstration
+npm run dev
+```
+
+- Place de marché : <http://localhost:3000/touma/> (mobile d'abord, testée de 360 à 1440 px, **installable** sur téléphone et sur ordinateur)
+- API v1 : <http://localhost:3000/api/v1> · OpenAPI : `/api/v1/openapi.json`
+- Sondes : `/health` et `/ready`
+
+Comptes de démonstration (mot de passe `touma-dev-1234`, développement
+uniquement) : `admin@touma.dev`, `vendeur.td@touma.dev`, `vendeur.cm@touma.dev`,
+`acheteur@touma.dev`.
+
+```bash
+npm test              # 538 tests : unitaires, intégration et parcours complet (Node ≥ 22)
+npm run typecheck     # TypeScript strict
+
+# Le parcours navigateur émet plusieurs milliers de requêtes en quelques
+# minutes : il faut lui laisser de la marge sur la limitation de débit, sinon
+# une étape échoue sur un message qui accuse le produit au lieu du 429. Le
+# parcours refuse de démarrer sans cette marge, plutôt que de mentir sur la
+# cause. La valeur par défaut (300/minute) reste celle de la production.
+TOUMA_API_RATE_LIMIT=6000 npm run dev   # dans un autre terminal
+npm run test:browser  # 82 vérifications navigateur, de 360 à 1440 px (Chromium)
+```
+
+## Mettre TOUMA en ligne
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Trois chemins détaillés — Render en un clic, Docker Compose sur un VPS, ou Node
+sans conteneur — avec les secrets à générer, le HTTPS, les sauvegardes et les
+deux pièges qui coûtent cher (les pièces jointes qui ne survivent pas à un
+redéploiement, la sonde de santé branchée sur la mauvaise route) :
+**[`docs/touma-mise-en-ligne.md`](docs/touma-mise-en-ligne.md)**.
+
+📘 **Documentation complète de la place de marché :
+[`docs/touma-marketplace.md`](docs/touma-marketplace.md)** — architecture,
+modèle de données, garanties vérifiées par les tests, adaptateurs de paiement et
+de logistique, sécurité, et ce qui reste à construire.
+
+---
+
 # Toumai — Plateforme d'automatisation e-commerce (dropshipping)
 
 Toumai automatise l'ensemble du cycle du dropshipping, autour de **4 piliers** :
@@ -17,7 +84,7 @@ Chaque pilier est disponible **à la demande** (API) **et en automatique** (tâc
 | --------------- | ---------------------------------------------- |
 | Langage         | TypeScript (Node.js ≥ 18)                      |
 | API             | Express                                        |
-| Base de données | Prisma ORM + SQLite (migrable vers PostgreSQL) |
+| Base de données | Prisma ORM + PostgreSQL (migrations versionnées)  |
 | Validation      | Zod                                            |
 | Automatisation  | node-cron + connecteurs de sources             |
 
@@ -246,6 +313,8 @@ les commandes des canaux connectés toutes les 5 minutes.
 - [`docs/architecture.md`](docs/architecture.md) — architecture, modèle de données, algorithmes
 - [`docs/api.md`](docs/api.md) — référence complète des endpoints
 - [`docs/user-flow.md`](docs/user-flow.md) — flux utilisateur principal
+- [`docs/touma-mise-en-ligne.md`](docs/touma-mise-en-ligne.md) — mettre la place de marché en ligne
+- [`docs/touma-monorepo.md`](docs/touma-monorepo.md) — espaces de travail, vitrine Next.js, et pourquoi l'API n'est pas réécrite en NestJS
 
 ## Scripts npm
 

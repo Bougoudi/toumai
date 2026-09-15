@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { apiLimiter, securityHeaders } from './middleware/security.js';
@@ -27,6 +28,13 @@ import { supplierRouter } from './modules/suppliers/supplier.routes.js';
 import { aliexpressRouter } from './modules/aliexpress/aliexpress.routes.js';
 import { aliexpressController } from './modules/aliexpress/aliexpress.controller.js';
 import { supportRouter } from './modules/support/support.routes.js';
+import { toumaV1Router } from './touma/touma.routes.js';
+import { paymentWebhookRouter } from './touma/payments/payment.routes.js';
+import { toumaOpenApiDocument } from './touma/openapi.js';
+import { readiness } from './touma/health.js';
+import { initAttachmentStorage } from './touma/messaging/attachments.js';
+import { initNotificationChannels } from './touma/lib/email-channel.js';
+import { createMarketplaceHandler, robotsTxt, sitemapXml } from './touma/seo.js';
 
 /**
  * Dossier des fichiers statiques (PWA). En développement (tsx) le module est
@@ -44,6 +52,11 @@ const publicDir = resolvePublicDir();
 
 export function createApp() {
   const app = express();
+
+  // Stockage des pièces jointes : S3 si l'environnement le décrit, local sinon.
+  initAttachmentStorage();
+  // Canaux de notification : e-mail si une clé d'envoi est configurée.
+  initNotificationChannels();
 
   // Derrière un proxy (HTTPS, load balancer) : nécessaire pour un rate-limit correct par IP.
   app.set('trust proxy', 1);
@@ -64,6 +77,13 @@ export function createApp() {
     asyncHandler(paymentController.iyzicoCallback),
   );
 
+  // Import de catalogue : le corps est du CSV brut, pas du JSON. Monté avant
+  // express.json() qui le rejetterait comme malformé.
+  app.use(express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }));
+  // Pièces jointes de la messagerie : corps brut. Le type réel est déduit du
+  // contenu par le service, jamais de l'en-tête envoyé par le navigateur.
+  app.use(express.raw({ type: 'application/octet-stream', limit: process.env.TOUMA_ATTACHMENT_MAX_BYTES ? `${process.env.TOUMA_ATTACHMENT_MAX_BYTES}b` : '10mb' }));
+
   // Corps JSON limité (anti-abus).
   app.use(express.json({ limit: '1mb' }));
 
@@ -73,8 +93,32 @@ export function createApp() {
   // Application web (PWA) : fichiers statiques servis à la racine.
   app.use(express.static(publicDir));
 
+  // ── Place de marché Touma (/touma) ─────────────────────────────────────────
+  // Chaque page a une vraie URL (ex. /touma/produits/sesame-blanc), servie par
+  // le serveur avec ses propres métadonnées : titre, description, Open Graph et
+  // données structurées produit. Sans cela, un moteur de recherche ne verrait
+  // qu'une coquille vide et une seule adresse.
+  const marketplaceShell = createMarketplaceHandler(join(publicDir, 'touma', 'index.html'));
+  app.get('/robots.txt', robotsTxt);
+  app.get('/sitemap.xml', asyncHandler(sitemapXml));
+  app.get('/touma', (_req, res) => res.redirect(301, '/touma/'));
+  // Toute route de l'application (hors fichiers statiques, déjà servis) renvoie
+  // la coquille : le routeur côté client prend ensuite la main.
+  app.get(/^\/touma(\/.*)?$/, asyncHandler(marketplaceShell));
+
+  // Webhooks de paiement Touma : corps BRUT requis pour vérifier la signature
+  // (monté AVANT express.json(), qui casserait la vérification).
+  app.use('/api/v1/payments/webhook', paymentWebhookRouter);
+
   // Santé / disponibilité
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'toumai' }));
+
+  // Sonde de disponibilité (Kubernetes/Render) : vérifie PostgreSQL, Redis et
+  // les dépendances critiques. 503 tant qu'une dépendance requise est absente.
+  app.get('/ready', asyncHandler(async (_req, res) => {
+    const report = await readiness();
+    res.status(report.ready ? 200 : 503).json(report);
+  }));
 
   // Android Digital Asset Links : lie l'app Play Store (TWA) au domaine, ce qui
   // supprime la barre d'adresse et permet l'installation « native ». Les empreintes
@@ -146,7 +190,13 @@ export function createApp() {
   // notre jeton ; l'identité est portée par l'état signé).
   app.get('/api/aliexpress/oauth/callback', asyncHandler(aliexpressController.callback));
 
-  // À partir d'ici, toutes les routes /api exigent un jeton valide.
+  // ── API TOUMA v1 (place de marché) ─────────────────────────────────────────
+  // Domaine indépendant du logiciel d'automatisation ci-dessous : il gère sa
+  // propre authentification (jeton d'accès + rafraîchissement) route par route.
+  app.get('/api/v1/openapi.json', (_req, res) => res.json(toumaOpenApiDocument()));
+  app.use('/api/v1', toumaV1Router);
+
+  // À partir d'ici, toutes les routes /api (hors v1) exigent un jeton valide.
   app.use('/api', requireAuth);
 
   app.use('/api/dashboard', dashboardRouter); // vue d'ensemble

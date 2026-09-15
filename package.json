@@ -4,8 +4,12 @@
   "description": "Toumai — logiciel d'automatisation e-commerce (analyse marché, génération produits, sourcing, achat & expédition).",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "start": "tsx src/index.ts",
     "cli": "tsx src/cli/index.ts",
@@ -15,6 +19,7 @@
     "start:prod": "node dist/src/index.js",
     "db:deploy": "prisma db push --skip-generate",
     "icons": "node scripts/make-icons.mjs",
+    "icons:touma": "node scripts/make-touma-icons.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
@@ -22,7 +27,14 @@
     "db:reset": "prisma migrate reset --force",
     "worker": "tsx src/automation/scheduler.ts",
     "autopilot": "tsx src/automation/autopilot.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed": "tsx prisma/seed.touma.ts",
+    "db:seed:touma": "tsx prisma/seed.touma.ts",
+    "test": "node --import tsx --import ./tests/env.ts --test \"tests/**/*.test.ts\"",
+    "test:unit": "node --import tsx --import ./tests/env.ts --test \"tests/unit/*.test.ts\"",
+    "test:integration": "node --import tsx --import ./tests/env.ts --test \"tests/integration/*.test.ts\"",
+    "test:e2e": "node --import tsx --import ./tests/env.ts --test \"tests/e2e/*.test.ts\"",
+    "test:browser": "node tests/browser/journey.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
