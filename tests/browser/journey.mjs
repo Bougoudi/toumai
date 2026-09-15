@@ -1217,6 +1217,83 @@ await step('langue : l’espace vendeur entier en arabe, sans résidu', async ()
   }
 });
 
+await step('langue : l’après-vente en arabe, sans résidu', async () => {
+  // Retours, litiges, documents, assistance : les écrans qu'un acheteur ouvre
+  // quand quelque chose s'est mal passé. Ce sont ceux où il a le plus besoin de
+  // comprendre exactement ce qu'on lui dit — et ceux où une phrase à moitié
+  // traduite coûte le plus cher.
+  const ar = await sessionFor('acheteur@touma.dev');
+  await ar.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await ar.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+
+  try {
+    for (const [chemin, attendu, residus] of [
+      [
+        '/retours',
+        /مرتجعاتي|لا توجد طلبات إرجاع/,
+        ['Mes retours', 'Tous', 'Aucune demande de retour', 'Demande envoyée', 'Retour accepté'],
+      ],
+      ['/litiges', /نزاعاتي|لا توجد نزاعات/, ['Mes litiges', 'Aucun litige', 'Ouvert', 'Commande']],
+      [
+        '/documents',
+        /مستنداتي|لا توجد مستندات/,
+        ['Mes documents', 'Numéro', 'Contrepartie', 'Ouvrir', 'Aucun document'],
+      ],
+      [
+        '/aide',
+        /المساعدة|لا توجد طلبات جارية/,
+        ['Assistance', 'Nouvelle demande', 'Aucune demande en cours', 'Ouvrir une demande'],
+      ],
+      [
+        '/aide/nouveau',
+        /كيف نساعدك؟|نردّ بالفرنسية/,
+        ['Comment pouvons-nous aider', 'Sujet', 'Catégorie', 'Votre message', 'Envoyer ma demande'],
+      ],
+    ]) {
+      await ar.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+      await ar.waitForTimeout(700);
+
+      if ((await ar.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`${chemin} : le sens d’écriture n’est pas rtl`);
+      const corps = ((await ar.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!attendu.test(corps)) throw new Error(`${chemin} : aucun texte arabe attendu trouvé`);
+
+      const restes = residus.filter((r) => corps.includes(r));
+      if (restes.length > 0) throw new Error(`${chemin} : résidus français — ${restes.join(', ')}`);
+
+      if (await ar.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) {
+        throw new Error(`${chemin} : débordement horizontal en arabe`);
+      }
+    }
+
+    // Le dossier de litige complet — c'est lui qui porte les preuves, le
+    // registre et la décision, et il ne s'atteint que par un clic.
+    await ar.goto(`${BASE}/litiges`, { waitUntil: 'networkidle' });
+    const fiches = await ar.locator('a.card[href^="/touma/litiges/"]').count();
+    if (fiches > 0) {
+      await ar.locator('a.card[href^="/touma/litiges/"]').first().click();
+      await ar.waitForSelector('.dispute-thread, #dispute-message-form', { timeout: 20000 });
+      await ar.waitForTimeout(500);
+      const dossier = ((await ar.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!/مستندات الملف|أين المال|موضوع الشكوى/.test(dossier)) {
+        throw new Error('dossier de litige : aucun texte arabe attendu trouvé');
+      }
+      const restesDossier = [
+        'Pièces du dossier',
+        'Où est l’argent',
+        'Ce qui est reproché',
+        'Échanges',
+        'Votre message',
+        'Voir la commande',
+      ].filter((r) => dossier.includes(r));
+      if (restesDossier.length > 0) throw new Error(`dossier de litige : résidus français — ${restesDossier.join(', ')}`);
+    }
+
+    await ar.screenshot({ path: `${OUT}/55-apres-vente-arabe.png` });
+  } finally {
+    await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+  }
+});
+
 await step('langue : les statuts de commande sont traduits partout à la fois', async () => {
   // Les statuts viennent du serveur sous forme de code : les traduire au seul
   // endroit qui les rend les traduit sur tous les écrans, y compris ceux dont

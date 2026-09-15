@@ -72,6 +72,10 @@ describe("i18n — français et arabe", () => {
     const MARQUES = new Set([
       "seller.tab.verification",
       "seller.import.col.status",
+      // Identifiants légaux : ils figurent ainsi sur le document papier, et les
+      // traduire ferait que l'écran ne correspondrait plus au document.
+      "doc.rccm",
+      "doc.nif",
     ]);
     const arabe = /[؀-ۿ]/;
     module.setLocale("ar");

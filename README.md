@@ -43,7 +43,7 @@ npm run typecheck     # TypeScript strict
 # parcours refuse de démarrer sans cette marge, plutôt que de mentir sur la
 # cause. La valeur par défaut (300/minute) reste celle de la production.
 TOUMA_API_RATE_LIMIT=6000 npm run dev   # dans un autre terminal
-npm run test:browser  # 80 vérifications navigateur, de 360 à 1440 px (Chromium)
+npm run test:browser  # 81 vérifications navigateur, de 360 à 1440 px (Chromium)
 ```
 
 ## Mettre TOUMA en ligne

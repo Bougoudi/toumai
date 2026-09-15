@@ -23,82 +23,41 @@
  */
 import { api, esc, emptyState, formatDate, money, session, svg } from './core.js';
 import { breadcrumb } from './components.js';
+import { t } from './i18n.js';
 
-const STATUS = {
-  OPEN: 'Ouvert',
-  SELLER_RESPONSE_REQUIRED: 'En attente du vendeur',
-  BUYER_RESPONSE_REQUIRED: 'En attente de l’acheteur',
-  UNDER_REVIEW: 'En cours d’examen',
-  MEDIATION: 'En médiation',
-  ESCALATED: 'Confié à l’assistance',
-  RESOLVED_BUYER: 'Tranché en faveur de l’acheteur',
-  RESOLVED_SELLER: 'Tranché en faveur du vendeur',
-  REJECTED: 'Litige rejeté',
-  CLOSED: 'Clos',
-};
-
-const CATEGORY = {
-  NON_DELIVERY: 'Jamais livré',
-  LATE_DELIVERY: 'Livré en retard',
-  DAMAGED_ITEM: 'Marchandise endommagée',
-  WRONG_ITEM: 'Mauvais article',
-  NOT_AS_DESCRIBED: 'Non conforme à la description',
-  QUALITY: 'Qualité insuffisante',
-  MISSING_QUANTITY: 'Quantité manquante',
-  PAYMENT: 'Problème de paiement',
-  REFUND: 'Problème de remboursement',
-  FRAUD: 'Suspicion de fraude',
-  OTHER: 'Autre',
-};
-
-const REASON = {
-  NOT_RECEIVED: 'Commande non reçue',
-  DAMAGED: 'Marchandise endommagée',
-  NOT_AS_DESCRIBED: 'Non conforme à la description',
-  WRONG_ITEM: 'Mauvais article',
-  OTHER: 'Autre',
-};
-
-/** Ordre de passage de l'assistance — jamais une décision. */
-const PRIORITY = { LOW: 'Basse', NORMAL: 'Normale', HIGH: 'Haute', CRITICAL: 'Critique' };
-
-const RESOLUTION_TYPE = {
-  BUYER_REFUND_FULL: 'Remboursement intégral à l’acheteur',
-  BUYER_REFUND_PARTIAL: 'Remboursement partiel',
-  RETURN_AND_REFUND: 'Retour puis remboursement',
-  REPLACEMENT: 'Remplacement de l’article',
-  NO_REFUND: 'Aucun remboursement',
-  SELLER_FAVOR: 'En faveur du vendeur',
-  BUYER_FAVOR: 'En faveur de l’acheteur',
-  MUTUAL_AGREEMENT: 'Accord amiable',
-  OTHER: 'Autre',
-};
-
-const EVIDENCE_KIND = {
-  PHOTO: 'Photo',
-  VIDEO: 'Vidéo',
-  DOCUMENT: 'Document',
-  INVOICE: 'Facture',
-  TRACKING: 'Preuve de suivi',
-  OTHER: 'Autre',
-};
-
-const LEDGER_TYPE = {
-  SALE: 'Vente',
-  COMMISSION: 'Commission TOUMA',
-  REFUND: 'Remboursement',
-  COMMISSION_REVERSAL: 'Commission rendue',
-  PAYOUT: 'Versement',
-  ADJUSTMENT: 'Ajustement',
-};
+/**
+ * Les codes du moteur — statut, catégorie, motif, priorité, nature de l'issue,
+ * type de pièce, type de mouvement — sont traduits dans `i18n.js` comme les
+ * statuts de commande : une seule table, tous les écrans.
+ *
+ * Le statut d'un litige a sa propre famille de clés, séparée des statuts de
+ * commande, et ce n'est pas un doublon : un litige « rejeté » n'est pas une
+ * boutique « refusée », un litige « clos » n'est pas une commande « fermée ».
+ */
+const libelle = (famille, code) => t(`dispute.${famille}.${code}`);
 
 const CLOSED = ['RESOLVED_BUYER', 'RESOLVED_SELLER', 'REJECTED', 'CLOSED'];
 
-const pill = (value, dict) => `<span class="status status-${esc(value)}">${esc(dict[value] ?? value)}</span>`;
+/** L'ordre des natures d'issue proposées — l'ordre, pas les libellés. */
+const RESOLUTION_TYPES = [
+  'BUYER_REFUND_FULL',
+  'BUYER_REFUND_PARTIAL',
+  'RETURN_AND_REFUND',
+  'REPLACEMENT',
+  'NO_REFUND',
+  'SELLER_FAVOR',
+  'BUYER_FAVOR',
+  'MUTUAL_AGREEMENT',
+  'OTHER',
+];
+
+const pill = (value, famille = 'status') => `<span class="status status-${esc(value)}">${esc(libelle(famille, value))}</span>`;
 
 /** Taille d'un fichier, dite comme on la dit à quelqu'un. */
 const fileSize = (bytes) =>
-  bytes > 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} Mo` : `${Math.max(1, Math.round(bytes / 1024))} Ko`;
+  bytes > 1024 * 1024
+    ? t('unit.mb', { value: (bytes / (1024 * 1024)).toFixed(1) })
+    : t('unit.kb', { value: Math.max(1, Math.round(bytes / 1024)) });
 
 /**
  * Délai restant, en clair. Un compte à rebours affiché en heures et en minutes
@@ -109,14 +68,13 @@ function deadlineNote(d) {
   const limite = d.status === 'SELLER_RESPONSE_REQUIRED' ? d.sellerResponseDeadline : d.status === 'BUYER_RESPONSE_REQUIRED' ? d.buyerResponseDeadline : null;
   if (!limite) return '';
   const reste = new Date(limite).getTime() - Date.now();
-  const qui = d.status === 'SELLER_RESPONSE_REQUIRED' ? 'Le vendeur' : 'L’acheteur';
+  const who = t(d.status === 'SELLER_RESPONSE_REQUIRED' ? 'dispute.whoSeller' : 'dispute.whoBuyer');
   if (reste <= 0) {
-    return `<p class="small muted">${qui} n’a pas répondu dans le délai. Le dossier part vers l’assistance TOUMA — <strong>aucune décision n’est prise pour autant</strong>.</p>`;
+    return `<p class="small muted">${esc(t('dispute.deadlineMissed', { who }))} <strong>${esc(t('dispute.noDecision'))}</strong></p>`;
   }
   const heures = Math.round(reste / 3_600_000);
-  return `<p class="small muted">${qui} a jusqu’au ${formatDate(limite, true)} pour répondre${
-    heures <= 48 ? ` (environ ${heures} h)` : ''
-  }. Passé ce délai, le dossier est confié à l’assistance — ce n’est pas une décision.</p>`;
+  const approx = heures <= 48 ? t('dispute.approxHours', { hours: heures }) : '';
+  return `<p class="small muted">${esc(t('dispute.deadlineOpen', { who, date: formatDate(limite, true), approx }))}</p>`;
 }
 
 // ── Listes ─────────────────────────────────────────────────────────────────
@@ -125,21 +83,18 @@ function deadlineNote(d) {
 export async function disputes(_params, _query, options = {}) {
   const data = await api('/disputes');
   const base = options.base ?? '/touma/litiges';
-  const title = options.title ?? 'Mes litiges';
+  const title = options.title ?? t('dispute.mine');
 
   const header = options.embedded
     ? ''
-    : `${breadcrumb([{ label: 'Accueil', href: '/touma/' }, { label: title }])}
-       <h1 style="font-size:var(--text-xl)">${title}</h1>`;
+    : `${breadcrumb([{ label: t('nav.home'), href: '/touma/' }, { label: title }])}
+       <h1 style="font-size:var(--text-xl)">${esc(title)}</h1>`;
 
   if (!data.items.length) {
     return `${header}${emptyState({
-      title: 'Aucun litige',
-      body:
-        options.scope === 'seller'
-          ? 'Les litiges ouverts sur vos ventes apparaîtront ici, avec le délai dont vous disposez pour répondre.'
-          : 'Un problème sur une commande se règle d’abord avec le vendeur. Si rien n’avance, ouvrez un litige depuis le détail de la commande.',
-      actionLabel: options.scope === 'seller' ? 'Mes ventes' : 'Mes commandes',
+      title: t('dispute.emptyTitle'),
+      body: t(options.scope === 'seller' ? 'dispute.emptyBodySeller' : 'dispute.emptyBodyBuyer'),
+      actionLabel: t(options.scope === 'seller' ? 'dispute.emptyActionSeller' : 'dispute.emptyActionBuyer'),
       actionHref: options.scope === 'seller' ? '/touma/vendeur/commandes' : '/touma/commandes',
       iconName: 'shield',
     })}`;
@@ -152,12 +107,12 @@ export async function disputes(_params, _query, options = {}) {
           (d) => `<a class="card" href="${base}/${esc(d.id)}" data-link style="display:block;color:inherit;text-decoration:none">
             <div class="row-between">
               <div style="min-width:0">
-                <strong>Commande ${esc(d.order.orderNumber)}</strong>
-                <div class="small muted">${esc(CATEGORY[d.category] ?? d.category)} · ouvert le ${formatDate(d.createdAt)}</div>
-                ${d.escalatedAt ? `<div class="xs muted">Confié à l’assistance le ${formatDate(d.escalatedAt)}</div>` : ''}
+                <strong>${esc(t('dispute.orderLine', { number: d.order.orderNumber }))}</strong>
+                <div class="small muted">${esc(libelle('category', d.category))} · ${esc(t('dispute.openedOn', { date: formatDate(d.createdAt) }))}</div>
+                ${d.escalatedAt ? `<div class="xs muted">${esc(t('dispute.escalatedOn', { date: formatDate(d.escalatedAt) }))}</div>` : ''}
               </div>
               <div class="row" style="gap:var(--space-3)">
-                ${pill(d.status, STATUS)}
+                ${pill(d.status)}
                 <strong>${money(d.order.total, d.order.currency)}</strong>
               </div>
             </div>
@@ -174,12 +129,8 @@ function evidenceBlock(d, items, { canRemove, canAdd }) {
   const ecartees = items.filter((e) => e.removedAt);
 
   return `<section class="card">
-    <h2 style="font-size:var(--text-md)">Pièces du dossier</h2>
-    <p class="xs muted">
-      Chaque pièce est reconnue à son contenu et empreintée à son dépôt. L’empreinte
-      est ce qui permettra de prouver, plus tard, que la pièce consultée est bien
-      celle qui a été versée.
-    </p>
+    <h2 style="font-size:var(--text-md)">${esc(t('dispute.evidenceTitle'))}</h2>
+    <p class="xs muted">${esc(t('dispute.evidenceHint'))}</p>
 
     ${
       actives.length
@@ -191,29 +142,40 @@ function evidenceBlock(d, items, { canRemove, canAdd }) {
                     ${svg('inbox')} <span>${esc(e.filename)}</span> <span class="xs muted">${fileSize(e.sizeBytes)}</span>
                   </a>
                   <div class="xs muted">
-                    ${esc(EVIDENCE_KIND[e.kind] ?? e.kind)} · versée par ${esc(e.uploadedBy?.name ?? 'inconnu')} le ${formatDate(e.createdAt, true)}
+                    ${esc(
+                      t('dispute.evidenceMeta', {
+                        kind: libelle('evidenceKind', e.kind),
+                        name: e.uploadedBy?.name ?? t('dispute.unknownUploader'),
+                        date: formatDate(e.createdAt, true),
+                      }),
+                    )}
                   </div>
                   ${e.note ? `<div class="small">${esc(e.note)}</div>` : ''}
-                  <div class="xs muted evidence-sum" title="Empreinte SHA-256">${esc(e.checksum.slice(0, 16))}…</div>
-                  ${canRemove ? `<button class="btn btn-ghost btn-sm" data-remove-evidence="${esc(e.id)}">Écarter cette pièce</button>` : ''}
+                  <div class="xs muted evidence-sum" dir="ltr" title="${esc(t('dispute.checksumTitle'))}">${esc(e.checksum.slice(0, 16))}…</div>
+                  ${canRemove ? `<button class="btn btn-ghost btn-sm" data-remove-evidence="${esc(e.id)}">${esc(t('dispute.removeEvidence'))}</button>` : ''}
                 </li>`,
               )
               .join('')}
           </ul>`
-        : '<p class="small muted">Aucune pièce versée pour l’instant.</p>'
+        : `<p class="small muted">${esc(t('dispute.noEvidence'))}</p>`
     }
 
     ${
       ecartees.length
         ? `<div class="mt-6">
-            <h3 class="small" style="margin:0 0 var(--space-2)">Pièces écartées</h3>
-            <p class="xs muted">Elles restent au dossier : leur contenu n’est plus servi, et le motif du retrait est visible de tous.</p>
+            <h3 class="small" style="margin:0 0 var(--space-2)">${esc(t('dispute.removedTitle'))}</h3>
+            <p class="xs muted">${esc(t('dispute.removedHint'))}</p>
             <ul class="evidence-list">
               ${ecartees
                 .map(
                   (e) => `<li data-removed="true">
                     <span>${esc(e.filename)}</span>
-                    <div class="xs muted">Écartée le ${formatDate(e.removedAt, true)} — ${esc(e.removalReason ?? 'sans motif consigné')}</div>
+                    <div class="xs muted">${esc(
+                      t('dispute.removedOn', {
+                        date: formatDate(e.removedAt, true),
+                        reason: e.removalReason ?? t('dispute.noReason'),
+                      }),
+                    )}</div>
                   </li>`,
                 )
                 .join('')}
@@ -225,9 +187,9 @@ function evidenceBlock(d, items, { canRemove, canAdd }) {
     ${
       canAdd
         ? `<div class="mt-6">
-            <label class="btn btn-secondary btn-block btn-sm" for="d-file">Verser une pièce</label>
+            <label class="btn btn-secondary btn-block btn-sm" for="d-file">${esc(t('dispute.addEvidence'))}</label>
             <input id="d-file" type="file" data-dispute="${esc(d.id)}" hidden />
-            <p class="xs muted">Photo, facture, preuve de suivi. Le fichier part tel quel : c’est son contenu qui décide de son type.</p>
+            <p class="xs muted">${esc(t('dispute.addEvidenceHint'))}</p>
           </div>`
         : ''
     }
@@ -237,23 +199,23 @@ function evidenceBlock(d, items, { canRemove, canAdd }) {
 function ledgerBlock(entries, currency) {
   if (!entries.length) return '';
   return `<section class="card">
-    <h2 style="font-size:var(--text-md)">Où est l’argent</h2>
-    <p class="xs muted">Chaque mouvement laisse une ligne ; une correction est une ligne de sens inverse, jamais une réécriture.</p>
+    <h2 style="font-size:var(--text-md)">${esc(t('dispute.ledgerTitle'))}</h2>
+    <p class="xs muted">${esc(t('dispute.ledgerHint'))}</p>
     <div class="table-wrap">
       <table class="table">
-        <thead><tr><th>Mouvement</th><th>Montant</th><th>État</th><th>Date</th></tr></thead>
+        <thead><tr><th>${esc(t('dispute.col.movement'))}</th><th>${esc(t('dispute.col.amount'))}</th><th>${esc(t('dispute.col.state'))}</th><th>${esc(t('dispute.col.date'))}</th></tr></thead>
         <tbody>
           ${entries
             .map(
               (e) => `<tr>
-                <td>${esc(LEDGER_TYPE[e.type] ?? e.type)}</td>
+                <td>${esc(libelle('ledgerType', e.type))}</td>
                 <td>${e.direction === 'DEBIT' ? '−' : '+'} ${money(e.amount, e.currency ?? currency)}</td>
                 <td>${
                   e.heldByDisputeId && !e.releasedAt
-                    ? '<span class="status status-ESCALATED">Retenu</span>'
+                    ? `<span class="status status-ESCALATED">${esc(t('dispute.held'))}</span>`
                     : e.releasedAt
-                      ? `<span class="xs muted">Retenu jusqu’au ${formatDate(e.releasedAt)}</span>`
-                      : '<span class="xs muted">Disponible</span>'
+                      ? `<span class="xs muted">${esc(t('dispute.heldUntil', { date: formatDate(e.releasedAt) }))}</span>`
+                      : `<span class="xs muted">${esc(t('dispute.available'))}</span>`
                 }</td>
                 <td class="xs muted">${formatDate(e.createdAt)}</td>
               </tr>`,
@@ -269,19 +231,23 @@ function resolutionBlock(d) {
   if (!d.resolvedAt) return '';
   const snap = d.resolutionSnapshot ?? {};
   return `<section class="card" data-resolution>
-    <h2 style="font-size:var(--text-md)">Décision</h2>
+    <h2 style="font-size:var(--text-md)">${esc(t('dispute.decisionTitle'))}</h2>
     <div class="row" style="gap:var(--space-3);flex-wrap:wrap">
-      ${pill(d.status, STATUS)}
-      ${d.resolutionType ? `<span class="chip">${esc(RESOLUTION_TYPE[d.resolutionType] ?? d.resolutionType)}</span>` : ''}
+      ${pill(d.status)}
+      ${d.resolutionType ? `<span class="chip">${esc(libelle('resolutionType', d.resolutionType))}</span>` : ''}
       ${d.refundAmount ? `<strong>${money(d.refundAmount, d.order.currency)}</strong>` : ''}
     </div>
     ${d.resolution ? `<p class="small" style="white-space:pre-wrap">${esc(d.resolution)}</p>` : ''}
-    <p class="xs muted">Rendue le ${formatDate(d.resolvedAt, true)}. Une décision ne se réécrit pas.</p>
+    <p class="xs muted">${esc(t('dispute.decidedOn', { date: formatDate(d.resolvedAt, true) }))}</p>
     ${
       Array.isArray(snap.evidence) && snap.evidence.length
-        ? `<p class="xs muted">Pièces retenues au moment de la décision : ${snap.evidence
-            .map((e) => `${esc(e.filename)} (${esc(String(e.checksum).slice(0, 12))}…)`)
-            .join(', ')}</p>`
+        ? `<p class="xs muted">${esc(
+            t('dispute.evidenceAtDecision', {
+              // La liste est construite d'abord : la phrase ne place pas
+              // forcément l'énumération au même endroit d'une langue à l'autre.
+              list: snap.evidence.map((e) => `${e.filename} (${String(e.checksum).slice(0, 12)}…)`).join(', '),
+            }),
+          )}</p>`
         : ''
     }
   </section>`;
@@ -310,29 +276,36 @@ export async function disputeDetail(params, _query, options = {}) {
         ${d.messages
           .map(
             (m) => `<li${m.internal ? ' data-internal="true"' : ''}${m.authorId === moi ? ' data-mine="true"' : ''}>
-              <div class="xs muted">${esc(m.author?.name ?? 'Participant')}${m.internal ? ' · note interne' : ''} · ${formatDate(m.createdAt, true)}</div>
+              <div class="xs muted">${esc(m.author?.name ?? t('dispute.participant'))}${
+                m.internal ? ` · ${esc(t('dispute.internalNote'))}` : ''
+              } · ${formatDate(m.createdAt, true)}</div>
               <div class="msg-body" style="white-space:pre-wrap">${esc(m.body)}</div>
             </li>`,
           )
           .join('')}
       </ul>`
-    : '<p class="small muted">Aucun échange pour l’instant.</p>';
+    : `<p class="small muted">${esc(t('dispute.noMessages'))}</p>`;
 
   return `
-    ${breadcrumb([{ label: isAdmin ? 'Litiges' : 'Mes litiges', href: base }, { label: `Commande ${d.order.orderNumber}` }])}
+    ${breadcrumb([
+      { label: t(isAdmin ? 'dispute.tab' : 'dispute.mine'), href: base },
+      { label: t('dispute.orderLine', { number: d.order.orderNumber }) },
+    ])}
 
     <div class="row-between" style="flex-wrap:wrap;gap:var(--space-3)">
-      <h1 style="font-size:var(--text-xl);margin:0">Litige · commande ${esc(d.order.orderNumber)}</h1>
-      ${pill(d.status, STATUS)}
+      <h1 style="font-size:var(--text-xl);margin:0">${esc(t('dispute.detailTitle', { number: d.order.orderNumber }))}</h1>
+      ${pill(d.status)}
     </div>
     <p class="small muted">
-      ${esc(CATEGORY[d.category] ?? d.category)} · ouvert le ${formatDate(d.createdAt)}
-      ${isAdmin ? ` · ordre de passage : ${esc(PRIORITY[d.priority] ?? d.priority)}` : ''}
+      ${esc(libelle('category', d.category))} · ${esc(t('dispute.openedOn', { date: formatDate(d.createdAt) }))}
+      ${isAdmin ? ` · ${esc(t('dispute.priorityLine', { priority: libelle('priority', d.priority) }))}` : ''}
     </p>
     ${deadlineNote(d)}
     ${
       d.escalatedAt && !clos
-        ? `<div class="alert alert-info">${svg('shield')} Dossier confié à l’assistance TOUMA le ${formatDate(d.escalatedAt)}. <strong>Aucune décision n’a été prise</strong> : un humain l’examine.</div>`
+        ? `<div class="alert alert-info">${svg('shield')} ${esc(t('dispute.escalatedBanner', { date: formatDate(d.escalatedAt) }))} <strong>${esc(
+            t('dispute.escalatedNoDecision'),
+          )}</strong> ${esc(t('dispute.humanReviews'))}</div>`
         : ''
     }
 
@@ -341,29 +314,29 @@ export async function disputeDetail(params, _query, options = {}) {
         ${resolutionBlock(d)}
 
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Ce qui est reproché</h2>
-          <p class="small"><strong>${esc(REASON[d.reason] ?? d.reason)}</strong></p>
+          <h2 style="font-size:var(--text-md)">${esc(t('dispute.complaint'))}</h2>
+          <p class="small"><strong>${esc(libelle('reason', d.reason))}</strong></p>
           ${d.details ? `<p class="small" style="white-space:pre-wrap">${esc(d.details)}</p>` : ''}
-          <p class="xs muted">Ouvert par ${d.openedById === d.order.buyerId ? 'l’acheteur' : 'le vendeur'}.</p>
+          <p class="xs muted">${esc(t(d.openedById === d.order.buyerId ? 'dispute.openedByBuyer' : 'dispute.openedBySeller'))}</p>
         </section>
 
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Échanges</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('dispute.exchanges'))}</h2>
           ${fil}
           ${
             clos
-              ? '<p class="small muted mt-6">Ce dossier est clos : il ne reçoit plus de message.</p>'
+              ? `<p class="small muted mt-6">${esc(t('dispute.closedNoMessages'))}</p>`
               : `<form id="dispute-message-form" data-dispute="${esc(d.id)}" class="mt-6">
                   <div class="field">
-                    <label for="dm-body">Votre message</label>
-                    <textarea id="dm-body" rows="3" maxlength="2000" required placeholder="Expliquez la situation, ou répondez à l’autre partie."></textarea>
+                    <label for="dm-body">${esc(t('dispute.yourMessage'))}</label>
+                    <textarea id="dm-body" rows="3" maxlength="2000" required placeholder="${esc(t('dispute.messagePlaceholder'))}"></textarea>
                   </div>
                   ${
                     isAdmin
-                      ? `<label class="check"><input type="checkbox" id="dm-internal" /> Note interne — invisible pour l’acheteur et le vendeur</label>`
+                      ? `<label class="check"><input type="checkbox" id="dm-internal" /> ${esc(t('dispute.internalCheckbox'))}</label>`
                       : ''
                   }
-                  <button class="btn btn-primary btn-block btn-sm" type="submit">Envoyer</button>
+                  <button class="btn btn-primary btn-block btn-sm" type="submit">${esc(t('action.send'))}</button>
                 </form>`
           }
         </section>
@@ -375,9 +348,9 @@ export async function disputeDetail(params, _query, options = {}) {
         ${evidenceBlock(d, pieces.items ?? [], { canRemove: isAdmin, canAdd: !clos })}
         ${ledgerBlock(ledger.items ?? [], d.order.currency)}
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Commande</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('dispute.orderCard'))}</h2>
           <p class="small"><strong>${money(d.order.total, d.order.currency)}</strong></p>
-          <a class="btn btn-ghost btn-block btn-sm" href="${jeSuisAcheteur ? `/touma/commandes/${esc(d.orderId)}` : `/touma/vendeur/commandes/${esc(d.orderId)}`}" data-link>Voir la commande</a>
+          <a class="btn btn-ghost btn-block btn-sm" href="${jeSuisAcheteur ? `/touma/commandes/${esc(d.orderId)}` : `/touma/vendeur/commandes/${esc(d.orderId)}`}" data-link>${esc(t('dispute.viewOrder'))}</a>
         </section>
       </aside>
     </div>`;
@@ -391,40 +364,34 @@ export async function disputeDetail(params, _query, options = {}) {
  */
 function adminDecisionForm(d) {
   return `<section class="card" id="dispute-decision">
-    <h2 style="font-size:var(--text-md)">Trancher</h2>
-    <p class="xs muted">
-      La décision est figée avec les empreintes des pièces retenues, et notifiée
-      aux deux parties. Elle ne se réécrit pas.
-    </p>
+    <h2 style="font-size:var(--text-md)">${esc(t('dispute.decide'))}</h2>
+    <p class="xs muted">${esc(t('dispute.decideHint'))}</p>
     <form id="dispute-resolve-form" data-dispute="${esc(d.id)}" data-currency="${esc(d.order.currency)}">
       <div class="field">
-        <label for="dr-decision">Issue</label>
+        <label for="dr-decision">${esc(t('dispute.outcome'))}</label>
         <select id="dr-decision" required>
-          <option value="RESOLVED_BUYER">En faveur de l’acheteur</option>
-          <option value="RESOLVED_SELLER">En faveur du vendeur</option>
-          <option value="REJECTED">Litige rejeté</option>
-          <option value="CLOSED">Clore sans suite</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="dr-type">Nature de l’issue</label>
-        <select id="dr-type">
-          <option value="">— non précisée —</option>
-          ${Object.entries(RESOLUTION_TYPE)
-            .map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`)
+          ${['RESOLVED_BUYER', 'RESOLVED_SELLER', 'REJECTED', 'CLOSED']
+            .map((code) => `<option value="${code}">${esc(libelle('decision', code))}</option>`)
             .join('')}
         </select>
       </div>
       <div class="field">
-        <label for="dr-amount">Montant remboursé (${esc(d.order.currency)})</label>
-        <input id="dr-amount" type="text" inputmode="decimal" placeholder="laisser vide si aucun remboursement" />
-        <p class="xs muted">Le mouvement d’argent reste un acte distinct : ce champ consigne le montant décidé.</p>
+        <label for="dr-type">${esc(t('dispute.natureOfOutcome'))}</label>
+        <select id="dr-type">
+          <option value="">${esc(t('dispute.unspecified'))}</option>
+          ${RESOLUTION_TYPES.map((code) => `<option value="${code}">${esc(libelle('resolutionType', code))}</option>`).join('')}
+        </select>
       </div>
       <div class="field">
-        <label for="dr-resolution">Motivation (obligatoire, lue par les deux parties)</label>
+        <label for="dr-amount">${esc(t('dispute.refundAmount', { currency: d.order.currency }))}</label>
+        <input id="dr-amount" type="text" inputmode="decimal" placeholder="${esc(t('dispute.refundPlaceholder'))}" />
+        <p class="xs muted">${esc(t('dispute.refundHint'))}</p>
+      </div>
+      <div class="field">
+        <label for="dr-resolution">${esc(t('dispute.motivation'))}</label>
         <textarea id="dr-resolution" rows="4" maxlength="2000" required></textarea>
       </div>
-      <button class="btn btn-primary btn-block" type="submit">Enregistrer la décision</button>
+      <button class="btn btn-primary btn-block" type="submit">${esc(t('dispute.saveDecision'))}</button>
     </form>
   </section>`;
 }
@@ -435,9 +402,9 @@ function adminDecisionForm(d) {
 export async function sellerDisputes(params, query) {
   const [{ tabs }, content] = await Promise.all([
     import('./views-seller.js'),
-    disputes(params, query, { scope: 'seller', base: '/touma/vendeur/litiges', title: 'Litiges', embedded: true }),
+    disputes(params, query, { scope: 'seller', base: '/touma/vendeur/litiges', title: t('dispute.tab'), embedded: true }),
   ]);
-  return `<h1 style="font-size:var(--text-xl)">Litiges sur mes ventes</h1>${tabs('/touma/vendeur/litiges')}${content}`;
+  return `<h1 style="font-size:var(--text-xl)">${esc(t('dispute.sellerTitle'))}</h1>${tabs('/touma/vendeur/litiges')}${content}`;
 }
 
 export async function sellerDisputeDetail(params, query) {
@@ -456,5 +423,5 @@ export async function adminDisputeDetail(params, query) {
     import('./views-admin.js'),
     disputeDetail(params, query, { admin: true }),
   ]);
-  return layout('/touma/admin/litiges', 'Litiges', content);
+  return layout('/touma/admin/litiges', t('dispute.tab'), content);
 }
