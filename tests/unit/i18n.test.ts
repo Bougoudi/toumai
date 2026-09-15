@@ -78,10 +78,18 @@ describe("i18n — français et arabe", () => {
       "doc.nif",
     ]);
     const arabe = /[؀-ۿ]/;
+    const latin = /[A-Za-zÀ-ÿ]/;
     module.setLocale("ar");
-    const sansArabe = ar.filter(
-      (cle) => !MARQUES.has(cle) && !arabe.test(module.t(cle)),
-    );
+    // Une valeur qui ne contient que des variables et de la ponctuation —
+    // « {label}: {count} » — ne peut pas être du français oublié. Elle porte
+    // tout de même une différence réelle : l'espace avant le deux-points est
+    // français, pas arabe.
+    const sansArabe = ar.filter((cle) => {
+      const valeur = module.t(cle);
+      const horsVariables = valeur.replace(/\{[^}]*\}/g, "");
+      if (!latin.test(horsVariables)) return false;
+      return !MARQUES.has(cle) && !arabe.test(valeur);
+    });
     assert.deepEqual(
       sansArabe,
       [],

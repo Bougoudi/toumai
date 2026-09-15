@@ -1294,6 +1294,97 @@ await step('langue : l’après-vente en arabe, sans résidu', async () => {
   }
 });
 
+await step('langue : messagerie et administration en arabe, sans résidu', async () => {
+  // Les deux derniers écrans professionnels. L'administration est vérifiée avec
+  // la session d'administration : sa barre latérale est la colonne vertébrale
+  // de la console, et un seul onglet resté français la trahirait entière.
+  const ar = await sessionFor('acheteur@touma.dev');
+  await ar.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await ar.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+
+  const admin = await sessionFor('admin@touma.dev');
+  await admin.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await admin.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+
+  try {
+    for (const [page, chemin, attendu, residus] of [
+      [
+        ar,
+        '/messages',
+        /الرسائل|اختر محادثة|لا توجد محادثات/,
+        ['Messages', 'Tous', 'Non lus', 'Choisissez une conversation', 'Préférences', 'Rechercher'],
+      ],
+      [
+        ar,
+        '/messages/reglages',
+        /تفضيلات المراسلة|الإشعارات/,
+        ['Préférences de messagerie', 'Notifications', 'Catégorie', 'Réponses enregistrées', 'Comptes bloqués'],
+      ],
+      [
+        admin,
+        '/admin',
+        /الإدارة|لوحة التحكّم|إجمالي قيمة البضائع/,
+        ['Tableau de bord', 'Panier moyen', 'Boutiques actives', 'Produits actifs', 'Pilotage', 'Confiance'],
+      ],
+      [
+        admin,
+        '/admin/utilisateurs',
+        /المستخدمون|الدور|المخاطر/,
+        ['Utilisateur', 'Rôle', 'Risque', 'Actions', 'Suspendre', 'Recalculer'],
+      ],
+      [
+        admin,
+        '/admin/verifications',
+        /توثيق البائعين|لا ملفات معلّقة/,
+        ['Vérifications vendeur', 'Raison sociale', 'Approuver', 'Rejeter', 'Aucun dossier en attente'],
+      ],
+      [
+        admin,
+        '/admin/risque',
+        /درجة المخاطر|لا تستبعد الدرجة/,
+        ['Score de risque', 'Le score n’exclut jamais', 'Niveau', 'Signaux', 'Aucun score calculé'],
+      ],
+      [
+        admin,
+        '/admin/intelligence',
+        /ذكاء TOUMA|الممرّات النشطة/,
+        ['Corridors actifs', 'Demande non servie', 'Fiabilité des paiements', 'Produits en tension'],
+      ],
+      [
+        admin,
+        '/admin/moderation',
+        /الإشراف على المراسلات|البلاغات|إشارات آلية/,
+        ['Modération de la messagerie', 'Signalements', 'Signaux automatiques', 'Confirmer', 'Écarter'],
+      ],
+    ]) {
+      await page.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(700);
+
+      if ((await page.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`${chemin} : le sens d’écriture n’est pas rtl`);
+      const corps = ((await page.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!attendu.test(corps)) throw new Error(`${chemin} : aucun texte arabe attendu trouvé`);
+
+      const restes = residus.filter((r) => corps.includes(r));
+      if (restes.length > 0) throw new Error(`${chemin} : résidus français — ${restes.join(', ')}`);
+
+      if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) {
+        throw new Error(`${chemin} : débordement horizontal en arabe`);
+      }
+    }
+
+    // Aucune constante technique à l'écran : un statut d'offre, un niveau de
+    // risque ou un statut de signalement s'affichaient bruts avant traduction.
+    const liste = ((await admin.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+    const codesBruts = ['SUBMITTED', 'COUNTERED', 'HIGH', 'MEDIUM', 'ACTIONED', 'DISMISSED'].filter((c) => liste.includes(c));
+    if (codesBruts.length > 0) throw new Error(`administration : constantes techniques à l’écran — ${codesBruts.join(', ')}`);
+
+    await admin.screenshot({ path: `${OUT}/56-admin-arabe.png` });
+  } finally {
+    await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+    await admin.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+  }
+});
+
 await step('langue : les statuts de commande sont traduits partout à la fois', async () => {
   // Les statuts viennent du serveur sous forme de code : les traduire au seul
   // endroit qui les rend les traduit sur tous les écrans, y compris ceux dont
