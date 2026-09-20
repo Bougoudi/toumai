@@ -50,10 +50,21 @@ export const apiLimiter = rateLimit({
   message: { error: 'Trop de requêtes, réessayez dans un instant.' },
 });
 
-/** Limite stricte de l'authentification : anti-force brute sur login/register. */
+/**
+ * Limite stricte de l'authentification : anti-force brute sur login/register.
+ *
+ * Réglable, comme la limite générale, et pour la même raison. Le parcours
+ * navigateur ouvre une session par rôle ; rejoué deux fois dans le même quart
+ * d'heure, il épuise légitimement le quota et **échoue en accusant le
+ * produit** — « connexion impossible » quinze étapes plus loin, sans que rien
+ * ne dise que la protection a simplement fait son travail.
+ *
+ * La valeur par défaut reste celle de la production. La relever est un geste
+ * explicite, réservé à une machine de test.
+ */
 export const authLimiter = rateLimit({
   windowMs: 15 * 60_000,
-  limit: 10,
+  limit: Number(process.env.TOUMA_AUTH_RATE_LIMIT ?? 10),
   skip: skipInTests,
   standardHeaders: 'draft-7',
   legacyHeaders: false,

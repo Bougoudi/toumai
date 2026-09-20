@@ -42,8 +42,11 @@ npm run typecheck     # TypeScript strict
 # une étape échoue sur un message qui accuse le produit au lieu du 429. Le
 # parcours refuse de démarrer sans cette marge, plutôt que de mentir sur la
 # cause. La valeur par défaut (300/minute) reste celle de la production.
-TOUMA_API_RATE_LIMIT=6000 npm run dev   # dans un autre terminal
-npm run test:browser  # 87 vérifications navigateur, de 360 à 1440 px (Chromium)
+# Le parcours ouvre une session par rôle. Rejoué deux fois dans le même quart
+# d'heure, il épuise la protection anti-force-brute — qui doit rester active en
+# production, et dont la valeur par défaut est inchangée.
+TOUMA_API_RATE_LIMIT=6000 TOUMA_AUTH_RATE_LIMIT=200 npm run dev   # dans un autre terminal
+npm run test:browser  # 89 vérifications navigateur, de 360 à 1440 px (Chromium)
 ```
 
 ## Mettre TOUMA en ligne

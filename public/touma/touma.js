@@ -105,6 +105,10 @@ const ROUTES = [
   // Promotions (codes de réduction).
   { path: '/touma/vendeur/promotions', module: 'promotions', name: 'sellerCoupons', auth: true, role: 'SELLER' },
   { path: '/touma/vendeur/confiance', module: 'trust', name: 'sellerTrust', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/marketing', module: 'marketing', name: 'sellerMarketing', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/marketing/nouvelle', module: 'marketing', name: 'promotionForm', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/marketing/:id', module: 'marketing', name: 'promotionPerformance', auth: true, role: 'SELLER' },
+  { path: '/touma/compte/parrainage', module: 'marketing', name: 'referrals', auth: true },
   { path: '/touma/compte/confiance', module: 'trust', name: 'buyerTrust', auth: true },
   { path: '/touma/confiance/recours', module: 'trust', name: 'appealForm', auth: true },
   { path: '/touma/confiance/historique/:entityType/:entityId', module: 'trust', name: 'trustHistory', auth: true },
@@ -130,6 +134,7 @@ const ROUTES = [
   { path: '/touma/admin/intelligence', module: 'admin', name: 'intelligence', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/moderation', module: 'admin', name: 'moderation', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/confiance', module: 'trust', name: 'adminTrust', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/marketing', module: 'marketing', name: 'adminMarketing', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/:section', module: 'admin', name: 'list', auth: true, role: 'ADMIN' },
 ];
 
@@ -168,6 +173,7 @@ const LOADERS = {
   geo: () => import('./views-geo.js'),
   zones: () => import('./views-zones.js'),
   trust: () => import('./views-trust.js'),
+  marketing: () => import('./views-marketing.js'),
 };
 
 async function loadModule(name) {
@@ -668,6 +674,25 @@ document.addEventListener('click', (event) => {
       await render();
     });
   }
+  // ── Marketing ─────────────────────────────────────────────────────────────
+  if (d.promotion) {
+    return run(async () => {
+      await api(`/seller/marketing/promotions/${d.promotion}`, {
+        method: 'PATCH',
+        body: { status: el.dataset.status },
+      });
+      toast(t(el.dataset.status === 'ACTIVE' ? 'promo.activated' : 'promo.paused'), 'success');
+      await render();
+    }, { button: el });
+  }
+
+  if (d.referralCode !== undefined) {
+    return run(async () => {
+      await api('/referrals/code', { method: 'POST' });
+      await render();
+    }, { button: el });
+  }
+
   // ── Confiance : décisions d'administration ────────────────────────────────
   //
   // Les deux exigent un motif. Ce n'est pas une formalité de formulaire : une
@@ -1202,6 +1227,35 @@ document.addEventListener('submit', (event) => {
     event.preventDefault();
     const q = new FormData(form).get('q');
     return navigate(`/touma/admin/${form.dataset.section}${q ? `?q=${encodeURIComponent(String(q))}` : ''}`);
+  }
+
+  if (form.id === 'promotion-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const minimum = document.getElementById('pr-min').value.trim();
+        const budget = document.getElementById('pr-budget').value.trim();
+        const type = document.getElementById('pr-type').value;
+        await api('/seller/marketing/promotions', {
+          method: 'POST',
+          body: {
+            storeId: document.getElementById('pr-store').value,
+            name: document.getElementById('pr-name').value.trim(),
+            type,
+            value: document.getElementById('pr-value').value.trim() || '0',
+            // Une remise en montant fixe exige sa devise : le serveur la
+            // refuse sans, et il a raison — il n'existe pas de taux officiel.
+            ...(type === 'FIXED_AMOUNT' ? { currency: 'XAF' } : {}),
+            stacking: document.getElementById('pr-stacking').value,
+            rules: minimum ? [{ kind: 'MIN_ORDER_AMOUNT', threshold: minimum }] : [],
+            ...(budget ? { budget: { total: budget, currency: 'XAF' } } : {}),
+          },
+        });
+        toast(t('promo.created'), 'success');
+        navigate('/touma/vendeur/marketing');
+      },
+      { button: submit },
+    );
   }
 
   if (form.id === 'appeal-form') {

@@ -154,7 +154,12 @@ async function sessionFor(email, password = 'touma-dev-1234') {
       // légitimement. On laisse la fenêtre se refermer, une fois.
       if (essai === 2) {
         await context.close();
-        throw new Error(`connexion impossible pour ${email}`);
+        throw new Error(
+          `connexion impossible pour ${email} — quota de tentatives épuisé. ` +
+            'Le parcours ouvre une session par rôle : rejoué deux fois dans le même ' +
+            'quart d’heure, il épuise légitimement la protection anti-force-brute. ' +
+            'Lancez le serveur avec TOUMA_AUTH_RATE_LIMIT=200 pour une machine de test.',
+        );
       }
       await context.waitForTimeout(62_000);
       rateLimited = false;
@@ -1642,6 +1647,64 @@ await step('confiance : un score sans volume ne s’affiche pas comme un mauvais
   }
   if (!/Livraisons dans le délai/.test(texte)) throw new Error('la ventilation n’est pas affichée');
   if (/0\/100/.test(texte)) throw new Error('un score absent est affiché comme un zéro');
+});
+
+await step('marketing : les trois écrans, en français puis en arabe', async () => {
+  const vendeur = await sessionFor('vendeur.td@touma.dev');
+  const acheteur = await sessionFor('acheteur@touma.dev');
+  const admin = await sessionFor('admin@touma.dev');
+
+  const ecrans = [
+    [vendeur, '/vendeur/marketing', /Vos promotions|Qui paie cette remise/, /عروضك|من يدفع هذا الخصم/],
+    [vendeur, '/vendeur/marketing/nouvelle', /Créer une promotion|Cumul avec/, /إنشاء عرض|الجمع مع/],
+    [acheteur, '/compte/parrainage', /Parrainage|Comment ça marche|non ouvert/, /الإحالة|كيف تعمل|غير مفتوحة/],
+    [admin, '/admin/marketing', /Centre marketing|Ce qui n’est pas mesuré/, /مركز التسويق|ما لا يُقاس/],
+  ];
+
+  try {
+    for (const [page, chemin, attenduFr, attenduAr] of ecrans) {
+      await page.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+      await page.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(800);
+      const fr = ((await page.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!attenduFr.test(fr)) throw new Error(`${chemin} : écran français introuvable — ${fr.slice(0, 120)}`);
+
+      await page.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+      await page.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(800);
+      if ((await page.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`${chemin} : sens d’écriture non rtl`);
+      const ar = ((await page.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!attenduAr.test(ar)) throw new Error(`${chemin} : aucun texte arabe attendu — ${ar.slice(0, 120)}`);
+      for (const reste of ['Promotion', 'Parrainage', 'Marketing', 'Campagnes', 'Segments']) {
+        if (ar.includes(reste)) throw new Error(`${chemin} : résidu français — ${reste}`);
+      }
+      if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) {
+        throw new Error(`${chemin} : débordement horizontal en arabe`);
+      }
+    }
+    await vendeur.screenshot({ path: `${OUT}/61-marketing-arabe.png` });
+  } finally {
+    for (const [page] of ecrans) await page.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+  }
+});
+
+await step('prix : aucun prix barré sans historique qui le justifie', async () => {
+  // La garantie la plus facile à casser en retouchant un gabarit : afficher à
+  // nouveau `compareAtPrice`, que le vendeur saisit librement.
+  const catalogue = await page.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+  if (!catalogue) throw new Error('catalogue inaccessible');
+  await page.waitForSelector('#view a[href^="/touma/produits/"]', { timeout: 20000 });
+  const lien = await page.getAttribute('#view a[href^="/touma/produits/"]', 'href');
+  await page.goto(`${BASE.replace('/touma', '')}${lien}`, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(700);
+
+  const barre = await page.locator('#view .price-compare').count();
+  const economie = await page.locator('#view').textContent();
+  if (barre > 0 && !/économisez|Vous économisez/i.test(economie ?? '')) {
+    throw new Error('un prix barré est affiché sans l’économie qui le justifie');
+  }
+  // Le seed ne pose aucun historique de prix : aucun barré ne doit apparaître.
+  if (barre > 0) throw new Error('prix barré affiché alors qu’aucun historique ne le justifie');
 });
 
 await step('langue : les statuts de commande sont traduits partout à la fois', async () => {
