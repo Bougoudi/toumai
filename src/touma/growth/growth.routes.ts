@@ -9,6 +9,7 @@ import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { pageParams, paginated } from '../lib/pagination.js';
 import { authenticate, currentUser, requireAdmin, requireRole } from '../middleware/toumaAuth.js';
 import { promotionService } from './promotion.service.js';
+import { flashSaleService } from './flash-sale.service.js';
 import { referralService } from './referral.service.js';
 import { segmentationService } from './segmentation.service.js';
 
@@ -572,5 +573,61 @@ adminGrowthRouter.post(
       metadata: { code: segment.code },
     });
     res.status(201).json(segment);
+  }),
+);
+
+
+// ── Ventes flash ───────────────────────────────────────────────────────────
+
+const flashSaleSchema = z.object({
+  storeId: z.string().cuid(),
+  productId: z.string().cuid(),
+  name: z.string().trim().min(3).max(120),
+  price: z.string().regex(/^\d+(\.\d{1,4})?$/),
+  startsAt: z.coerce.date(),
+  endsAt: z.coerce.date(),
+  quantityLimit: z.number().int().min(1).max(100_000),
+  perUserLimit: z.number().int().min(0).max(100).default(1),
+});
+
+sellerGrowthRouter.post(
+  '/flash-sales',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const input = parseBody(flashSaleSchema, req);
+    res.status(201).json(await flashSaleService.create(user.id, user.role, input));
+  }),
+);
+
+sellerGrowthRouter.get(
+  '/flash-sales',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const boutiques = await prisma.toumaStore.findMany({ where: { ownerId: user.id }, select: { id: true } });
+    const page = pageParams(req.query as Record<string, unknown>);
+    const where = { storeId: { in: boutiques.map((b) => b.id) } };
+    const [items, total] = await Promise.all([
+      prisma.toumaFlashSale.findMany({
+        where,
+        include: { product: { select: { id: true, title: true, slug: true, price: true } } },
+        orderBy: { startsAt: 'desc' },
+        skip: page.skip,
+        take: page.limit,
+      }),
+      prisma.toumaFlashSale.count({ where }),
+    ]);
+    res.json(paginated(items, total, page));
+  }),
+);
+
+/** Vente flash en cours sur un produit. Publique, et **jamais** une vente épuisée. */
+growthRouter.get(
+  '/flash-sales/product/:productId',
+  asyncHandler(async (req, res) => {
+    const vente = await flashSaleService.activeFor(req.params.productId);
+    // 404 plutôt qu'un corps vide : « il n'y a pas d'offre » est une réponse,
+    // pas une absence de réponse.
+    if (!vente) throw notFound('Aucune vente flash en cours sur ce produit.');
+    res.json(vente);
   }),
 );

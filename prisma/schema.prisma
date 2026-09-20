@@ -273,6 +273,8 @@ model User {
   referralsMade      ToumaReferral[]              @relation("Referrer")
   referralReceived   ToumaReferral?               @relation("Referee")
   segmentMemberships ToumaCustomerSegmentMember[]
+  flashSalesCreated  ToumaFlashSale[]             @relation("FlashSaleAuthor")
+  flashSaleClaims    ToumaFlashSaleClaim[]
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -1603,8 +1605,9 @@ model ToumaStore {
   commissionRules ToumaCommissionRule[]
   serviceZones    ToumaStoreServiceZone[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  ToumaFlashSale ToumaFlashSale[]
 
   @@index([ownerId])
   @@index([status])
@@ -1719,9 +1722,10 @@ model ToumaProduct {
   priceHistory ToumaProductPriceHistory[]
   favorites    ToumaFavorite[]
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  publishedAt DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  publishedAt    DateTime?
+  ToumaFlashSale ToumaFlashSale[]
 
   @@index([storeId])
   @@index([categoryId])
@@ -4451,4 +4455,80 @@ model ToumaCustomerSegmentMember {
   @@unique([segmentId, userId])
   @@index([userId])
   @@map("touma_customer_segment_members")
+}
+
+enum FlashSaleStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+/// Vente flash : un prix réduit, une quantité bornée, une fenêtre de temps.
+///
+/// **Le seul risque qui compte ici est la survente.** Annoncer cent unités à
+/// prix cassé et en vendre cent trente, c'est devoir annuler trente commandes
+/// déjà payées — et perdre trente acheteurs qui avaient raison de faire
+/// confiance. Tout le modèle est construit autour de cela : `reserved` n'est
+/// jamais écrit par une lecture suivie d'une écriture, et la limite par
+/// acheteur est une contrainte en base, pas une vérification dans un service.
+model ToumaFlashSale {
+  id     String          @id @default(cuid())
+  name   String
+  status FlashSaleStatus @default(DRAFT)
+
+  storeId String
+  store   ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   ToumaProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  /// Prix pendant la vente. Il doit être inférieur au prix courant du produit,
+  /// sans quoi ce n'est pas une vente flash.
+  price    Decimal @db.Decimal(18, 4)
+  currency String
+
+  startsAt DateTime
+  endsAt   DateTime
+
+  /// Unités offertes à ce prix, et unités déjà réservées.
+  quantityLimit Int
+  reserved      Int @default(0)
+  /// Unités maximales par acheteur. 0 = pas de limite.
+  perUserLimit  Int @default(1)
+
+  claims ToumaFlashSaleClaim[]
+
+  createdById String?
+  createdBy   User?   @relation("FlashSaleAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, startsAt, endsAt])
+  @@index([productId])
+  @@map("touma_flash_sales")
+}
+
+/// Réservation d'un acheteur sur une vente flash.
+///
+/// L'unicité `(flashSaleId, userId)` **est** la limite par acheteur : la poser
+/// en base plutôt que dans un service est la seule façon qu'elle tienne quand
+/// le même acheteur ouvre deux onglets.
+model ToumaFlashSaleClaim {
+  id          String         @id @default(cuid())
+  flashSaleId String
+  flashSale   ToumaFlashSale @relation(fields: [flashSaleId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  quantity Int
+  orderId  String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([flashSaleId, userId])
+  @@index([userId])
+  @@map("touma_flash_sale_claims")
 }

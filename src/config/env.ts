@@ -127,6 +127,8 @@ export const env = {
       disputes: process.env.TOUMA_CRON_DISPUTES ?? '*/15 * * * *',
       /** Recalcul de la confiance : utile, jamais urgent. */
       trust: process.env.TOUMA_CRON_TRUST ?? '*/5 * * * *',
+      /** Clôture des ventes flash : la minute suffit, elles sont courtes. */
+      flashSales: process.env.TOUMA_CRON_FLASH_SALES ?? '* * * * *',
       /** Les purges n'ont aucune urgence : une fois par nuit suffit. */
       purges: process.env.TOUMA_CRON_PURGES ?? '30 3 * * *',
     },

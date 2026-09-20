@@ -325,6 +325,13 @@ export function toumaOpenApiDocument() {
       '/admin/marketing/referrals/{id}/reward': {
         post: op('Croissance', 'Marquer un parrainage récompensé — jamais automatique', { role: 'ADMIN', params: ['id'], body: true }),
       },
+      '/growth/flash-sales/product/{productId}': {
+        get: op('Croissance', 'Vente flash en cours sur un produit — jamais une vente épuisée', { auth: false, params: ['productId'] }),
+      },
+      '/seller/marketing/flash-sales': {
+        get: op('Croissance', 'Mes ventes flash', { role: 'SELLER', query: ['page', 'limit'] }),
+        post: op('Croissance', 'Créer une vente flash (en brouillon, prix obligatoirement réduit)', { role: 'SELLER', body: true }),
+      },
       '/admin/marketing/segments': {
         get: op('Croissance', 'Effectifs par segment — des décomptes, pas une projection', { role: 'ADMIN' }),
         post: op('Croissance', 'Créer un segment (faits commerciaux uniquement)', { role: 'ADMIN', body: true }),

@@ -23,8 +23,9 @@ plutôt que présentés comme faits.
 
 ## Ce qui n'existe pas encore
 
-- **Ventes flash** : le modèle n'est pas écrit. Une vente flash sans protection
-  transactionnelle contre la survente serait pire qu'aucune vente flash.
+- **Ventes flash** : écrites, testées contre la survente (vingt acheteurs
+  simultanés sur cinq unités), mais **pas branchées au tunnel de commande** —
+  le prix réduit n'est pas encore appliqué à l'achat. Voir `flash-sales.md`.
 - **Automatisation marketing** : déclencheurs et actions non implémentés. Les
   préférences de notification existent déjà (V14) et devront être respectées.
 - **Tests A/B** : la base n'est pas écrite. Sans elle, aucun ROI n'est mesurable

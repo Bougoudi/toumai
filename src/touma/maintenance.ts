@@ -7,6 +7,7 @@ import { sweepDisputes } from './disputes/escalation.js';
 import { purgeExpiredKeys } from './lib/idempotency.js';
 import { purgeWebhookDeliveries } from './payments/webhook-log.js';
 import { processTrustEvents } from './trust/events.js';
+import { flashSaleService } from './growth/flash-sale.service.js';
 
 /**
  * Entretien périodique du domaine TOUMA.
@@ -89,6 +90,14 @@ export const maintenanceJobs = {
    * un événement perdu ne corrompt rien — il retarde.
    */
   trust: () => processTrustEvents(),
+  /**
+   * Clôt les ventes flash dont la fenêtre est passée.
+   *
+   * Sans effet sur ce qui se vend — les lectures filtrent déjà par date —
+   * mais une vente laissée « active » encombre les écrans et fausse les
+   * décomptes du vendeur.
+   */
+  flashSales: () => flashSaleService.closeExpired(),
 };
 
 /** Joue tous les travaux une fois. Employé au démarrage et par les tests. */
@@ -111,6 +120,7 @@ export function startToumaMaintenance(): void {
   cron.schedule(c.settlements, safe('règlements', maintenanceJobs.settlements));
   cron.schedule(c.disputes, safe('litiges', maintenanceJobs.disputes));
   cron.schedule(c.trust, safe('confiance', maintenanceJobs.trust));
+  cron.schedule(c.flashSales, safe('ventes flash', maintenanceJobs.flashSales));
   cron.schedule(c.purges, safe('purges', async () => {
     const cles = await maintenanceJobs.idempotency();
     const webhooks = await maintenanceJobs.webhooks();
