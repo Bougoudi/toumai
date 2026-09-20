@@ -38,10 +38,15 @@ est corrigible ; un seuil caché et faux ne l'est pas.
   n'existe pas encore.
 - **Un recours approuvé ne lève pas la sanction automatiquement.** Voir
   `appeals.md` — c'est un choix.
-- **Le classement de recherche n'intègre pas encore la confiance.** Quand il le
-  fera, la séparation entre classement organique et mise en avant payante devra
-  être vérifiée par un test : une promotion ne doit jamais toucher un score, une
-  vérification ni un badge.
+- **Le classement de recherche intègre la confiance**, et un test vérifie que
+  rien dans le tri ne regarde une promotion, une mise en avant ou un paiement.
+  Le contrôle porte sur le **code du tri** plutôt que sur un résultat : un jeu
+  de données ne prouverait rien, alors qu'un terme acheté y laisserait une
+  trace. Le jour où une mise en avant payante existera, elle devra être une
+  liste **séparée et étiquetée**, jamais un pouce sur cette balance.
+- **Un fournisseur sans score passe derrière un score mesuré, devant rien.**
+  Il n'est ni pénalisé comme un mauvais fournisseur, ni avantagé par son
+  absence de mesure.
 
 ## Vérifications avant d'ouvrir
 

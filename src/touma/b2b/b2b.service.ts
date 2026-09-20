@@ -241,11 +241,40 @@ export const b2bService = {
           ? await prisma.toumaQuote.findMany({ where: { rfqId: rfq.id, sellerId: user.id }, include: quoteInclude })
           : [];
 
+    // Confiance des fournisseurs ayant répondu (§15).
+    //
+    // Chargée en une passe pour l'ensemble des offres : une requête par offre
+    // aurait rendu l'écran plus lent à mesure que la concurrence augmente,
+    // c'est-à-dire précisément quand il devient utile.
+    //
+    // Le score peut valoir `null` — un fournisseur nouveau n'est pas un mauvais
+    // fournisseur —, et l'acheteur doit alors le lire comme une absence de
+    // mesure, pas comme une note basse. C'est pourquoi la ventilation
+    // l'accompagne ici comme partout ailleurs.
+    const trustParVendeur = new Map<string, unknown>();
+    if (quotes.length > 0) {
+      const scores = await prisma.toumaTrustScore.findMany({
+        where: { entityType: 'SUPPLIER', entityId: { in: quotes.map((q) => q.sellerId) } },
+        select: { entityId: true, score: true, level: true, sampleSize: true, breakdown: true },
+      });
+      for (const s of scores) {
+        trustParVendeur.set(s.entityId, {
+          score: s.score,
+          level: s.level,
+          sampleSize: s.sampleSize,
+          components: s.breakdown,
+        });
+      }
+    }
+
     return {
       ...serializeRfq(rfq),
       isOwner,
       /** Un fournisseur ne voit jamais les offres de ses concurrents. */
-      quotes: quotes.map(serializeQuote),
+      quotes: quotes.map((q) => ({
+        ...serializeQuote(q),
+        supplierTrust: trustParVendeur.get(q.sellerId) ?? null,
+      })),
     };
   },
 

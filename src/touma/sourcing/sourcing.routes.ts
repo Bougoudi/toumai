@@ -19,7 +19,7 @@ const searchSchema = z.object({
   destination: z.string().trim().toUpperCase().length(2).optional(),
   minQuantity: z.coerce.number().int().min(1).max(100_000_000).optional(),
   verifiedOnly: z.coerce.boolean().optional(),
-  sort: z.enum(['relevance', 'capacity', 'reputation', 'price']).default('relevance'),
+  sort: z.enum(['relevance', 'capacity', 'reputation', 'price', 'trust']).default('relevance'),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });

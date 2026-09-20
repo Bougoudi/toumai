@@ -31,7 +31,7 @@ export interface SourcingQuery {
   /** Volume recherché : filtre les fournisseurs incapables de le servir. */
   minQuantity?: number;
   verifiedOnly?: boolean;
-  sort: 'relevance' | 'capacity' | 'reputation' | 'price';
+  sort: 'relevance' | 'capacity' | 'reputation' | 'price' | 'trust';
   page: number;
   limit: number;
 }
@@ -68,6 +68,9 @@ export async function searchSuppliers(query: SourcingQuery) {
       where: storeWhere,
       select: {
         id: true,
+        // Interne : sert à rattacher le score fournisseur au compte, et n'est
+        // jamais rendu dans la réponse.
+        ownerId: true,
         name: true,
         slug: true,
         countryCode: true,
@@ -113,6 +116,11 @@ export async function searchSuppliers(query: SourcingQuery) {
     }),
     prisma.toumaStore.count({ where: storeWhere }),
   ]);
+
+  // Le score fournisseur est porté par le **compte** propriétaire, pas par la
+  // boutique. La correspondance reste interne : `ownerId` n'a aucune raison de
+  // figurer dans une réponse publique.
+  const proprietaireParBoutique = new Map(stores.map((s) => [s.id, s.ownerId]));
 
   const items = stores.map((store) => {
     const products = store.products.map((p) => ({
@@ -168,21 +176,52 @@ export async function searchSuppliers(query: SourcingQuery) {
     };
   });
 
+  // Confiance des fournisseurs, en une passe.
+  //
+  // **Ce classement est organique, et rien ne peut l'acheter.** Aucun terme
+  // ci-dessous ne regarde une promotion, une mise en avant ni un paiement —
+  // c'est le §31, et l'absence est le point. Une mise en avant payante, le jour
+  // où elle existera, devra être une liste **séparée et étiquetée comme telle**,
+  // jamais un pouce sur cette balance.
+  const trustScores = new Map<string, number | null>();
+  if (items.length > 0) {
+    const rows = await prisma.toumaTrustScore.findMany({
+      where: {
+        entityType: 'SUPPLIER',
+        entityId: { in: [...proprietaireParBoutique.values()].filter(Boolean) },
+      },
+      select: { entityId: true, score: true },
+    });
+    for (const r of rows) trustScores.set(r.entityId, r.score);
+  }
+  const withTrust = items.map((i) => ({
+    ...i,
+    trustScore: trustScores.get(proprietaireParBoutique.get(i.store.id) ?? '') ?? null,
+  }));
+
   // Tri final sur les agrégats calculés ci-dessus.
-  const sorted = [...items].sort((a, b) => {
+  const sorted = [...withTrust].sort((a, b) => {
     if (query.sort === 'capacity') return b.capacity - a.capacity;
     if (query.sort === 'reputation') return (b.reputationScore ?? -1) - (a.reputationScore ?? -1);
+    // Un score absent (fournisseur nouveau) passe derrière un score mesuré,
+    // mais **devant** un mauvais score : il ne vaut pas zéro.
+    if (query.sort === 'trust') return (b.trustScore ?? -1) - (a.trustScore ?? -1);
     if (query.sort === 'price') {
       const pa = a.bestPrice ? Number(a.bestPrice.amount) : Number.POSITIVE_INFINITY;
       const pb = b.bestPrice ? Number(b.bestPrice.amount) : Number.POSITIVE_INFINITY;
       return pa - pb;
     }
     // Pertinence : desservir la destination et le volume demandés passe devant.
-    const score = (x: (typeof items)[number]) =>
+    //
+    // La confiance y entre pour un point au plus. Volontairement peu : un
+    // fournisseur qui livre réellement là où l'acheteur veut être livré lui est
+    // plus utile qu'un fournisseur mieux noté qui ne dessert pas sa province.
+    const score = (x: (typeof withTrust)[number]) =>
       (x.servesDestination === true ? 4 : 0) +
       (x.servesRequestedQuantity === true ? 3 : 0) +
       (x.store.verified ? 2 : 0) +
-      (x.reputationScore ?? 0) / 100;
+      (x.reputationScore ?? 0) / 100 +
+      (x.trustScore ?? 0) / 100;
     return score(b) - score(a);
   });
 

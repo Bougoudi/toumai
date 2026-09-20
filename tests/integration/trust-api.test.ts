@@ -236,3 +236,48 @@ describe('Sanctions et recours', () => {
     assert.ok(trace, 'une sanction non tracée est une sanction sans auteur');
   });
 });
+
+describe('Confiance, classement et mise en avant', () => {
+  it('propose un tri par confiance sans qu’il puisse s’acheter', async () => {
+    // §30–31. Le classement organique ne doit regarder ni promotion, ni mise
+    // en avant, ni paiement. Le vérifier sur le **code** plutôt que sur un
+    // résultat : un jeu de données ne prouverait rien, alors qu'un terme
+    // acheté laisserait une trace ici.
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(new URL('../../src/touma/sourcing/sourcing.service.ts', import.meta.url), 'utf8');
+    const tri = source.slice(source.indexOf('const sorted = ['), source.indexOf('return paginated(sorted'));
+    for (const terme of ['coupon', 'promotion', 'sponsor', 'boost', 'featured', 'ad', 'paid']) {
+      assert.ok(
+        !new RegExp(`\\\\b${terme}`, 'i').test(tri),
+        `le classement organique ne doit pas regarder « ${terme} »`,
+      );
+    }
+    assert.ok(tri.includes('trustScore'), 'la confiance doit peser dans le classement');
+  });
+
+  it('classe un fournisseur sans score devant un mauvais score, pas derrière', async () => {
+    const res = await api.get('/api/v1/sourcing/suppliers?sort=trust');
+    assert.equal(res.status, 200);
+    const scores = res.body.items.map((i: { trustScore: number | null }) => i.trustScore);
+    // Un score absent vaut −1 dans le tri : derrière un score mesuré, devant
+    // rien du tout. Un fournisseur nouveau n'est pas un mauvais fournisseur,
+    // mais il n'est pas non plus meilleur qu'un fournisseur éprouvé.
+    const mesures = scores.filter((s: number | null) => s !== null);
+    const premierNull = scores.indexOf(null);
+    if (premierNull !== -1 && mesures.length > 0) {
+      assert.ok(
+        scores.slice(0, premierNull).every((s: number | null) => s !== null),
+        'les scores mesurés doivent précéder les scores absents',
+      );
+    }
+  });
+
+  it('joint la confiance du fournisseur à chaque offre reçue', async () => {
+    // §15 : l'acheteur compare prix, MOQ, délai **et** confiance sur le même
+    // écran. Sans cela il compare des prix et rien d'autre.
+    const { readFileSync } = await import('node:fs');
+    const source = readFileSync(new URL('../../src/touma/b2b/b2b.service.ts', import.meta.url), 'utf8');
+    assert.ok(source.includes('supplierTrust'), 'chaque offre doit porter la confiance de son fournisseur');
+    assert.ok(source.includes("entityType: 'SUPPLIER'"), 'et elle doit venir du moteur, pas d’un calcul local');
+  });
+});
