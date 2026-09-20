@@ -8,6 +8,7 @@ import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { reputationService } from '../reputation/reputation.service.js';
 import { recordTrustEvent, type TrustEventType } from '../trust/events.js';
+import { referralService } from '../growth/referral.service.js';
 import { refundService } from '../payments/refund.service.js';
 import type { ListOrdersQuery } from './order.schema.js';
 
@@ -303,6 +304,10 @@ export const orderService = {
     // Les points de fidélité se gagnent à la livraison, pas au paiement : une
     // commande annulée avant d'arriver n'a jamais rien rapporté.
     if (status === 'DELIVERED' || status === 'COMPLETED') await loyaltyService.awardForOrder(order.id);
+
+    // Un parrainage se qualifie sur une commande **terminée**, jamais sur une
+    // inscription : sinon il suffirait de créer des comptes.
+    if (status === 'COMPLETED') await referralService.qualifyFromOrder(order.id, order.buyerId);
 
     // Livraison et annulation changent la réputation de la boutique : son
     // instantané est périmé, il sera recalculé à la prochaine lecture.

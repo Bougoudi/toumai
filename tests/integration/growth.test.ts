@@ -421,3 +421,23 @@ describe('Fiche produit — pas de prix barré inventé', () => {
     assert.equal(lignes[0].validTo, null, 'le prix courant reste ouvert');
   });
 });
+
+describe('Leviers fermés par défaut', () => {
+  it('refuse le parrainage tant que personne ne l’a ouvert', async () => {
+    // Ce fichier n'importe pas `growth-flags` : il exerce donc le
+    // comportement par défaut. Un levier dont le mode d'échec est la fraude
+    // ne s'ouvre pas parce qu'il a été écrit.
+    const { referralService } = await import('../../src/touma/growth/referral.service.js');
+    const u = await registerUser(api, { name: 'Sans parrainage', email: uniqueEmail('ref-off'), role: 'BUYER' });
+
+    await assert.rejects(() => referralService.myCode(u.user.id), /pas activé/);
+
+    const vue = await referralService.mine(u.user.id);
+    assert.equal(vue.enabled, false);
+    assert.equal(vue.code, null);
+
+    // Et un code fourni à l'inscription ne crée rien, sans lever.
+    await referralService.register(u.user.id, 'PEUIMPORTE');
+    assert.equal(await prisma.toumaReferral.count({ where: { refereeId: u.user.id } }), 0);
+  });
+});

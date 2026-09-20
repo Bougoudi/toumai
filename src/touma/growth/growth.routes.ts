@@ -9,6 +9,8 @@ import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { pageParams, paginated } from '../lib/pagination.js';
 import { authenticate, currentUser, requireAdmin, requireRole } from '../middleware/toumaAuth.js';
 import { promotionService } from './promotion.service.js';
+import { referralService } from './referral.service.js';
+import { segmentationService } from './segmentation.service.js';
 
 /**
  * TOUMA GROWTH — API.
@@ -480,5 +482,95 @@ sellerGrowthRouter.post(
       /** Un aperçu porte sur ce panier-ci. Il ne promet aucune vente. */
       disclaimer: 'growth.previewDisclaimer',
     });
+  }),
+);
+
+
+// ── Parrainage et segments ─────────────────────────────────────────────────
+
+/**
+ * Mon parrainage.
+ *
+ * Hors du routeur `growthRouter`, qui est fermé quand les promotions le sont :
+ * couper les promotions n'a aucune raison de couper aussi le parrainage.
+ */
+export const referralRouter = Router();
+referralRouter.use(authenticate);
+
+referralRouter.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    res.json(await referralService.mine(currentUser(req).id));
+  }),
+);
+
+referralRouter.post(
+  '/code',
+  asyncHandler(async (req, res) => {
+    const code = await referralService.myCode(currentUser(req).id);
+    res.status(201).json({ code: code.code, createdAt: code.createdAt });
+  }),
+);
+
+adminGrowthRouter.get(
+  '/referrals',
+  asyncHandler(async (req, res) => {
+    const page = pageParams(req.query as Record<string, unknown>);
+    const { items, total } = await referralService.pendingRewards({ skip: page.skip, take: page.limit });
+    res.json(paginated(items, total, page));
+  }),
+);
+
+adminGrowthRouter.post(
+  '/referrals/:id/reward',
+  asyncHandler(async (req, res) => {
+    const input = parseBody(z.object({ note: z.string().trim().min(3).max(500) }), req);
+    res.json(await referralService.markRewarded(currentUser(req).id, req.params.id, input.note));
+  }),
+);
+
+adminGrowthRouter.get(
+  '/segments',
+  asyncHandler(async (_req, res) => {
+    res.json({ items: await segmentationService.counts() });
+  }),
+);
+
+const segmentSchema = z.object({
+  code: z.string().trim().toUpperCase().min(3).max(40).regex(/^[A-Z0-9_]+$/),
+  name: z.string().trim().min(3).max(120),
+  description: z.string().trim().max(500).default(''),
+  minOrders: z.number().int().min(0).optional(),
+  maxOrders: z.number().int().min(0).optional(),
+  minSpend: z.string().regex(/^\d+(\.\d{1,4})?$/).optional(),
+  spendCurrency: z.string().length(3).optional(),
+  minDaysSinceLastOrder: z.number().int().min(0).optional(),
+  maxDaysSinceLastOrder: z.number().int().min(0).optional(),
+});
+
+adminGrowthRouter.post(
+  '/segments',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const input = parseBody(segmentSchema, req);
+    // Un seuil de montant sans devise ne veut rien dire : il ne serait jamais
+    // rempli, et personne ne comprendrait pourquoi le segment reste vide.
+    if (input.minSpend && !input.spendCurrency) {
+      throw badRequest('Un seuil de dépense exige sa devise : il n’existe pas de taux officiel ici.');
+    }
+    const segment = await prisma.toumaCustomerSegment.create({
+      data: {
+        ...input,
+        minSpend: input.minSpend ? new Prisma.Decimal(input.minSpend) : null,
+      },
+    });
+    await audit({
+      actorId: user.id,
+      action: 'segment.create',
+      entity: 'ToumaCustomerSegment',
+      entityId: segment.id,
+      metadata: { code: segment.code },
+    });
+    res.status(201).json(segment);
   }),
 );

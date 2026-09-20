@@ -18,6 +18,12 @@ export const registerSchema = z.object({
   countryCode: z.string().trim().toUpperCase().length(2).optional(),
   /** Un compte peut naître acheteur ou vendeur ; ADMIN ne s'obtient jamais ainsi. */
   role: z.enum(['BUYER', 'SELLER']).default('BUYER'),
+  /**
+   * Code de parrainage, facultatif. Validé en aval : un code inconnu perd le
+   * parrainage, il ne refuse pas l'inscription. Quelqu'un qui se trompe d'une
+   * lettre doit quand même pouvoir se créer un compte.
+   */
+  referralCode: z.string().trim().toUpperCase().min(4).max(16).optional(),
 });
 
 export const loginSchema = z.object({

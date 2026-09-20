@@ -266,9 +266,13 @@ model User {
   supplierScore     ToumaSupplierScore?    @relation("SupplierScore")
 
   // V22 — croissance
-  promotionsCreated ToumaPromotion[]      @relation("PromotionAuthor")
-  campaignsCreated  ToumaCampaign[]       @relation("CampaignAuthor")
-  promotionUsages   ToumaPromotionUsage[]
+  promotionsCreated  ToumaPromotion[]             @relation("PromotionAuthor")
+  campaignsCreated   ToumaCampaign[]              @relation("CampaignAuthor")
+  promotionUsages    ToumaPromotionUsage[]
+  referralCode       ToumaReferralCode?           @relation("ReferralOwner")
+  referralsMade      ToumaReferral[]              @relation("Referrer")
+  referralReceived   ToumaReferral?               @relation("Referee")
+  segmentMemberships ToumaCustomerSegmentMember[]
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -4315,4 +4319,136 @@ model ToumaProductPriceHistory {
   @@index([productId, validFrom])
   @@index([productId, validTo])
   @@map("touma_product_price_history")
+}
+
+/// Palier de fidélité.
+///
+/// Les noms sont des **lignes en base**, pas un enum : « BRONZE » n'a rien
+/// d'universel, et une place de marché tchadienne doit pouvoir nommer ses
+/// paliers en français, en arabe, ou autrement. `ToumaLoyaltyAccount.tier`
+/// porte déjà une chaîne ; cette table lui donne un sens et des conditions.
+model ToumaLoyaltyTier {
+  id   String @id @default(cuid())
+  /// Code stable, employé par `ToumaLoyaltyAccount.tier`.
+  code String @unique
+  name String
+  /// Rang croissant : 0 est le palier d'entrée.
+  rank Int    @unique
+
+  /// Conditions d'accès. `null` = non exigé.
+  minLifetimePoints Int?
+  minOrders         Int?
+
+  /// Avantages **réellement appliqués**. Un avantage listé ici sans code qui
+  /// l'applique serait une promesse non tenue : le service refuse d'en
+  /// déclarer un qu'il ne sait pas honorer.
+  discountPercent  Decimal? @db.Decimal(5, 2)
+  freeShipping     Boolean  @default(false)
+  pointsMultiplier Decimal  @default(1) @db.Decimal(5, 2)
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("touma_loyalty_tiers")
+}
+
+enum ReferralStatus {
+  /// Le code a été employé, le filleul a créé son compte.
+  REGISTERED
+  /// Le filleul a rempli la condition (une commande terminée).
+  QUALIFIED
+  /// La récompense a été versée.
+  REWARDED
+  /// Écarté : auto-parrainage, fraude, ou condition jamais remplie.
+  REJECTED
+}
+
+/// Code de parrainage. Un par compte, stable, insensible à la casse.
+model ToumaReferralCode {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation("ReferralOwner", fields: [userId], references: [id], onDelete: Cascade)
+  code   String @unique
+
+  createdAt DateTime @default(now())
+
+  @@map("touma_referral_codes")
+}
+
+/// Un parrainage effectif.
+///
+/// `refereeId` est **unique** : un compte ne peut être parrainé qu'une fois,
+/// et la contrainte est en base plutôt que dans le service — c'est la seule
+/// façon qu'elle tienne sous deux inscriptions simultanées.
+model ToumaReferral {
+  id         String         @id @default(cuid())
+  referrerId String
+  referrer   User           @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  refereeId  String         @unique
+  referee    User           @relation("Referee", fields: [refereeId], references: [id], onDelete: Cascade)
+  status     ReferralStatus @default(REGISTERED)
+
+  /// Commande ayant rempli la condition.
+  qualifyingOrderId String?
+  qualifiedAt       DateTime?
+  rewardedAt        DateTime?
+
+  /// Pourquoi un parrainage a été écarté. Consigné, pas seulement appliqué.
+  rejectionReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([referrerId, status])
+  @@map("touma_referrals")
+}
+
+/// Segment d'acheteurs, calculé depuis des faits.
+///
+/// **Aucune catégorie sensible.** Ni religion, ni origine, ni appartenance
+/// politique : les règles ne portent que sur le comportement commercial —
+/// nombre de commandes, montant dépensé, date du dernier achat. La donnée
+/// sensible n'entre pas dans le calcul parce qu'elle n'est pas lue.
+model ToumaCustomerSegment {
+  id          String @id @default(cuid())
+  code        String @unique
+  name        String
+  description String @default("")
+
+  /// Conditions, toutes facultatives et cumulatives.
+  minOrders             Int?
+  maxOrders             Int?
+  minSpend              Decimal? @db.Decimal(18, 4)
+  spendCurrency         String?
+  /// Jours écoulés depuis la dernière commande.
+  minDaysSinceLastOrder Int?
+  maxDaysSinceLastOrder Int?
+
+  active Boolean @default(true)
+
+  members ToumaCustomerSegmentMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("touma_customer_segments")
+}
+
+model ToumaCustomerSegmentMember {
+  id        String               @id @default(cuid())
+  segmentId String
+  segment   ToumaCustomerSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Ce qui a justifié l'appartenance au moment du calcul.
+  evidence Json @default("{}")
+
+  computedAt DateTime @default(now())
+
+  @@unique([segmentId, userId])
+  @@index([userId])
+  @@map("touma_customer_segment_members")
 }

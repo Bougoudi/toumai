@@ -315,6 +315,20 @@ export function toumaOpenApiDocument() {
         get: op('Croissance', 'Campagnes', { role: 'ADMIN', query: ['page', 'limit'] }),
         post: op('Croissance', 'Créer une campagne (aucun événement culturel codé en dur)', { role: 'ADMIN', body: true }),
       },
+      '/referrals': {
+        get: op('Croissance', 'Mon parrainage — des décomptes, aucune donnée sur les filleuls'),
+      },
+      '/referrals/code': { post: op('Croissance', 'Obtenir mon code de parrainage') },
+      '/admin/marketing/referrals': {
+        get: op('Croissance', 'Parrainages qualifiés en attente de décision', { role: 'ADMIN', query: ['page', 'limit'] }),
+      },
+      '/admin/marketing/referrals/{id}/reward': {
+        post: op('Croissance', 'Marquer un parrainage récompensé — jamais automatique', { role: 'ADMIN', params: ['id'], body: true }),
+      },
+      '/admin/marketing/segments': {
+        get: op('Croissance', 'Effectifs par segment — des décomptes, pas une projection', { role: 'ADMIN' }),
+        post: op('Croissance', 'Créer un segment (faits commerciaux uniquement)', { role: 'ADMIN', body: true }),
+      },
       '/sourcing/suppliers': {
         get: op('Sourcing', 'Trouver un fournisseur', {
           auth: false,

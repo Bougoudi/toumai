@@ -5,6 +5,7 @@ import { env } from '../../config/env.js';
 import { hashPassword, verifyPassword } from '../../utils/auth.js';
 import { logger } from '../../utils/logger.js';
 import { audit } from '../lib/audit.js';
+import { referralService } from '../growth/referral.service.js';
 import { badRequest, conflict, unauthorized } from '../lib/errors.js';
 import { normalizePhone } from '../lib/phone.js';
 import { generateRefreshToken, hashRefreshToken, refreshTokenLooksValid, signAccessToken } from '../lib/tokens.js';
@@ -92,6 +93,8 @@ export const authService = {
     phone?: string;
     countryCode?: string;
     role: 'BUYER' | 'SELLER';
+    /** Code de parrainage, facultatif. Un code erroné n'empêche pas l'inscription. */
+    referralCode?: string;
   }, ctx: SessionContext) {
     const countryCode = await assertCountry(input.countryCode);
     const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
@@ -118,6 +121,9 @@ export const authService = {
       },
     });
     await audit({ actorId: user.id, action: 'auth.register', entity: 'User', entityId: user.id, ip: ctx.ip });
+    // Le parrainage ne peut pas faire échouer une inscription : un code
+    // erroné, expiré ou frauduleux perd le parrainage, pas le compte.
+    await referralService.register(user.id, input.referralCode);
     const session = await issueSession(user, randomUUID(), ctx);
     return { user: publicUser(user), ...session };
   },
