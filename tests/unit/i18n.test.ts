@@ -141,6 +141,49 @@ describe("i18n — français et arabe", () => {
     assert.deepEqual(fautifs, [], "texte français en dur dans une vue");
   });
 
+  it("ne laisse aucun texte français en dur dans l’ossature", () => {
+    // Une confirmation ou un message de succès se superpose à n'importe quel
+    // écran. En français au-dessus d'un écran arabe, il annule la traduction
+    // de cet écran — et le contrôle des vues ne le voyait pas, parce qu'il ne
+    // vit pas dans une vue mais dans l'ossature qui les pilote.
+    //
+    // Ici on ne cherche pas du texte entre balises mais des chaînes
+    // littérales : c'est sous cette forme que voyagent les toasts, les titres
+    // de fenêtre de confirmation et les motifs proposés dans une liste.
+    const MOTS =
+      /\b(le|la|les|un|une|des|du|de|au|aux|et|ou|par|pour|sur|dans|avec|est|sont|sera|seront|vous|votre|vos|cette|ces|qui|que|plus|jours)\b/i;
+    const PHRASE = /[A-Za-zÀ-ÿ]{3,}[\s’']+[a-zà-ÿ]{2,}/;
+    const TOUCHES = new Set(["Enter", "Escape", "Tab", "Backspace"]);
+    const fautifs: string[] = [];
+    for (const fichier of ["touma.js", "components.js", "core.js"]) {
+      const source = readFileSync(new URL(fichier, RACINE), "utf8");
+      for (const ligne of source.split("\n")) {
+        const nu = ligne.trim();
+        if (nu.startsWith("//") || nu.startsWith("*") || nu.startsWith("/*")) continue;
+        // Une clé passée à `t()` n'est pas du texte affiché ; un commentaire
+        // de fin de ligne non plus — et son apostrophe ferait un faux positif.
+        const reste = ligne
+          .replace(/(^|[^:])\/\/.*$/, "$1")
+          .replace(/t\('[^']+'|fr\('[^']+'/g, "");
+        for (const m of reste.matchAll(/'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"/g)) {
+          const valeur = m[1] ?? m[2];
+          if (valeur.includes("/")) continue;
+          if (PHRASE.test(valeur) && MOTS.test(valeur)) {
+            fautifs.push(`${fichier} : ${valeur.slice(0, 60)}`);
+          }
+          // `confirmLabel: 'Vider'` a échappé au motif ci-dessus, qui demande
+          // deux mots. Un libellé de bouton n'en a qu'un — c'est justement la
+          // forme la plus facile à oublier. Les noms de touches du clavier
+          // (`Enter`, `Escape`) portent la même forme sans être du français.
+          if (!TOUCHES.has(valeur) && /^[A-ZÀ-Ý][a-zà-ÿ]{2,}$/.test(valeur)) {
+            fautifs.push(`${fichier} : ${valeur}`);
+          }
+        }
+      }
+    }
+    assert.deepEqual(fautifs, [], "texte français en dur dans l’ossature");
+  });
+
   it("pose lang et dir sur la racine du document", async () => {
     const { module, attributs } = await chargerI18n();
     module.setLocale("ar");

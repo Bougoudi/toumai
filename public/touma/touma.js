@@ -21,7 +21,7 @@ import {
   svg,
   toast,
 } from './core.js';
-import { applyDocumentLocale, LOCALES, locale, setLocale, t } from './i18n.js';
+import { applyDocumentLocale, fr, LOCALES, locale, setLocale, t } from './i18n.js';
 import * as shop from './views-shop.js';
 import * as account from './views-account.js';
 
@@ -397,15 +397,15 @@ async function render() {
     const current = session.read();
     if (current?.refreshToken) await api('/auth/logout', { method: 'POST', body: { refreshToken: current.refreshToken } }).catch(() => undefined);
     session.clear();
-    toast('Vous êtes déconnecté.');
+    toast(t('sh.loggedOut'));
     return navigate('/touma/');
   }
 
   if (!matched) {
     view.innerHTML = emptyState({
-      title: 'Page introuvable',
-      body: "Le lien demandé n'existe pas ou a été déplacé.",
-      actionLabel: "Retour à l'accueil",
+      title: t('sh.notFoundTitle'),
+      body: t('sh.notFoundBody'),
+      actionLabel: t('sh.backHome'),
       actionHref: '/touma/',
       iconName: 'search',
     });
@@ -418,14 +418,14 @@ async function render() {
     return navigate(`/touma/connexion?suite=${encodeURIComponent(url.pathname + url.search)}`, { replace: true });
   }
   if (route.role === 'ADMIN' && !session.isAdmin) {
-    view.innerHTML = emptyState({ title: 'Accès réservé', body: "Cet espace est réservé à l'administration TOUMA.", actionLabel: 'Retour', actionHref: '/touma/', iconName: 'shield' });
+    view.innerHTML = emptyState({ title: t('sh.restrictedTitle'), body: t('sh.restrictedBody'), actionLabel: t('action.back'), actionHref: '/touma/', iconName: 'shield' });
     return;
   }
   if (route.role === 'SELLER' && !session.isSeller) {
     view.innerHTML = emptyState({
-      title: 'Ouvrez d’abord votre boutique',
-      body: 'L’espace vendeur s’active dès la création de votre première boutique.',
-      actionLabel: 'Créer ma boutique',
+      title: t('sh.openStoreTitle'),
+      body: t('sh.openStoreBody'),
+      actionLabel: t('seller.noStoreAction'),
       actionHref: '/touma/vendeur/boutique',
       iconName: 'store',
     });
@@ -448,9 +448,9 @@ async function render() {
     }
     if (error instanceof ApiError && error.status === 404) {
       view.innerHTML = emptyState({
-        title: 'Introuvable',
+        title: t('sh.missingTitle'),
         body: error.message,
-        actionLabel: 'Retour au catalogue',
+        actionLabel: t('sh.backCatalog'),
         actionHref: '/touma/produits',
         iconName: 'search',
       });
@@ -484,7 +484,7 @@ async function run(action, { button } = {}) {
 function requireLogin() {
   if (session.user) return true;
   navigate(`/touma/connexion?suite=${encodeURIComponent(location.pathname + location.search)}`);
-  toast('Connectez-vous pour continuer.');
+  toast(t('error.unauthorized'));
   return false;
 }
 
@@ -539,7 +539,7 @@ document.addEventListener('click', (event) => {
     return run(
       async () => {
         await addToCart(d.addToCart, { quantity: Number(qty?.value || 1), variantId: variant?.value });
-        toast('Article ajouté au panier.', 'success');
+        toast(t('sh.addedToCart'), 'success');
       },
       { button: el },
     );
@@ -579,13 +579,13 @@ document.addEventListener('click', (event) => {
     return run(async () => {
       // Revenir à « je ne restreins rien » doit être aussi simple que déclarer.
       const ok = await confirmDialog({
-        title: 'Ne plus rien restreindre',
-        body: 'Votre boutique acceptera de nouveau toutes les destinations que les transporteurs desservent.',
-        confirmLabel: 'Retirer mes zones',
+        title: t('zone.clearAll'),
+        body: t('sh.clearZonesBody'),
+        confirmLabel: t('sh.clearZonesConfirm'),
       });
       if (!ok) return;
       await api(`/stores/${d.clearZones}/zones-service`, { method: 'PUT', body: { zones: [] } });
-      toast('Aucune restriction : toutes les destinations desservies sont acceptées.', 'success');
+      toast(t('sh.noZoneRestriction'), 'success');
       await render();
     });
   }
@@ -595,12 +595,12 @@ document.addEventListener('click', (event) => {
     const cible = document.getElementById('availability-result');
     if (!provinceId) {
       // Deviner la destination produirait une promesse inventée.
-      cible.innerHTML = '<span class="muted">Choisissez d’abord une province.</span>';
+      cible.innerHTML = `<span class="muted">${esc(t('sh.chooseProvince'))}</span>`;
       return;
     }
     return run(
       async () => {
-        cible.innerHTML = '<span class="muted">Vérification…</span>';
+        cible.innerHTML = `<span class="muted">${esc(t('sh.checking'))}</span>`;
         const r = await api(`/products/${d.availability}/disponibilite?province=${encodeURIComponent(provinceId)}`);
 
         // Quatre réponses, et aucune n'est « probablement ». Le délai n'est
@@ -609,8 +609,8 @@ document.addEventListener('click', (event) => {
         const couleur = r.deliverable ? 'var(--success)' : 'var(--warning)';
         const delai =
           r.deliverable && r.transitDays
-            ? `<div class="xs muted">Transport annoncé : ${r.transitDays.min}–${r.transitDays.max} jours${
-                r.handlingDays != null ? ` · préparation ${r.handlingDays} j` : ''
+            ? `<div class="xs muted">${esc(t('sh.transitAnnounced', { min: r.transitDays.min, max: r.transitDays.max }))}${
+                r.handlingDays != null ? ` · ${esc(t('sh.handlingDays', { days: r.handlingDays }))}` : ''
               }</div>`
             : '';
         cible.innerHTML = `<div style="color:${couleur}"><strong>${esc(r.message)}</strong></div>${delai}`;
@@ -624,7 +624,7 @@ document.addEventListener('click', (event) => {
     const target = document.getElementById('ship-estimate');
     return run(
       async () => {
-        target.innerHTML = '<span class="muted">Calcul en cours…</span>';
+        target.innerHTML = `<span class="muted">${esc(t('sh.computing'))}</span>`;
         const quotes = await api('/shipping/quote', {
           method: 'POST',
           body: {
@@ -657,17 +657,17 @@ document.addEventListener('click', (event) => {
   if (d.removeItem) {
     return run(async () => {
       await api(`/cart/items/${d.removeItem}`, { method: 'DELETE' });
-      toast('Article retiré.');
+      toast(t('sh.itemRemoved'));
       await refreshCounters();
       await render();
     });
   }
   if (d.clearCart !== undefined) {
     return run(async () => {
-      const ok = await confirmDialog({ title: 'Vider le panier ?', body: 'Tous les articles seront retirés.', confirmLabel: 'Vider', danger: true });
+      const ok = await confirmDialog({ title: t('sh.clearCartTitle'), body: t('sh.clearCartBody'), confirmLabel: t('cart.clear'), danger: true });
       if (!ok) return;
       await api('/cart', { method: 'DELETE' });
-      toast('Panier vidé.');
+      toast(t('sh.cartCleared'));
       await refreshCounters();
       await render();
     });
@@ -678,13 +678,13 @@ document.addEventListener('click', (event) => {
     const step = Number(d.checkoutNext);
     if (step === 1) {
       const selected = document.querySelector('input[name="address"]:checked');
-      if (!selected) return toast('Choisissez une adresse de livraison.', 'error');
+      if (!selected) return toast(t('sh.chooseAddress'), 'error');
       shop.checkoutState.addressId = selected.value;
       const delivery = document.querySelector('input[name="delivery"]:checked')?.value ?? 'HOME';
       shop.checkoutState.deliveryMethod = delivery;
       if (delivery === 'PICKUP_POINT') {
         const point = document.getElementById('pickup-point');
-        if (!point?.value) return toast('Choisissez un point relais.', 'error');
+        if (!point?.value) return toast(t('sh.choosePickup'), 'error');
         shop.checkoutState.pickupPointId = point.value;
       }
     }
@@ -726,7 +726,7 @@ document.addEventListener('click', (event) => {
         shop.checkoutState.shippingTotal = null;
         shop.checkoutState.step = 3;
         await refreshCounters();
-        toast(paid ? 'Commande confirmée. Merci !' : 'Commande créée : le paiement reste à confirmer.', paid ? 'success' : 'warning');
+        toast(paid ? t('sh.orderConfirmed') : t('sh.orderCreatedUnpaid'), paid ? 'success' : 'warning');
         navigate('/touma/checkout?etape=3');
       },
       { button: el },
@@ -744,12 +744,12 @@ document.addEventListener('click', (event) => {
     return run(
       async () => {
         if (!pendingImport || pendingImport.storeId !== d.applyImport) {
-          return toast('Relancez l’analyse avant d’appliquer.', 'error');
+          return toast(t('sh.reanalyzeFirst'), 'error');
         }
         const ok = await confirmDialog({
           title: 'Appliquer l’import ?',
-          body: 'Les produits existants portant la même référence seront mis à jour, stock compris.',
-          confirmLabel: 'Appliquer',
+          body: t('sh.importOverwrite'),
+          confirmLabel: t('action.apply'),
         });
         if (!ok) return;
         const result = await api(`/seller/stores/${pendingImport.storeId}/catalogue/import?dryRun=false`, {
@@ -769,7 +769,7 @@ document.addEventListener('click', (event) => {
   if (d.exportCatalogue !== undefined) {
     return run(async () => {
       const storeId = document.getElementById('im-store')?.value;
-      if (!storeId) return toast('Choisissez une boutique.', 'error');
+      if (!storeId) return toast(t('sh.chooseStore'), 'error');
       // Le fichier est protégé par le jeton : on le récupère puis on le remet
       // au navigateur, plutôt qu'un lien qui partirait sans authentification.
       await downloadAuthed(`/seller/stores/${storeId}/catalogue/export`, 'catalogue-touma.csv');
@@ -788,14 +788,14 @@ document.addEventListener('click', (event) => {
     const status = d.pauseCoupon ? 'PAUSED' : 'ACTIVE';
     return run(async () => {
       await api(`/coupons/${id}`, { method: 'PATCH', body: { status } });
-      toast(status === 'PAUSED' ? 'Code suspendu.' : 'Code réactivé.', 'success');
+      toast(status === 'PAUSED' ? t('sh.codeSuspended') : t('sh.codeReactivated'), 'success');
       await render();
     });
   }
 
   if (d.removeCoupon !== undefined) {
     shop.checkoutState.coupon = null;
-    toast('Code retiré.');
+    toast(t('sh.codeRemoved'));
     return render();
   }
 
@@ -808,7 +808,7 @@ document.addEventListener('click', (event) => {
           body: { orderGroupId: d.payGroup, method: 'MOBILE_MONEY', idempotencyKey: `pay-${d.payGroup}` },
         });
         const confirmed = await api('/payments/confirm', { method: 'POST', body: { paymentId: created.payment.id } });
-        toast(confirmed.status === 'SUCCEEDED' ? 'Paiement confirmé.' : `Paiement ${confirmed.status}.`, confirmed.status === 'SUCCEEDED' ? 'success' : 'error');
+        toast(confirmed.status === 'SUCCEEDED' ? t('sh.paymentConfirmed') : `Paiement ${confirmed.status}.`, confirmed.status === 'SUCCEEDED' ? 'success' : 'error');
         await render();
       },
       { button: el },
@@ -820,7 +820,7 @@ document.addEventListener('click', (event) => {
       async () => {
         const created = await api('/payments/create', { method: 'POST', body: { orderId: d.payOrder, method, idempotencyKey: `pay-${d.payOrder}` } });
         const confirmed = await api('/payments/confirm', { method: 'POST', body: { paymentId: created.payment.id } });
-        toast(confirmed.status === 'SUCCEEDED' ? 'Paiement confirmé.' : `Paiement ${confirmed.status}.`, confirmed.status === 'SUCCEEDED' ? 'success' : 'error');
+        toast(confirmed.status === 'SUCCEEDED' ? t('sh.paymentConfirmed') : `Paiement ${confirmed.status}.`, confirmed.status === 'SUCCEEDED' ? 'success' : 'error');
         await render();
       },
       { button: el },
@@ -828,10 +828,10 @@ document.addEventListener('click', (event) => {
   }
   if (d.cancelOrder) {
     return run(async () => {
-      const ok = await confirmDialog({ title: 'Annuler la commande ?', body: 'Le stock sera restitué au vendeur. Cette action est définitive.', confirmLabel: 'Annuler la commande', danger: true });
+      const ok = await confirmDialog({ title: t('sh.cancelOrderTitle'), body: t('sh.cancelOrderBody'), confirmLabel: t('order.cancel'), danger: true });
       if (!ok) return;
       await api(`/orders/${d.cancelOrder}/status`, { method: 'PATCH', body: { status: 'CANCELLED' } });
-      toast('Commande annulée.');
+      toast(t('sh.orderCancelled'));
       await render();
     });
   }
@@ -840,14 +840,14 @@ document.addEventListener('click', (event) => {
       // Action nommée : « je confirme avoir reçu » se relit dans le journal,
       // « statut = COMPLETED » demande d'y réfléchir.
       await api(`/orders/${d.completeOrder}/confirm-delivery`, { method: 'POST', body: {} });
-      toast('Réception confirmée. Merci !', 'success');
+      toast(t('sh.deliveryConfirmed'), 'success');
       await render();
     });
   }
   if (d.orderReady) {
     return run(async () => {
       await api(`/orders/${d.orderReady}/ready-to-ship`, { method: 'POST', body: {} });
-      toast('Colis signalé prêt : l’acheteur voit que vous attendez le transporteur.', 'success');
+      toast(t('sh.parcelReady'), 'success');
       await render();
     });
   }
@@ -856,21 +856,21 @@ document.addEventListener('click', (event) => {
   if (d.cancelReturn) {
     return run(async () => {
       const ok = await confirmDialog({
-        title: 'Retirer la demande de retour ?',
-        body: 'Le vendeur ne la traitera plus. Vous pourrez en ouvrir une nouvelle tant que le délai court.',
-        confirmLabel: 'Retirer la demande',
+        title: t('sh.withdrawReturnTitle'),
+        body: t('sh.withdrawReturnBody'),
+        confirmLabel: t('sh.withdrawReturnConfirm'),
         danger: true,
       });
       if (!ok) return;
       await api(`/returns/${d.cancelReturn}/cancel`, { method: 'POST' });
-      toast('Demande retirée.');
+      toast(t('sh.returnWithdrawn'));
       await render();
     });
   }
   if (d.closeTicket) {
     return run(async () => {
       await api(`/support/tickets/${d.closeTicket}/close`, { method: 'POST' });
-      toast('Ticket clos. Merci de nous avoir prévenus.', 'success');
+      toast(t('sh.ticketClosed'), 'success');
       await render();
     });
   }
@@ -878,10 +878,10 @@ document.addEventListener('click', (event) => {
   // Compte
   if (d.deleteAddress) {
     return run(async () => {
-      const ok = await confirmDialog({ title: 'Supprimer cette adresse ?', body: 'Elle ne sera plus proposée au moment de la commande.', confirmLabel: 'Supprimer', danger: true });
+      const ok = await confirmDialog({ title: t('sh.deleteAddressTitle'), body: t('sh.deleteAddressBody'), confirmLabel: t('action.delete'), danger: true });
       if (!ok) return;
       await api(`/auth/me/addresses/${d.deleteAddress}`, { method: 'DELETE' });
-      toast('Adresse supprimée.');
+      toast(t('sh.addressDeleted'));
       await render();
     });
   }
@@ -895,7 +895,7 @@ document.addEventListener('click', (event) => {
   }
   if (d.logoutAll !== undefined) {
     return run(async () => {
-      const ok = await confirmDialog({ title: 'Déconnecter tous les appareils ?', body: 'Toutes vos sessions seront fermées, y compris celle-ci.', confirmLabel: 'Déconnecter' });
+      const ok = await confirmDialog({ title: t('sh.logoutAllTitle'), body: t('sh.logoutAllBody'), confirmLabel: t('action.logoutAll') });
       if (!ok) return;
       await api('/auth/logout', { method: 'POST', body: { allDevices: true } });
       session.clear();
@@ -907,16 +907,16 @@ document.addEventListener('click', (event) => {
   if (d.toggleProduct) {
     return run(async () => {
       await api(`/products/${d.toggleProduct}`, { method: 'PATCH', body: { status: d.status } });
-      toast(d.status === 'ACTIVE' ? 'Produit publié.' : 'Produit dépublié.', 'success');
+      toast(d.status === 'ACTIVE' ? t('sh.productPublished') : t('sh.productUnpublished'), 'success');
       await render();
     });
   }
   if (d.archiveProduct) {
     return run(async () => {
-      const ok = await confirmDialog({ title: 'Archiver ce produit ?', body: 'Il disparaît du catalogue public. Les commandes passées ne sont pas modifiées.', confirmLabel: 'Archiver', danger: true });
+      const ok = await confirmDialog({ title: t('sh.archiveProductTitle'), body: t('sh.archiveProductBody'), confirmLabel: t('action.archive'), danger: true });
       if (!ok) return;
       await api(`/products/${d.archiveProduct}`, { method: 'DELETE' });
-      toast('Produit archivé.');
+      toast(t('sh.productArchived'));
       navigate('/touma/vendeur/produits');
     });
   }
@@ -935,7 +935,7 @@ document.addEventListener('click', (event) => {
     return run(
       async () => {
         await api(`/shipping/${d.updateShipment}/status`, { method: 'PATCH', body: { status } });
-        toast('Suivi mis à jour.', 'success');
+        toast(t('sh.trackingUpdated'), 'success');
         await render();
       },
       { button: el },
@@ -966,13 +966,13 @@ document.addEventListener('click', (event) => {
   if (d.closeRfq) {
     return run(async () => {
       const ok = await confirmDialog({
-        title: 'Clore cette demande ?',
-        body: 'Les fournisseurs ne pourront plus y répondre. Les offres déjà reçues restent consultables.',
-        confirmLabel: 'Clore',
+        title: t('sh.closeRfqTitle'),
+        body: t('sh.closeRfqBody'),
+        confirmLabel: t('action.closeRequest'),
       });
       if (!ok) return;
       await api(`/rfqs/${d.closeRfq}/close`, { method: 'POST' });
-      toast('Demande close.');
+      toast(t('sh.rfqClosed'));
       await render();
     });
   }
@@ -981,9 +981,9 @@ document.addEventListener('click', (event) => {
     return run(
       async () => {
         const ok = await confirmDialog({
-          title: 'Accepter cette offre ?',
-          body: 'Une commande sera créée au prix négocié et les autres offres seront écartées.',
-          confirmLabel: 'Accepter et commander',
+          title: t('sh.acceptQuoteTitle'),
+          body: t('sh.acceptQuoteBody'),
+          confirmLabel: t('biz.acceptAndOrder'),
         });
         if (!ok) return;
         const result = await api(`/quotes/${d.acceptQuote}/accept`, { method: 'POST', body: { addressId: select.value } });
@@ -995,9 +995,9 @@ document.addEventListener('click', (event) => {
   }
   if (d.rejectQuote) {
     return run(async () => {
-      const reason = prompt('Motif du refus (communiqué au fournisseur, facultatif) :');
+      const reason = prompt(t('sh.rejectQuoteReason'));
       await api(`/quotes/${d.rejectQuote}/reject`, { method: 'POST', body: reason ? { reason } : {} });
-      toast('Offre écartée.');
+      toast(t('sh.quoteRejected'));
       await render();
     });
   }
@@ -1006,7 +1006,7 @@ document.addEventListener('click', (event) => {
   if (d.userStatus) {
     return run(async () => {
       await api(`/admin/users/${d.userStatus}/status`, { method: 'PATCH', body: { status: d.status } });
-      toast('Statut mis à jour.');
+      toast(t('sh.statusUpdated'));
       await render();
     });
   }
@@ -1020,23 +1020,23 @@ document.addEventListener('click', (event) => {
   if (d.storeStatus) {
     return run(async () => {
       await api(`/admin/stores/${d.storeStatus}/status`, { method: 'PATCH', body: { status: d.status } });
-      toast('Boutique mise à jour.');
+      toast(t('sh.storeUpdated'));
       await render();
     });
   }
   if (d.productStatus) {
     return run(async () => {
       await api(`/admin/products/${d.productStatus}/status`, { method: 'PATCH', body: { status: d.status } });
-      toast('Produit mis à jour.');
+      toast(t('sh.productUpdated'));
       await render();
     });
   }
   if (d.approveVerification) {
     return run(async () => {
-      const ok = await confirmDialog({ title: 'Approuver ce vendeur ?', body: 'La boutique affichera le badge « Vendeur vérifié ». La décision est journalisée.', confirmLabel: 'Approuver' });
+      const ok = await confirmDialog({ title: t('sh.approveSellerTitle'), body: t('sh.approveSellerBody'), confirmLabel: t('action.approve') });
       if (!ok) return;
-      await api(`/admin/verifications/${d.approveVerification}/approve`, { method: 'POST', body: { comment: 'Documents vérifiés.' } });
-      toast('Vendeur vérifié.', 'success');
+      await api(`/admin/verifications/${d.approveVerification}/approve`, { method: 'POST', body: { comment: t('sh.docsVerified') } });
+      toast(t('sh.sellerVerified'), 'success');
       await render();
     });
   }
@@ -1047,22 +1047,26 @@ document.addEventListener('click', (event) => {
       // n'est pas supprimée — son contenu cesse d'être servi, et le motif
       // s'affiche à côté d'elle pour les deux parties.
       const choix = await chooseDialog({
-        title: 'Écarter cette pièce',
-        body: 'La pièce reste au dossier. Le motif est visible de l’acheteur comme du vendeur.',
+        title: t('dispute.removeEvidence'),
+        body: t('sh.discardEvidenceBody'),
         options: [
-          { value: 'Illisible', label: 'Illisible ou inexploitable' },
-          { value: 'Hors sujet', label: 'Sans rapport avec le litige' },
-          { value: 'Doublon', label: 'Doublon d’une pièce déjà versée' },
-          { value: 'Données personnelles d’un tiers', label: 'Contient les données personnelles d’un tiers' },
-          { value: 'Contenu inapproprié', label: 'Contenu inapproprié' },
+          // La valeur part au dossier, le libellé s'affiche : `fr()` pour
+          // l'une, `t()` pour l'autre. Un motif consigné ne suit pas la langue
+          // de qui l'a choisi, sinon le registre du litige porterait deux
+          // libellés différents selon le lecteur.
+          { value: fr('sh.evidenceUnreadable'), label: t('sh.evidenceUnreadable') },
+          { value: fr('sh.evidenceOffTopic'), label: t('sh.evidenceOffTopicLong') },
+          { value: fr('sh.evidenceDuplicate'), label: t('sh.evidenceDuplicate') },
+          { value: fr('sh.evidencePersonal'), label: t('sh.evidencePersonalLong') },
+          { value: fr('sh.evidenceInappropriate'), label: t('sh.evidenceInappropriate') },
         ],
         withNote: true,
-        confirmLabel: 'Écarter',
+        confirmLabel: t('action.discard'),
       });
       if (!choix) return;
       const reason = choix.note ? `${choix.value} — ${choix.note}` : choix.value;
       await api(`/disputes/evidence/${d.removeEvidence}/remove`, { method: 'POST', body: { reason } });
-      toast('Pièce écartée : elle reste au dossier, avec son motif.', 'success');
+      toast(t('sh.evidenceDiscarded'), 'success');
       await render();
     });
   }
@@ -1083,14 +1087,14 @@ document.addEventListener('click', (event) => {
   if (d.payoutProcess) {
     return run(async () => {
       const providerRef = prompt(
-        'Référence du virement réalisé chez la banque ou l’opérateur (elle est conservée avec le versement) :',
+        t('sh.payoutReference'),
       );
       if (providerRef === null) return;
       await api(`/admin/finance/payouts/${d.payoutProcess}/process`, {
         method: 'POST',
         body: providerRef ? { providerRef } : {},
       });
-      toast('Exécution consignée.', 'success');
+      toast(t('sh.payoutExecuted'), 'success');
       await render();
     });
   }
@@ -1098,42 +1102,42 @@ document.addEventListener('click', (event) => {
     return run(async () => {
       // Le motif est obligatoire et visible du vendeur : un versement retenu
       // sans raison est, de son point de vue, un vol silencieux.
-      const reason = prompt('Motif de la retenue (visible du vendeur) :');
+      const reason = prompt(t('sh.holdReason'));
       if (!reason) return;
       await api(`/admin/finance/payouts/${d.payoutHold}/hold`, { method: 'POST', body: { reason } });
-      toast('Versement retenu. Le motif est visible du vendeur.');
+      toast(t('sh.payoutHeld'));
       await render();
     });
   }
   if (d.payoutRelease) {
     return run(async () => {
       await api(`/admin/finance/payouts/${d.payoutRelease}/release`, { method: 'POST' });
-      toast('Retenue levée.', 'success');
+      toast(t('sh.holdLifted'), 'success');
       await render();
     });
   }
   if (d.payoutCancel) {
     return run(async () => {
       const ok = await confirmDialog({
-        title: 'Annuler ce versement',
-        body: 'Les parts qu’il regroupe redeviennent réglables : ce qui est dû au vendeur ne disparaît pas. Un motif est enregistré.',
-        confirmLabel: 'Annuler le versement',
+        title: t('sh.cancelPayoutTitle'),
+        body: t('sh.cancelPayoutBody'),
+        confirmLabel: t('sh.cancelPayoutConfirm'),
         danger: true,
       });
       if (!ok) return;
-      const reason = prompt('Motif de l’annulation :');
+      const reason = prompt(t('sh.cancelReason'));
       if (!reason) return;
       await api(`/admin/finance/payouts/${d.payoutCancel}/cancel`, { method: 'POST', body: { reason } });
-      toast('Versement annulé : ses parts redeviennent réglables.');
+      toast(t('sh.payoutCancelled'));
       await render();
     });
   }
   if (d.rejectVerification) {
     return run(async () => {
-      const comment = prompt('Motif du rejet (communiqué au vendeur) :');
+      const comment = prompt(t('sh.rejectReason'));
       if (!comment) return;
       await api(`/admin/verifications/${d.rejectVerification}/reject`, { method: 'POST', body: { comment } });
-      toast('Dossier rejeté.');
+      toast(t('sh.fileRejected'));
       await render();
     });
   }
@@ -1194,7 +1198,7 @@ document.addEventListener('submit', (event) => {
         if (phone) body.phone = phone;
         const data = await api('/auth/register', { method: 'POST', body });
         session.write({ user: data.user, accessToken: data.accessToken, refreshToken: data.refreshToken });
-        toast('Compte créé. Bienvenue sur TOUMA.', 'success');
+        toast(t('sh.accountCreated'), 'success');
         navigate(data.user.role === 'SELLER' ? '/touma/vendeur/boutique' : '/touma/produits');
       },
       { button: submit },
@@ -1208,7 +1212,7 @@ document.addEventListener('submit', (event) => {
         const data = Object.fromEntries(new FormData(form).entries());
         const created = await api('/auth/me/addresses', { method: 'POST', body: { ...data, isDefault: true } });
         shop.checkoutState.addressId = created.id;
-        toast('Adresse enregistrée.', 'success');
+        toast(t('sh.addressSaved'), 'success');
         await render();
       },
       { button: submit },
@@ -1243,7 +1247,7 @@ document.addEventListener('submit', (event) => {
       async () => {
         const body = Object.fromEntries([...new FormData(form).entries()].filter(([, v]) => String(v).trim() !== ''));
         await api(`/stores/${form.dataset.store}`, { method: 'PATCH', body });
-        toast('Boutique mise à jour.', 'success');
+        toast(t('sh.storeUpdated'), 'success');
       },
       { button: submit },
     );
@@ -1271,10 +1275,10 @@ document.addEventListener('submit', (event) => {
 
         if (form.dataset.product) {
           await api(`/products/${form.dataset.product}`, { method: 'PATCH', body });
-          toast('Produit mis à jour.', 'success');
+          toast(t('sh.productUpdated'), 'success');
         } else {
           await api('/products', { method: 'POST', body: { ...body, storeId: document.getElementById('p-store').value } });
-          toast('Produit publié.', 'success');
+          toast(t('sh.productPublished'), 'success');
         }
         navigate('/touma/vendeur/produits');
       },
@@ -1298,7 +1302,7 @@ document.addEventListener('submit', (event) => {
             documents: [{ kind: 'justificatif', url: document.getElementById('v-doc').value }],
           },
         });
-        toast('Dossier envoyé. Réponse sous quelques jours ouvrés.', 'success');
+        toast(t('sh.fileSent'), 'success');
         await render();
       },
       { button: submit },
@@ -1318,7 +1322,7 @@ document.addEventListener('submit', (event) => {
             comment: document.getElementById('r-comment').value || undefined,
           },
         });
-        toast('Merci, votre avis est publié.', 'success');
+        toast(t('sh.reviewPublished'), 'success');
         await render();
       },
       { button: submit },
@@ -1344,7 +1348,7 @@ document.addEventListener('submit', (event) => {
             annualVolume: optional('b-volume'),
           },
         });
-        toast('Profil entreprise enregistré.', 'success');
+        toast(t('sh.businessProfileSaved'), 'success');
       },
       { button: submit },
     );
@@ -1361,7 +1365,7 @@ document.addEventListener('submit', (event) => {
             name: row.querySelector('.i-name').value,
             description: row.querySelector('.i-desc').value.trim() || undefined,
             quantity: Number(row.querySelector('.i-qty').value),
-            unit: row.querySelector('.i-unit').value || 'pièce',
+            unit: row.querySelector('.i-unit').value || t('nego.unitDefault'),
             targetUnitPrice: target || undefined,
             categoryId: categoryId || undefined,
           };
@@ -1381,7 +1385,7 @@ document.addEventListener('submit', (event) => {
             items,
           },
         });
-        toast('Demande publiée : les fournisseurs peuvent répondre.', 'success');
+        toast(t('sh.rfqPublished'), 'success');
         navigate(`/touma/business/appels-offres/${rfq.id}`);
       },
       { button: submit },
@@ -1410,7 +1414,7 @@ document.addEventListener('submit', (event) => {
             items,
           },
         });
-        toast('Offre envoyée à l’acheteur.', 'success');
+        toast(t('sh.quoteSent'), 'success');
         await render();
       },
       { button: submit },
@@ -1422,13 +1426,13 @@ document.addEventListener('submit', (event) => {
     return run(
       async () => {
         const body = form.querySelector('.neg-body').value.trim();
-        if (!body) return toast('Écrivez votre message.', 'error');
+        if (!body) return toast(t('sh.writeMessage'), 'error');
         const proposed = form.querySelector('.neg-total').value.trim().replace(',', '.');
         await api(`/quotes/${form.dataset.quote}/messages`, {
           method: 'POST',
           body: { kind: proposed ? 'COUNTER_OFFER' : 'MESSAGE', body, proposedTotal: proposed || undefined },
         });
-        toast(proposed ? 'Contre-proposition envoyée.' : 'Message envoyé.', 'success');
+        toast(proposed ? t('sh.counterSent') : t('sh.messageSent'), 'success');
         await render();
       },
       { button: submit },
@@ -1440,11 +1444,11 @@ document.addEventListener('submit', (event) => {
     return run(
       async () => {
         const body = document.getElementById('m-body').value.trim();
-        if (!body) return toast('Écrivez votre message.', 'error');
+        if (!body) return toast(t('sh.writeMessage'), 'error');
 
         if (composerState.editing) {
           await api(`/messages/${composerState.editing}`, { method: 'PATCH', body: { body } });
-          toast('Message modifié.');
+          toast(t('sh.messageEdited'));
         } else {
           await api(`/conversations/${form.dataset.conversation}/messages`, {
             method: 'POST',
@@ -1469,7 +1473,7 @@ document.addEventListener('submit', (event) => {
     return run(
       async () => {
         const lines = counterLines(form);
-        if (lines.some((l) => !l.name)) return toast('Chaque ligne a besoin d’une désignation.', 'error');
+        if (lines.some((l) => !l.name)) return toast(t('sh.lineNeedsName'), 'error');
         await api(`/negotiations/${form.dataset.negotiation}/counter`, {
           method: 'POST',
           body: {
@@ -1480,7 +1484,7 @@ document.addEventListener('submit', (event) => {
             note: document.getElementById('c-note').value.trim() || undefined,
           },
         });
-        toast('Proposition envoyée.', 'success');
+        toast(t('sh.proposalSent'), 'success');
         await render();
       },
       { button: submit },
@@ -1492,16 +1496,16 @@ document.addEventListener('submit', (event) => {
     return run(
       async () => {
         const ok = await confirmDialog({
-          title: 'Accepter cette offre ?',
-          body: 'Une commande payable est créée immédiatement et les offres concurrentes sont écartées.',
-          confirmLabel: 'Accepter',
+          title: t('sh.acceptQuoteTitle'),
+          body: t('sh.acceptQuoteNowBody'),
+          confirmLabel: t('action.accept'),
         });
         if (!ok) return;
         const result = await api(`/negotiations/${form.dataset.negotiation}/accept`, {
           method: 'POST',
           body: { addressId: document.getElementById('a-address').value },
         });
-        toast('Offre acceptée : commande créée.', 'success');
+        toast(t('sh.quoteAccepted'), 'success');
         navigate(`/touma/commandes/${result.orderId}`);
       },
       { button: submit },
@@ -1516,7 +1520,7 @@ document.addEventListener('submit', (event) => {
           method: 'POST',
           body: { title: document.getElementById('t-title').value.trim(), content: document.getElementById('t-content').value.trim() },
         });
-        toast('Réponse enregistrée.');
+        toast(t('sh.answerSaved'));
         await render();
       },
       { button: submit },
@@ -1531,7 +1535,7 @@ document.addEventListener('submit', (event) => {
         const pasted = document.getElementById('im-csv').value.trim();
         // Le fichier prime sur le collage : c'est le geste le plus explicite.
         const csv = file ? await file.text() : pasted;
-        if (!csv) return toast('Choisissez un fichier ou collez son contenu.', 'error');
+        if (!csv) return toast(t('sh.chooseFile'), 'error');
 
         const storeId = document.getElementById('im-store').value;
         const result = await api(`/seller/stores/${storeId}/catalogue/import?dryRun=true`, {
@@ -1543,7 +1547,7 @@ document.addEventListener('submit', (event) => {
         document.getElementById('import-report').innerHTML = importReport(result, storeId);
         // Le CSV analysé est conservé pour l'appliquer sans redemander le fichier.
         pendingImport = { storeId, csv };
-        toast(result.summary.errors ? `${result.summary.errors} ligne(s) à corriger.` : 'Fichier analysé : aucune erreur.', result.summary.errors ? 'warning' : 'success');
+        toast(result.summary.errors ? `${result.summary.errors} ligne(s) à corriger.` : t('sh.fileParsed'), result.summary.errors ? 'warning' : 'success');
       },
       { button: submit },
     );
@@ -1563,13 +1567,13 @@ document.addEventListener('submit', (event) => {
         const storeIds = [...document.querySelectorAll('.supplier-pick')]
           .filter((box) => box.checked)
           .map((box) => box.dataset.store);
-        if (!storeIds.length) return toast('Cochez au moins un fournisseur.', 'error');
+        if (!storeIds.length) return toast(t('sh.pickSupplier'), 'error');
         const rfqId = document.getElementById('so-rfq').value;
         const result = await api(`/rfqs/${rfqId}/invitations`, { method: 'POST', body: { storeIds } });
         toast(
           result.invited
             ? `${result.invited} fournisseur(s) sollicité(s).`
-            : 'Ces fournisseurs étaient déjà sollicités.',
+            : t('sh.suppliersAlready'),
           result.invited ? 'success' : 'info',
         );
         await render();
@@ -1613,7 +1617,7 @@ document.addEventListener('submit', (event) => {
             usageLimitPerUser: perUser ? Number(perUser) : undefined,
           },
         });
-        toast('Code créé.', 'success');
+        toast(t('sh.codeCreated'), 'success');
         await render();
       },
       { button: submit },
@@ -1625,7 +1629,7 @@ document.addEventListener('submit', (event) => {
     return run(
       async () => {
         const code = document.getElementById('c-code').value.trim();
-        if (!code) return toast('Saisissez un code.', 'error');
+        if (!code) return toast(t('sh.enterCode'), 'error');
         // C'est le serveur qui valide le code et calcule la remise : l'interface
         // se contente d'afficher ce qu'il renvoie.
         const preview = await api('/coupons/preview', { method: 'POST', body: { code } });
@@ -1645,12 +1649,12 @@ document.addEventListener('submit', (event) => {
         const points = Math.max(0, Math.floor(Number(field.value) || 0));
         const usable = await api('/loyalty/usable');
         if (points > usable.usablePoints) {
-          return toast(`Vous pouvez utiliser au plus ${usable.usablePoints} point(s).`, 'error');
+          return toast(t('sh.maxPoints', { count: usable.usablePoints }), 'error');
         }
         shop.checkoutState.loyaltyPoints = points;
         // Le taux vient du serveur : l'interface se contente de multiplier.
         shop.checkoutState.loyaltyValue = points * usable.pointValue;
-        toast(points ? `${points} point(s) appliqué(s).` : 'Points retirés.', 'success');
+        toast(points ? `${points} point(s) appliqué(s).` : t('sh.pointsRedeemed'), 'success');
         await render();
       },
       { button: submit },
@@ -1668,7 +1672,7 @@ document.addEventListener('submit', (event) => {
             orderItemId: box.dataset.item,
             quantity: Number(form.querySelector(`.rr-qty[data-item="${box.dataset.item}"]`)?.value || 1),
           }));
-        if (!items.length) return toast('Sélectionnez au moins un article à retourner.', 'error');
+        if (!items.length) return toast(t('sh.pickReturnItem'), 'error');
         const photo = document.getElementById('rr-photo').value.trim();
         const created = await api('/returns', {
           method: 'POST',
@@ -1680,7 +1684,7 @@ document.addEventListener('submit', (event) => {
             evidence: photo ? [{ url: photo, name: 'photo', mimeType: 'image/jpeg' }] : [],
           },
         });
-        toast('Demande de retour envoyée au vendeur.', 'success');
+        toast(t('sh.returnRequested'), 'success');
         navigate(`/touma/retours/${created.id}`);
       },
       { button: submit },
@@ -1696,7 +1700,7 @@ document.addEventListener('submit', (event) => {
           method: 'POST',
           body: { approvedAmount: amount || undefined, note: document.getElementById('ra-note').value || undefined },
         });
-        toast('Retour accepté.', 'success');
+        toast(t('sh.returnAccepted'), 'success');
         await render();
       },
       { button: submit },
@@ -1711,7 +1715,7 @@ document.addEventListener('submit', (event) => {
           method: 'POST',
           body: { note: document.getElementById('rj-note').value },
         });
-        toast('Retour refusé : l’acheteur en est informé.', 'info');
+        toast(t('sh.returnRefused'), 'info');
         await render();
       },
       { button: submit },
@@ -1726,7 +1730,7 @@ document.addEventListener('submit', (event) => {
           method: 'POST',
           body: { trackingNumber: document.getElementById('rs-tracking').value },
         });
-        toast('Merci : le vendeur suit votre colis.', 'success');
+        toast(t('sh.returnShipped'), 'success');
         await render();
       },
       { button: submit },
@@ -1744,7 +1748,7 @@ document.addEventListener('submit', (event) => {
             restock: document.getElementById('rc-restock').checked,
           },
         });
-        toast('Réception enregistrée.', 'success');
+        toast(t('sh.returnReceived'), 'success');
         await render();
       },
       { button: submit },
@@ -1758,13 +1762,13 @@ document.addEventListener('submit', (event) => {
       async () => {
         // Mouvement d'argent réel : confirmation explicite avant l'appel.
         const ok = await confirmDialog({
-          title: 'Confirmer le remboursement',
-          body: `Rembourser ${amount} à l’acheteur ? Cette opération est tracée et définitive.`,
-          confirmLabel: 'Rembourser',
+          title: t('sh.confirmRefund'),
+          body: t('sh.refundBody', { amount }),
+          confirmLabel: t('action.refund'),
         });
         if (!ok) return;
         await api(`/returns/${form.dataset.return}/refund`, { method: 'POST', body: { amount: amount || undefined } });
-        toast('Remboursement effectué.', 'success');
+        toast(t('sh.refundDone'), 'success');
         await render();
       },
       { button: submit },
@@ -1784,7 +1788,7 @@ document.addEventListener('submit', (event) => {
             orderId: form.dataset.order || undefined,
           },
         });
-        toast('Demande envoyée : nous vous répondons ici même.', 'success');
+        toast(t('sh.supportSent'), 'success');
         navigate(`/touma/aide/${created.id}`);
       },
       { button: submit },
@@ -1819,7 +1823,7 @@ document.addEventListener('submit', (event) => {
             priority: document.getElementById('tu-priority').value,
           },
         });
-        toast('Ticket mis à jour.', 'success');
+        toast(t('sh.ticketUpdated'), 'success');
         await render();
       },
       { button: submit },
@@ -1836,7 +1840,7 @@ document.addEventListener('submit', (event) => {
         const exclues = zones.filter((z) => !z.served && z.provinceId).length;
         toast(
           exclues === 0
-            ? 'Zones enregistrées : vous livrez dans tout le Tchad.'
+            ? t('sh.zonesSavedAll')
             : `Zones enregistrées : ${exclues} province${exclues > 1 ? 's' : ''} exclue${exclues > 1 ? 's' : ''}.`,
           'success',
         );
@@ -1877,7 +1881,7 @@ document.addEventListener('submit', (event) => {
           method: 'POST',
           body: { body: document.getElementById('dm-body').value, internal },
         });
-        toast(internal ? 'Note interne enregistrée.' : 'Message envoyé.', 'success');
+        toast(internal ? t('sh.internalNoteSaved') : t('sh.messageSent'), 'success');
         await render();
       },
       { button: submit },
@@ -1902,7 +1906,7 @@ document.addEventListener('submit', (event) => {
             refundAmount: montant || undefined,
           },
         });
-        toast('Décision enregistrée et notifiée aux deux parties.', 'success');
+        toast(t('sh.decisionRecorded'), 'success');
         await render();
       },
       { button: submit },
@@ -1921,7 +1925,7 @@ document.addEventListener('submit', (event) => {
             details: document.getElementById('d-details').value || undefined,
           },
         });
-        toast('Litige ouvert : vous pouvez y verser vos pièces.', 'success');
+        toast(t('sh.disputeOpened'), 'success');
         // On emmène l'acheteur dans son dossier. Jusqu'ici il recevait un
         // message de confirmation et restait sur sa commande, sans aucun écran
         // où suivre ce qu'il venait d'ouvrir.
@@ -1939,7 +1943,7 @@ document.addEventListener('change', (event) => {
   if (input.classList.contains('stock-input')) {
     return run(async () => {
       await api(`/products/${input.dataset.product}/stock`, { method: 'PUT', body: { quantity: Number(input.value) } });
-      toast('Stock enregistré.', 'success');
+      toast(t('sh.stockSaved'), 'success');
     });
   }
   if (input.dataset.itemInput) {
@@ -1974,7 +1978,7 @@ document.addEventListener('click', (event) => {
   if (event.target.closest('#ai-description') === null) return;
   const button = event.target.closest('#ai-description');
   const title = document.getElementById('p-title').value.trim();
-  if (!title) return toast('Renseignez d’abord un titre.', 'error');
+  if (!title) return toast(t('sh.titleFirst'), 'error');
   const category = document.getElementById('p-category');
   run(
     async () => {
@@ -1987,7 +1991,7 @@ document.addEventListener('click', (event) => {
         },
       });
       document.getElementById('p-description').value = result.text;
-      toast('Proposition générée : relisez-la avant publication.');
+      toast(t('sh.draftGenerated'));
     },
     { button },
   );
@@ -2041,7 +2045,7 @@ function counterLines(form) {
   return [...form.querySelectorAll('.counter-line')].map((line) => ({
     name: line.querySelector('.cl-name').value.trim(),
     quantity: Number(line.querySelector('.cl-qty').value) || 1,
-    unit: line.querySelector('.cl-unit').value.trim() || 'pièce',
+    unit: line.querySelector('.cl-unit').value.trim() || t('nego.unitDefault'),
     unitPrice: String(line.querySelector('.cl-price').value).replace(',', '.').trim(),
   }));
 }
@@ -2073,21 +2077,21 @@ document.addEventListener('click', (event) => {
       field.value = body;
       field.focus();
     }
-    setReplyBanner('Modification d’un message envoyé — envoyez pour enregistrer.');
+    setReplyBanner(t('sh.editingMessage'));
     return;
   }
 
   if (action === 'delete-message') {
     return run(async () => {
       const ok = await confirmDialog({
-        title: 'Supprimer ce message ?',
-        body: 'Le fil gardera la trace de la suppression. Les offres et les messages système ne sont jamais supprimés.',
-        confirmLabel: 'Supprimer',
+        title: t('sh.deleteMessageTitle'),
+        body: t('sh.deleteMessageBody'),
+        confirmLabel: t('action.delete'),
         danger: true,
       });
       if (!ok) return;
       await api(`/messages/${el.dataset.id}`, { method: 'DELETE' });
-      toast('Message supprimé.');
+      toast(t('sh.messageDeleted'));
       await render();
     });
   }
@@ -2095,21 +2099,21 @@ document.addEventListener('click', (event) => {
   if (action === 'report-message') {
     return run(async () => {
       const choice = await chooseDialog({
-        title: 'Signaler ce message',
-        body: 'Votre signalement est transmis à l’administration TOUMA. Le message reste visible tant qu’aucune décision n’est prise.',
+        title: t('sh.reportMessageTitle'),
+        body: t('sh.reportMessageBody'),
         withNote: true,
         options: [
-          { value: 'OFF_PLATFORM_PAYMENT', label: 'Paiement en dehors de TOUMA' },
-          { value: 'FRAUD', label: 'Tentative de fraude' },
-          { value: 'SPAM', label: 'Message indésirable' },
-          { value: 'ABUSE', label: 'Propos abusifs' },
-          { value: 'PROHIBITED_CONTENT', label: 'Contenu interdit' },
-          { value: 'OTHER', label: 'Autre' },
+          { value: 'OFF_PLATFORM_PAYMENT', label: t('report.reason.OFF_PLATFORM_PAYMENT') },
+          { value: 'FRAUD', label: t('report.reason.FRAUD') },
+          { value: 'SPAM', label: t('report.reason.SPAM') },
+          { value: 'ABUSE', label: t('report.reason.ABUSE') },
+          { value: 'PROHIBITED_CONTENT', label: t('report.reason.PROHIBITED_CONTENT') },
+          { value: 'OTHER', label: t('report.reason.OTHER') },
         ],
       });
       if (!choice) return;
       await api(`/messages/${el.dataset.id}/report`, { method: 'POST', body: { reason: choice.value, details: choice.note || undefined } });
-      toast('Signalement transmis.', 'success');
+      toast(t('sh.reportSent'), 'success');
     });
   }
 
@@ -2148,7 +2152,7 @@ document.addEventListener('click', (event) => {
     return run(
       async () => {
         await api(`/negotiations/${el.dataset.id}/apply`, { method: 'POST', body: {} });
-        toast('Contre-proposition entérinée : l’acheteur peut confirmer.', 'success');
+        toast(t('sh.counterEndorsed'), 'success');
         await render();
       },
       { button: el },
@@ -2159,14 +2163,14 @@ document.addEventListener('click', (event) => {
     return run(
       async () => {
         const ok = await confirmDialog({
-          title: 'Refuser cette offre ?',
-          body: 'Le refus est définitif pour cette offre. La négociation reste consultable.',
-          confirmLabel: 'Refuser',
+          title: t('sh.refuseQuoteTitle'),
+          body: t('sh.refuseQuoteBody'),
+          confirmLabel: t('action.refuse'),
           danger: true,
         });
         if (!ok) return;
         await api(`/negotiations/${el.dataset.id}/reject`, { method: 'POST', body: {} });
-        toast('Offre refusée.');
+        toast(t('sh.quoteRefused'));
         await render();
       },
       { button: el },
@@ -2179,11 +2183,11 @@ document.addEventListener('click', (event) => {
     const line = document.createElement('div');
     line.className = 'counter-line';
     line.innerHTML = `
-      <div class="field"><label class="sr-only" for="cl-name-${index}">Désignation</label><input id="cl-name-${index}" class="cl-name" type="text" placeholder="Désignation" required /></div>
-      <div class="field"><label class="sr-only" for="cl-qty-${index}">Quantité</label><input id="cl-qty-${index}" class="cl-qty" type="number" min="1" value="1" required /></div>
-      <div class="field"><label class="sr-only" for="cl-unit-${index}">Unité</label><input id="cl-unit-${index}" class="cl-unit" type="text" value="pièce" required /></div>
-      <div class="field"><label class="sr-only" for="cl-price-${index}">Prix unitaire</label><input id="cl-price-${index}" class="cl-price" type="text" inputmode="decimal" value="0" required /></div>
-      <button type="button" class="link-btn xs" data-action="remove-counter-line">Retirer</button>`;
+      <div class="field"><label class="sr-only" for="cl-name-${index}">${esc(t('nego.designation'))}</label><input id="cl-name-${index}" class="cl-name" type="text" placeholder="${esc(t('nego.designation'))}" required /></div>
+      <div class="field"><label class="sr-only" for="cl-qty-${index}">${esc(t('nego.quantity'))}</label><input id="cl-qty-${index}" class="cl-qty" type="number" min="1" value="1" required /></div>
+      <div class="field"><label class="sr-only" for="cl-unit-${index}">${esc(t('nego.unit'))}</label><input id="cl-unit-${index}" class="cl-unit" type="text" value="${esc(t('nego.unitDefault'))}" required /></div>
+      <div class="field"><label class="sr-only" for="cl-price-${index}">${esc(t('nego.unitPrice'))}</label><input id="cl-price-${index}" class="cl-price" type="text" inputmode="decimal" value="0" required /></div>
+      <button type="button" class="link-btn xs" data-action="remove-counter-line">${esc(t('nego.removeLine'))}</button>`;
     container.appendChild(line);
     refreshCounterTotal();
     return;
@@ -2191,7 +2195,7 @@ document.addEventListener('click', (event) => {
 
   if (action === 'remove-counter-line') {
     const lines = document.querySelectorAll('.counter-line');
-    if (lines.length <= 1) return toast('Une proposition comporte au moins une ligne.', 'error');
+    if (lines.length <= 1) return toast(t('sh.proposalNeedsLine'), 'error');
     el.closest('.counter-line').remove();
     refreshCounterTotal();
     return;
@@ -2204,7 +2208,7 @@ document.addEventListener('click', (event) => {
           method: 'POST',
           body: { status: el.dataset.status, closeConversation: el.dataset.status === 'ACTIONED' },
         });
-        toast('Signalement traité.');
+        toast(t('sh.reportHandled'));
         await render();
       },
       { button: el },
@@ -2235,7 +2239,7 @@ document.addEventListener('click', (event) => {
     return run(
       async () => {
         await api(`/messaging/blocks/${el.dataset.id}`, { method: 'DELETE' });
-        toast('Compte débloqué.');
+        toast(t('sh.accountUnblocked'));
         await render();
       },
       { button: el },
@@ -2252,7 +2256,7 @@ document.addEventListener('change', (event) => {
         method: 'PUT',
         body: { category: input.dataset.category, [input.dataset.channel]: input.checked },
       });
-      toast('Préférence enregistrée.');
+      toast(t('sh.preferenceSaved'));
     });
   }
 
@@ -2271,7 +2275,7 @@ document.addEventListener('change', (event) => {
         contentType: 'application/octet-stream',
         headers: { 'x-file-name': encodeURIComponent(chosen.name) },
       });
-      toast('Pièce versée au dossier.', 'success');
+      toast(t('sh.evidenceFiled'), 'success');
       await render();
     });
   }
@@ -2291,7 +2295,7 @@ document.addEventListener('change', (event) => {
         // Un en-tête HTTP ne transporte pas les accents : on encode.
         headers: { 'x-file-name': encodeURIComponent(chosen.name) },
       });
-      toast('Fichier envoyé.', 'success');
+      toast(t('sh.fileUploaded'), 'success');
       await render();
     });
   }
@@ -2389,9 +2393,9 @@ window.addEventListener('touma:session', renderChrome);
   try {
     const { items } = await api('/countries');
     const names = items.map((c) => c.name).join(' ↔ ');
-    bar.innerHTML = `Corridor ouvert : <strong>${esc(names)}</strong> — d'autres marchés africains s'activeront depuis le référentiel.`;
+    bar.innerHTML = t('sh.corridorOpen', { names: `<strong>${esc(names)}</strong>` });
   } catch {
-    bar.textContent = 'TOUMA — commerce transfrontalier africain';
+    bar.textContent = t('sh.tagline');
   }
 })();
 
@@ -2440,12 +2444,12 @@ function showInstallBar() {
   bar.id = 'install-bar';
   bar.innerHTML = `
     <div>
-      <strong>Installer TOUMA</strong>
-      <span>Ouverture plus rapide, et l'application s'ouvre même quand le réseau faiblit.</span>
+      <strong>${esc(t('sh.installTitle'))}</strong>
+      <span>${esc(t('sh.installBody'))}</span>
     </div>
     <div class="install-actions">
-      <button type="button" class="btn btn-sm" data-install>Installer</button>
-      <button type="button" class="btn btn-ghost btn-sm" data-install-dismiss>Plus tard</button>
+      <button type="button" class="btn btn-sm" data-install>${esc(t('sh.install'))}</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-install-dismiss>${esc(t('sh.installLater'))}</button>
     </div>`;
   document.body.appendChild(bar);
 }

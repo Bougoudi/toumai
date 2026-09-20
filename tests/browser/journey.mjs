@@ -1545,6 +1545,47 @@ await step('langue : TOUMA Business et les promotions en arabe', async () => {
   }
 });
 
+await step('langue : l’ossature aussi — confirmation et message de succès en arabe', async () => {
+  // Une confirmation se superpose à l'écran. En français au-dessus d'un écran
+  // arabe, elle annule la traduction de cet écran — et aucune des étapes
+  // précédentes ne pouvait le voir : elles ne lisent que `#view`, or une
+  // fenêtre de confirmation et un toast vivent en dehors.
+  const ar = await sessionFor('acheteur@touma.dev');
+  await ar.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+  await ar.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+
+  try {
+    await ar.goto(`${BASE}/produits`, { waitUntil: 'networkidle' });
+    await ar.waitForSelector('[data-add-to-cart]', { timeout: 20000 });
+    await ar.locator('[data-add-to-cart]').first().click();
+
+    const toast = ar.locator('#toasts .toast').first();
+    await toast.waitFor({ timeout: 10000 });
+    const texteToast = (await toast.textContent()) ?? '';
+    if (!/[\u0600-\u06FF]/.test(texteToast)) throw new Error(`le message de succès n’est pas en arabe : ${texteToast.trim()}`);
+    if (/Article|panier/.test(texteToast)) throw new Error('résidu français dans le message de succès');
+
+    await ar.goto(`${BASE}/panier`, { waitUntil: 'networkidle' });
+    await ar.waitForSelector('[data-clear-cart]', { timeout: 20000 });
+    await ar.locator('[data-clear-cart]').click();
+
+    const modale = ar.locator('#modal-root .modal');
+    await modale.waitFor({ timeout: 10000 });
+    const texteModale = ((await modale.textContent()) ?? '').replace(/\s+/g, ' ');
+    if (!/[\u0600-\u06FF]/.test(texteModale)) throw new Error('la fenêtre de confirmation n’est pas en arabe');
+    // Les deux boutons viennent du noyau, pas de l'appel : ils étaient les
+    // derniers mots français d'une fenêtre par ailleurs traduite.
+    for (const reste of ['Vider', 'Annuler', 'Confirmer', 'articles', 'seront']) {
+      if (texteModale.includes(reste)) throw new Error(`résidu français dans la confirmation : ${reste}`);
+    }
+
+    await ar.screenshot({ path: `${OUT}/59-ossature-arabe.png` });
+    await ar.locator('#modal-root [data-action="cancel"]').click();
+  } finally {
+    await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+  }
+});
+
 await step('langue : les statuts de commande sont traduits partout à la fois', async () => {
   // Les statuts viennent du serveur sous forme de code : les traduire au seul
   // endroit qui les rend les traduit sur tous les écrans, y compris ceux dont

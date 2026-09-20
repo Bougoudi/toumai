@@ -4,6 +4,7 @@
  * rendu reste explicite et testable à l'œil.
  */
 import { esc, money, productImage, stars, statusPill, label, formatDate, svg } from './core.js';
+import { t } from './i18n.js';
 
 /** Carte produit du catalogue. */
 export function productCard(p, { compact = false } = {}) {
@@ -12,7 +13,7 @@ export function productCard(p, { compact = false } = {}) {
     <a href="/touma/produits/${esc(p.slug)}" data-link>
       <div class="product-media">
         ${productImage(p.image, p.title)}
-        ${verified ? '<span class="badge badge-verified">Vendeur vérifié</span>' : ''}
+        ${verified ? `<span class="badge badge-verified">${esc(t('product.verifiedSeller'))}</span>` : ''}
       </div>
       <div class="product-body">
         <span class="product-title">${esc(p.title)}</span>
@@ -23,13 +24,13 @@ export function productCard(p, { compact = false } = {}) {
           <span>${esc(p.store?.name ?? '')}</span>
         </span>
         <span class="product-meta">
-          ${p.inStock ? `<span class="badge badge-verified">En stock</span>` : '<span class="badge badge-danger">Rupture</span>'}
+          ${p.inStock ? `<span class="badge badge-verified">${esc(t('comp.inStock'))}</span>` : `<span class="badge badge-danger">${esc(t('comp.outOfStock'))}</span>`}
         </span>
       </div>
     </a>
     ${compact ? '' : `<div class="product-actions">
       <button class="btn btn-secondary btn-sm btn-block" data-add-to-cart="${esc(p.id)}" ${p.inStock ? '' : 'disabled'}>
-        ${p.inStock ? 'Ajouter au panier' : 'Indisponible'}
+        ${esc(t(p.inStock ? 'product.addToCart' : 'comp.unavailable'))}
       </button>
     </div>`}
   </article>`;
@@ -47,7 +48,7 @@ export function storeCard(s) {
         <h3 style="margin-bottom:2px"><a href="/touma/boutiques/${esc(s.slug)}" data-link>${esc(s.name)}</a></h3>
         <div class="product-meta">
           <span class="badge badge-country">${esc(s.countryCode)}${s.city ? ` · ${esc(s.city)}` : ''}</span>
-          ${s.verificationStatus === 'APPROVED' ? '<span class="badge badge-verified">Vérifiée</span>' : ''}
+          ${s.verificationStatus === 'APPROVED' ? `<span class="badge badge-verified">${esc(t('seller.verified'))}</span>` : ''}
           ${stars(s.ratingAverage, s.ratingCount)}
         </div>
       </div>
@@ -58,7 +59,7 @@ export function storeCard(s) {
 
 /** Fil d'Ariane. */
 export function breadcrumb(items) {
-  return `<nav class="small muted" aria-label="Fil d'Ariane" style="margin-bottom:var(--space-4)">
+  return `<nav class="small muted" aria-label="${esc(t('comp.breadcrumb'))}" style="margin-bottom:var(--space-4)">
     ${items
       .map((item, i) =>
         item.href && i < items.length - 1
@@ -87,33 +88,36 @@ export function stepper(steps, currentIndex) {
  * Chronologie d'une commande : les étapes franchies, l'étape courante, puis
  * celles à venir. Les événements de suivi réels sont insérés à leur place.
  */
-const ORDER_FLOW = [
-  { key: 'PENDING', title: 'Commande créée', at: 'placedAt' },
-  { key: 'PAID', title: 'Paiement confirmé', at: 'paidAt' },
-  { key: 'PROCESSING', title: 'Préparation par le vendeur', at: null },
-  { key: 'SHIPPED', title: 'Expédiée', at: 'shippedAt' },
-  { key: 'IN_TRANSIT', title: 'En transit', at: null },
-  { key: 'DELIVERED', title: 'Livrée', at: 'deliveredAt' },
-  { key: 'COMPLETED', title: 'Terminée', at: 'completedAt' },
+// Une fonction, pas une constante de module : figée au chargement, elle
+// garderait la langue de la première page ouverte pour toute la session.
+const orderFlow = () => [
+  { key: 'PENDING', title: t('flow.created'), at: 'placedAt' },
+  { key: 'PAID', title: t('flow.paid'), at: 'paidAt' },
+  { key: 'PROCESSING', title: t('flow.processing'), at: null },
+  { key: 'SHIPPED', title: t('flow.shipped'), at: 'shippedAt' },
+  { key: 'IN_TRANSIT', title: t('flow.inTransit'), at: null },
+  { key: 'DELIVERED', title: t('flow.delivered'), at: 'deliveredAt' },
+  { key: 'COMPLETED', title: t('flow.completed'), at: 'completedAt' },
 ];
 
 export function orderTimeline(order) {
   const terminal = ['CANCELLED', 'REFUNDED'].includes(order.status);
   if (terminal) {
     return `<ul class="timeline">
-      <li data-done="true"><strong>Commande créée</strong><span>${formatDate(order.placedAt, true)}</span></li>
+      <li data-done="true"><strong>${esc(t('flow.created'))}</strong><span>${formatDate(order.placedAt, true)}</span></li>
       <li data-current="true"><strong>${esc(label(order.status))}</strong><span>${formatDate(order.cancelledAt ?? order.updatedAt, true)}${order.cancelReason ? ` · ${esc(order.cancelReason)}` : ''}</span></li>
     </ul>`;
   }
-  const currentIndex = Math.max(0, ORDER_FLOW.findIndex((s) => s.key === order.status));
+  const flow = orderFlow();
+  const currentIndex = Math.max(0, flow.findIndex((s) => s.key === order.status));
   return `<ul class="timeline">
-    ${ORDER_FLOW.map((step, i) => {
+    ${flow.map((step, i) => {
       const done = i < currentIndex;
       const current = i === currentIndex;
       const at = step.at ? order[step.at] : null;
       return `<li data-done="${done}" data-current="${current}">
         <strong>${esc(step.title)}</strong>
-        <span>${at ? formatDate(at, true) : done ? 'Effectué' : current ? 'En cours' : 'À venir'}</span>
+        <span>${esc(at ? formatDate(at, true) : t(done ? 'flow.done' : current ? 'flow.current' : 'flow.upcoming'))}</span>
       </li>`;
     }).join('')}
   </ul>`;
@@ -121,7 +125,7 @@ export function orderTimeline(order) {
 
 /** Suivi transporteur détaillé. */
 export function trackingTimeline(events) {
-  if (!events?.length) return '<p class="muted small">Aucun événement de suivi pour l’instant.</p>';
+  if (!events?.length) return `<p class="muted small">${esc(t('comp.noTracking'))}</p>`;
   return `<ul class="timeline">
     ${events
       .map(
@@ -139,10 +143,10 @@ export function pagination(page, buildHref) {
   if (!page || page.pages <= 1) return '';
   const prev = page.page - 1;
   const next = page.page + 1;
-  return `<nav class="pagination" aria-label="Pagination">
-    ${page.page > 1 ? `<a class="btn btn-secondary btn-sm" href="${esc(buildHref(prev))}" data-link rel="prev">Précédent</a>` : '<span></span>'}
-    <span class="small muted">Page ${page.page} sur ${page.pages} · ${page.total} résultat(s)</span>
-    ${page.hasNext ? `<a class="btn btn-secondary btn-sm" href="${esc(buildHref(next))}" data-link rel="next">Suivant</a>` : '<span></span>'}
+  return `<nav class="pagination" aria-label="${esc(t('comp.pagination'))}">
+    ${page.page > 1 ? `<a class="btn btn-secondary btn-sm" href="${esc(buildHref(prev))}" data-link rel="prev">${esc(t('comp.prev'))}</a>` : '<span></span>'}
+    <span class="small muted">${esc(t('comp.pageOf', { page: page.page, pages: page.pages, total: page.total }))}</span>
+    ${page.hasNext ? `<a class="btn btn-secondary btn-sm" href="${esc(buildHref(next))}" data-link rel="next">${esc(t('comp.next'))}</a>` : '<span></span>'}
   </nav>`;
 }
 
@@ -151,7 +155,7 @@ export function pagination(page, buildHref) {
  * l'activité de la place de marché.
  */
 export function barChart(points, { valueKey = 'value', labelKey = 'date', height = 140, currency = null } = {}) {
-  if (!points?.length) return '<p class="muted small">Pas encore de données à afficher.</p>';
+  if (!points?.length) return `<p class="muted small">${esc(t('comp.noData'))}</p>`;
   const values = points.map((p) => Number(p[valueKey] ?? 0));
   const max = Math.max(1, ...values);
   // Barres bornées : une série d'un seul point ne doit pas produire un aplat.
@@ -179,7 +183,7 @@ export function barChart(points, { valueKey = 'value', labelKey = 'date', height
     )
     .join('');
 
-  return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Graphique des ventes">
+  return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${esc(t('comp.salesChart'))}">
     <line class="axis" x1="0" y1="${height - 20}" x2="${width}" y2="${height - 20}" />
     ${bars}${ticks}
   </svg>`;

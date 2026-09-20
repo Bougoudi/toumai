@@ -6,7 +6,7 @@
  * politique de sécurité du contenu (CSP) du serveur.
  */
 
-import { locale, statusLabel, STATUS_FR } from './i18n.js';
+import { locale, statusLabel, STATUS_FR, t } from './i18n.js';
 
 export const API = '/api/v1';
 const STORAGE = 'touma.session';
@@ -102,7 +102,7 @@ export async function api(path, { method = 'GET', body, retry = true, contentTyp
       body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError('Connexion impossible. Vérifiez votre réseau puis réessayez.', 0);
+    throw new ApiError(t('core.offline'), 0);
   }
 
   if (res.status === 401 && retry && current?.refreshToken) {
@@ -214,7 +214,7 @@ export function toast(message, kind = 'info') {
 
   const node = document.createElement('div');
   node.className = `toast toast-${kind}`;
-  node.innerHTML = `<span>${esc(message)}</span><button type="button" aria-label="Fermer">✕</button>`;
+  node.innerHTML = `<span>${esc(message)}</span><button type="button" aria-label="${esc(t('core.close'))}">✕</button>`;
   node.querySelector('button').addEventListener('click', () => node.remove());
   stack.appendChild(node);
   setTimeout(() => node.remove(), kind === 'error' ? 6500 : 4000);
@@ -226,7 +226,7 @@ export function toast(message, kind = 'info') {
  * Modale de choix : une question, une liste de réponses, un motif libre
  * facultatif. Sert notamment au signalement d'un message.
  */
-export function chooseDialog({ title, body, options, withNote = false, confirmLabel = 'Envoyer' }) {
+export function chooseDialog({ title, body, options, withNote = false, confirmLabel = t('action.send') }) {
   return new Promise((resolve) => {
     const root = document.getElementById('modal-root');
     const previous = document.activeElement;
@@ -236,14 +236,14 @@ export function chooseDialog({ title, body, options, withNote = false, confirmLa
           <h2 id="modal-title">${esc(title)}</h2>
           ${body ? `<p class="muted">${esc(body)}</p>` : ''}
           <div class="field">
-            <label for="choose-value">Motif</label>
+            <label for="choose-value">${esc(t('core.reason'))}</label>
             <select id="choose-value">
               ${options.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}
             </select>
           </div>
-          ${withNote ? '<div class="field"><label for="choose-note">Précisions (facultatif)</label><textarea id="choose-note" rows="2" maxlength="1000"></textarea></div>' : ''}
+          ${withNote ? `<div class="field"><label for="choose-note">${esc(t('core.noteOptional'))}</label><textarea id="choose-note" rows="2" maxlength="1000"></textarea></div>` : ''}
           <div class="row">
-            <button class="btn btn-secondary" data-action="cancel">Annuler</button>
+            <button class="btn btn-secondary" data-action="cancel">${esc(t('action.cancel'))}</button>
             <button class="btn" data-action="confirm">${esc(confirmLabel)}</button>
           </div>
         </div>
@@ -273,7 +273,7 @@ export function chooseDialog({ title, body, options, withNote = false, confirmLa
   });
 }
 
-export function confirmDialog({ title, body, confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false }) {
+export function confirmDialog({ title, body, confirmLabel = t('action.confirm'), cancelLabel = t('action.cancel'), danger = false }) {
   return new Promise((resolve) => {
     const root = document.getElementById('modal-root');
     const previous = document.activeElement;
@@ -317,7 +317,7 @@ export function loadingState(kind = 'list') {
     <div class="skeleton skeleton-text" style="width:40%;height:22px"></div>
     <div class="skeleton skeleton-card" style="height:160px"></div>
     <div class="skeleton skeleton-card" style="height:120px"></div>
-    <span class="sr-only">Chargement en cours…</span>
+    <span class="sr-only">${esc(t('core.loadingSr'))}</span>
   </div>`;
 }
 
@@ -334,11 +334,11 @@ export function errorState(error, retryHref = '/touma/') {
   const offline = error?.status === 0;
   return `<div class="state">
     <div class="state-icon">${svg('alert')}</div>
-    <h2>${offline ? 'Connexion interrompue' : 'Une erreur est survenue'}</h2>
-    <p>${esc(error?.message ?? 'Erreur inconnue.')}</p>
+    <h2>${esc(t(offline ? 'core.connectionLost' : 'error.generic'))}</h2>
+    <p>${esc(error?.message ?? t('core.unknownError'))}</p>
     <div class="row">
-      <button class="btn" data-action="reload">Réessayer</button>
-      <a class="btn btn-secondary" href="${esc(retryHref)}" data-link>Retour à l'accueil</a>
+      <button class="btn" data-action="reload">${esc(t('action.retry'))}</button>
+      <a class="btn btn-secondary" href="${esc(retryHref)}" data-link>${esc(t('sh.backHome'))}</a>
     </div>
   </div>`;
 }
@@ -346,9 +346,9 @@ export function errorState(error, retryHref = '/touma/') {
 /** Étoiles de notation, accessibles aux lecteurs d'écran. */
 export function stars(rating, count) {
   const value = Number(rating ?? 0);
-  if (!count) return '<span class="stars xs muted">Aucun avis</span>';
+  if (!count) return `<span class="stars xs muted">${esc(t('core.noReview'))}</span>`;
   const full = Math.round(value);
-  return `<span class="stars" aria-label="Note ${value.toFixed(1)} sur 5, ${count} avis">
+  return `<span class="stars" aria-label="${esc(t('core.ratingAria', { value: value.toFixed(1), count }))}">
     ${'★'.repeat(full)}<span>${'★'.repeat(5 - full)}</span>
     <span class="count">${value.toFixed(1)} (${count})</span>
   </span>`;
@@ -357,5 +357,5 @@ export function stars(rating, count) {
 /** Image de produit : visuel du vendeur, sinon repli graphique (jamais de texte brut). */
 export function productImage(url, alt, cls = '') {
   const src = url || '/touma/img/placeholder.svg';
-  return `<img class="${cls}" src="${esc(src)}" alt="${esc(alt || 'Visuel du produit')}" loading="lazy" decoding="async" />`;
+  return `<img class="${cls}" src="${esc(src)}" alt="${esc(alt || t('core.productImageAlt'))}" loading="lazy" decoding="async" />`;
 }
