@@ -259,6 +259,75 @@ export const env = {
        */
       referencePriceMinDays: Number(process.env.TOUMA_GROWTH_REFERENCE_PRICE_MIN_DAYS ?? 30),
     },
+    /**
+     * TOUMA Intelligence (V23).
+     *
+     * Le fournisseur par défaut est `RULE_BASED` : local, déterministe, sans
+     * clé et sans coût. Ce n'est pas un pis-aller en attendant mieux — c'est le
+     * repli obligatoire (§47), celui qui répond quand le modèle réel est
+     * indisponible. L'application doit fonctionner entièrement sans IA
+     * externe ; un fournisseur configuré est une amélioration, jamais une
+     * dépendance.
+     */
+    ai: {
+      /** Coupe-circuit général. Tout `/ai` répond 503 quand il est baissé. */
+      enabled: process.env.TOUMA_AI_ENABLED !== 'false',
+      chatEnabled: process.env.TOUMA_AI_CHAT_ENABLED !== 'false',
+      searchEnabled: process.env.TOUMA_AI_SEARCH_ENABLED !== 'false',
+      recommendationsEnabled: process.env.TOUMA_AI_RECOMMENDATIONS_ENABLED !== 'false',
+      sellerCopilotEnabled: process.env.TOUMA_AI_SELLER_COPILOT_ENABLED !== 'false',
+      businessEnabled: process.env.TOUMA_AI_BUSINESS_ENABLED !== 'false',
+      adminEnabled: process.env.TOUMA_AI_ADMIN_ENABLED !== 'false',
+      /**
+       * Embeddings et automatisation sont **fermés par défaut**. Les premiers
+       * coûtent à chaque écriture de produit et n'ont d'intérêt qu'avec un
+       * fournisseur réel ; la seconde laisse l'IA déclencher des actions sans
+       * qu'on la regarde. Les ouvrir est une décision d'exploitation.
+       */
+      embeddingsEnabled: process.env.TOUMA_AI_EMBEDDINGS_ENABLED === 'true',
+      automationEnabled: process.env.TOUMA_AI_AUTOMATION_ENABLED === 'true',
+
+      /** `RULE_BASED` | `OPENAI` | `ANTHROPIC` | `LOCAL`. */
+      provider: process.env.AI_PROVIDER ?? process.env.TOUMA_AI_PROVIDER ?? 'RULE_BASED',
+      /** Jamais de valeur par défaut : une clé absente doit rester absente. */
+      apiKey: process.env.AI_API_KEY ?? '',
+      baseUrl: process.env.AI_BASE_URL ?? '',
+      model: process.env.AI_MODEL ?? '',
+      /** Modèle économique pour les tâches courtes (§4). */
+      fastModel: process.env.AI_FAST_MODEL ?? '',
+      /** Modèle de raisonnement pour les analyses (§4). */
+      reasoningModel: process.env.AI_REASONING_MODEL ?? '',
+      embeddingModel: process.env.AI_EMBEDDING_MODEL ?? '',
+      /** §68 : au-delà, la réponse vient du repli plutôt que de faire attendre. */
+      timeoutMs: Number(process.env.AI_TIMEOUT_MS ?? 20_000),
+
+      /**
+       * Plafonds de coût (§5). Exprimés en **appels** et en dollars estimés.
+       * Le compte d'appels borne l'abus même avec un fournisseur gratuit, où un
+       * plafond en dollars ne borne rien du tout.
+       */
+      limits: {
+        perUserPerDay: Number(process.env.AI_LIMIT_USER_DAY ?? 200),
+        perUserPerMonth: Number(process.env.AI_LIMIT_USER_MONTH ?? 3000),
+        perScopePerDay: Number(process.env.AI_LIMIT_SCOPE_DAY ?? 1000),
+        platformPerDay: Number(process.env.AI_LIMIT_PLATFORM_DAY ?? 20_000),
+        /** Dépense estimée maximale par jour, toutes fonctionnalités. */
+        platformCostPerDay: Number(process.env.AI_LIMIT_PLATFORM_COST_DAY ?? 25),
+      },
+
+      /** Bornes de boucle d'outil (§45). */
+      maxToolCalls: Number(process.env.AI_MAX_TOOL_CALLS ?? 8),
+      maxToolDepth: Number(process.env.AI_MAX_TOOL_DEPTH ?? 3),
+      maxRunMs: Number(process.env.AI_MAX_RUN_MS ?? 30_000),
+
+      /** Durée de vie d'une demande de confirmation (§42), en minutes. */
+      confirmationTtlMinutes: Number(process.env.AI_CONFIRMATION_TTL_MINUTES ?? 15),
+      /** Expiration de la mémoire, par type (§35), en jours. */
+      memorySessionDays: Number(process.env.AI_MEMORY_SESSION_DAYS ?? 1),
+      memoryPreferenceDays: Number(process.env.AI_MEMORY_PREFERENCE_DAYS ?? 180),
+      memoryTaskDays: Number(process.env.AI_MEMORY_TASK_DAYS ?? 30),
+    },
+
     /** Adaptateurs actifs (mock tant qu'aucun prestataire réel n'est raccordé). */
     paymentProvider: process.env.TOUMA_PAYMENT_PROVIDER ?? 'mock',
     logisticsProvider: process.env.TOUMA_LOGISTICS_PROVIDER ?? 'mock',

@@ -1,12 +1,15 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { env } from '../../config/env.js';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
 import { authenticate, currentUser, optionalAuth } from '../middleware/toumaAuth.js';
 import { aiService } from './ai.service.js';
 
 /**
- * TOUMA AI. Toutes les routes renvoient des **propositions** : rien n'est
- * publié, tarifé ni payé automatiquement. La validation reste humaine.
+ * TOUMA AI — points d'entrée de premier niveau.
+ *
+ * Tout ce qui sort d'ici est une **proposition**. Rien n'est publié, tarifé,
+ * commandé ni payé par ces routes.
  */
 export const aiRouter = Router();
 
@@ -37,8 +40,7 @@ aiRouter.post(
   authenticate,
   asyncHandler(async (req, res) => {
     const input = parseBody(generateSchema, req);
-    const result = await aiService.generate(currentUser(req).id, input);
-    res.json({ ...result, requiresHumanReview: true });
+    res.json(await aiService.generate(currentUser(req).id, input));
   }),
 );
 
@@ -47,16 +49,22 @@ aiRouter.post(
   authenticate,
   asyncHandler(async (req, res) => {
     const input = parseBody(classifySchema, req);
-    res.json({ ...(await aiService.classify(currentUser(req).id, input)), requiresHumanReview: true });
+    res.json(await aiService.classify(currentUser(req).id, input));
   }),
 );
 
-/** Recommandations : ouvertes aux visiteurs (recherche naturelle du catalogue). */
+/**
+ * Recommandations : lisibles par un visiteur, parce qu'un acheteur non
+ * connecté a besoin de voir des produits voisins sur une fiche. La trace et la
+ * persistance, elles, sont réservées aux utilisateurs connus — une lecture
+ * anonyme ne doit pas écrire en base (défaut relevé à l'audit V23).
+ */
 aiRouter.post(
   '/recommend',
   optionalAuth,
   asyncHandler(async (req, res) => {
+    if (!env.touma.ai.recommendationsEnabled) return res.status(503).json({ error: 'Recommandations désactivées.' });
     const input = parseBody(recommendSchema, req);
-    res.json(await aiService.recommend(req.toumaUser?.id ?? null, { ...input, userId: req.toumaUser?.id ?? null }));
+    res.json(await aiService.recommend(req.toumaUser?.id ?? null, input));
   }),
 );

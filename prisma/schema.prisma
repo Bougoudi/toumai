@@ -213,9 +213,15 @@ model User {
   riskScore             ToumaRiskScore?
   fraudEvents           ToumaFraudEvent[]
   aiRequests            ToumaAiRequest[]
+  aiConversations       ToumaAiConversation[]
+  aiToolCalls           ToumaAiToolCall[]
+  aiUsage               ToumaAiUsage[]
+  aiFeedback            ToumaAiFeedback[]
+  aiMemories            ToumaAiMemory[]
+  aiConfirmations       ToumaAiActionConfirmation[]
   auditLogs             ToumaAuditLog[]
-  reviewedVerifications ToumaSellerVerification[] @relation("VerificationReviewer")
-  commissionRules       ToumaCommissionRule[]     @relation("ToumaCommissionRuleAuthor")
+  reviewedVerifications ToumaSellerVerification[]   @relation("VerificationReviewer")
+  commissionRules       ToumaCommissionRule[]       @relation("ToumaCommissionRuleAuthor")
 
   orderGroups         ToumaOrderGroup[]
   evidenceUploaded    ToumaDisputeEvidence[]         @relation("EvidenceAuthor")
@@ -4531,4 +4537,386 @@ model ToumaFlashSaleClaim {
   @@unique([flashSaleId, userId])
   @@index([userId])
   @@map("touma_flash_sale_claims")
+}
+
+// ── Touma Intelligence (V23) ─────────────────────────────────────────────────
+
+/// Famille de tâche confiée à l'IA. Sert au routage de modèle et aux plafonds :
+/// une classification ne coûte pas ce que coûte un raisonnement, et les deux
+/// n'ont aucune raison de partager le même budget.
+enum AiTaskKind {
+  CLASSIFY
+  GENERATE
+  STRUCTURED
+  EMBED
+  MODERATE
+  TRANSLATE
+  REASON
+}
+
+/// Niveau de risque d'un outil. C'est ce niveau, et lui seul, qui décide si une
+/// confirmation humaine est exigée avant exécution.
+enum AiRiskLevel {
+  READ_ONLY
+  LOW_RISK
+  MEDIUM_RISK
+  HIGH_RISK
+  FINANCIAL
+}
+
+enum AiMessageRole {
+  USER
+  ASSISTANT
+  TOOL
+  SYSTEM
+}
+
+enum AiConversationSurface {
+  BUYER
+  SELLER
+  BUSINESS
+  ADMIN
+  SUPPORT
+}
+
+enum AiMemoryKind {
+  SESSION
+  PREFERENCE
+  TASK
+}
+
+enum AiFeedbackVerdict {
+  HELPFUL
+  NOT_HELPFUL
+  INCORRECT
+  OUTDATED
+  IRRELEVANT
+  UNSAFE
+  WRONG_PRODUCT
+  WRONG_PRICE
+}
+
+enum AiConfirmationStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  EXPIRED
+}
+
+enum AiInsightKind {
+  DEMAND
+  INVENTORY
+  PRICE_ANOMALY
+  SELLER_PERFORMANCE
+  FRAUD_SIGNAL
+  MARKETING
+}
+
+/// Conversation avec l'assistant. La surface dit depuis quel espace elle est
+/// ouverte : un vendeur ne pose pas les mêmes questions qu'un acheteur et
+/// n'a pas droit aux mêmes outils.
+model ToumaAiConversation {
+  id      String                @id @default(cuid())
+  userId  String?
+  user    User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  surface AiConversationSurface @default(BUYER)
+  title   String?
+  locale  String                @default("fr")
+  /// Boutique ou organisation concernée, quand la surface l'exige.
+  scopeId String?
+
+  messages      ToumaAiMessage[]
+  toolCalls     ToumaAiToolCall[]
+  usage         ToumaAiUsage[]
+  feedback      ToumaAiFeedback[]
+  confirmations ToumaAiActionConfirmation[]
+
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId, lastMessageAt])
+  @@map("touma_ai_conversations")
+}
+
+/// Un tour de conversation.
+///
+/// `content` est **rédigé** avant écriture : ce qui ressemble à un jeton, une
+/// carte ou un secret est remplacé avant d'atteindre la base. Une conversation
+/// n'a pas à devenir un dépôt de secrets parce que quelqu'un en a collé un.
+model ToumaAiMessage {
+  id             String              @id @default(cuid())
+  conversationId String
+  conversation   ToumaAiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           AiMessageRole
+  content        String
+  /// Cartes de résultat (produits, commandes, devis) attachées à la réponse.
+  attachments    Json                @default("[]")
+  /// Fournisseur et modèle ayant produit ce tour, quand il vient de l'IA.
+  provider       String?
+  model          String?
+  /// Signal de l'analyseur d'injection sur le contenu d'origine.
+  injectionScore Decimal?            @db.Decimal(5, 4)
+
+  toolCalls ToumaAiToolCall[]
+  feedback  ToumaAiFeedback[]
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("touma_ai_messages")
+}
+
+/// Appel d'outil, avec son résultat.
+///
+/// Le cahier des charges sépare `AiToolCall` et `AiToolResult`. Ils sont
+/// fusionnés ici : un appel sans résultat et un résultat sans appel n'existent
+/// pas, et deux tables obligeraient à une jointure sur chaque lecture d'audit
+/// pour ne jamais rien apprendre de plus. L'échec est un résultat comme un
+/// autre — il est porté par `ok` et `error`.
+model ToumaAiToolCall {
+  id             String               @id @default(cuid())
+  conversationId String?
+  conversation   ToumaAiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?
+  message        ToumaAiMessage?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  userId         String?
+  user           User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  tool           String
+  riskLevel      AiRiskLevel @default(READ_ONLY)
+  /// Empreinte des arguments : permet de reconnaître un appel identique
+  /// (boucle d'outil) sans conserver les arguments eux-mêmes.
+  argsHash       String
+  /// Arguments après rédaction. Jamais de secret, jamais de donnée KYC.
+  args           Json        @default("{}")
+  /// Résumé du résultat, pas le résultat entier : l'audit doit dire ce qui a
+  /// été lu, pas recopier le catalogue.
+  summary        String?
+  ok             Boolean     @default(true)
+  error          String?
+  /// Confirmation humaine attachée, pour un outil qui l'exigeait.
+  confirmationId String?
+
+  latencyMs Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([tool, createdAt])
+  @@index([userId, createdAt])
+  @@map("touma_ai_tool_calls")
+}
+
+/// Consommation d'un appel au fournisseur. Alimente les plafonds et le tableau
+/// de bord des coûts. Le coût est estimé, et le champ le dit.
+model ToumaAiUsage {
+  id             String               @id @default(cuid())
+  userId         String?
+  user           User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  conversationId String?
+  conversation   ToumaAiConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  /// Organisation B2B ou boutique, pour les plafonds par vendeur/entreprise.
+  scopeId        String?
+
+  feature  String
+  task     AiTaskKind
+  provider String
+  model    String
+
+  inputTokens   Int     @default(0)
+  outputTokens  Int     @default(0)
+  /// Coût **estimé** dans la devise du tarif fournisseur, jamais facturé tel
+  /// quel. Un fournisseur local coûte zéro et l'écrit.
+  estimatedCost Decimal @default(0) @db.Decimal(12, 6)
+  costCurrency  String  @default("USD")
+
+  ok        Boolean  @default(true)
+  latencyMs Int      @default(0)
+  /// Jour (UTC) précalculé : les plafonds quotidiens s'interrogent dessus sans
+  /// recalculer une troncature de date sur chaque ligne.
+  day       DateTime @db.Date
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, day])
+  @@index([scopeId, day])
+  @@index([feature, createdAt])
+  @@index([provider, model, createdAt])
+  @@map("touma_ai_usage")
+}
+
+/// Retour d'un utilisateur sur une réponse de l'IA (§39).
+model ToumaAiFeedback {
+  id             String               @id @default(cuid())
+  conversationId String?
+  conversation   ToumaAiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?
+  message        ToumaAiMessage?      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  verdict   AiFeedbackVerdict
+  comment   String?
+  /// Traité par un administrateur ?
+  handledAt DateTime?
+  handledBy String?
+
+  createdAt DateTime @default(now())
+
+  @@index([verdict, createdAt])
+  @@index([messageId])
+  @@map("touma_ai_feedback")
+}
+
+/// Mesure de qualité agrégée par fonctionnalité et par période (§38).
+model ToumaAiEvaluation {
+  id      String     @id @default(cuid())
+  feature String
+  task    AiTaskKind
+  /// Début de la fenêtre mesurée (UTC, jour).
+  day     DateTime   @db.Date
+
+  requests       Int     @default(0)
+  toolCalls      Int     @default(0)
+  toolFailures   Int     @default(0)
+  errors         Int     @default(0)
+  helpful        Int     @default(0)
+  notHelpful     Int     @default(0)
+  hallucinations Int     @default(0)
+  p95LatencyMs   Int     @default(0)
+  estimatedCost  Decimal @default(0) @db.Decimal(12, 6)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([feature, task, day])
+  @@map("touma_ai_evaluations")
+}
+
+/// Mémoire de l'assistant. Bornée par construction : tout ce qui est écrit ici
+/// porte une expiration, et rien n'y entre sans que l'utilisateur l'ait dit.
+model ToumaAiMemory {
+  id      String       @id @default(cuid())
+  userId  String
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind    AiMemoryKind
+  /// Clé stable (`budget_max`, `province_livraison`, `langue`…).
+  key     String
+  value   String
+  /// Conversation d'origine, pour une mémoire de session.
+  scopeId String?
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, kind, key])
+  @@index([expiresAt])
+  @@map("touma_ai_memories")
+}
+
+/// Observation produite par un travail périodique (demande, stock, anomalie de
+/// prix…). C'est une **observation datée**, pas une vérité : elle porte les
+/// faits qui l'ont produite.
+model ToumaAiInsight {
+  id          String        @id @default(cuid())
+  kind        AiInsightKind
+  /// Entité concernée : produit, boutique, province…
+  subjectType String
+  subjectId   String
+  /// Code stable de l'observation (`LOW_STOCK`, `SEARCH_SURGE`…).
+  code        String
+  severity    Int           @default(0)
+  /// Faits mesurés ayant produit l'observation. Aucune interprétation ici.
+  evidence    Json          @default("{}")
+  /// Piste d'action, jamais exécutée automatiquement.
+  suggestion  String?
+
+  /// Fenêtre observée, pour qu'une observation ne soit pas rejouée deux fois.
+  windowStart DateTime
+  windowEnd   DateTime
+
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([kind, subjectType, subjectId, code, windowEnd])
+  @@index([subjectType, subjectId, createdAt])
+  @@index([kind, createdAt])
+  @@map("touma_ai_insights")
+}
+
+/// Demande de confirmation avant une action sensible (§42).
+///
+/// L'IA ne confirme jamais elle-même : elle dépose ici ce qu'elle propose de
+/// faire, et attend qu'un humain le valide avant expiration.
+model ToumaAiActionConfirmation {
+  id             String               @id @default(cuid())
+  conversationId String?
+  conversation   ToumaAiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tool       String
+  riskLevel  AiRiskLevel
+  /// Paramètres exacts qui seront exécutés si l'humain confirme. Les modifier
+  /// après coup reviendrait à faire signer autre chose que ce qui a été lu.
+  parameters Json                 @default("{}")
+  /// Résumé lisible de ce qui sera fait, en français.
+  summary    String
+  status     AiConfirmationStatus @default(PENDING)
+
+  expiresAt   DateTime
+  confirmedAt DateTime?
+  rejectedAt  DateTime?
+  /// Résultat de l'exécution, une fois confirmée.
+  executedAt  DateTime?
+  resultRef   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, status])
+  @@index([status, expiresAt])
+  @@map("touma_ai_action_confirmations")
+}
+
+/// Version d'une invite système (§59). Permet de savoir quelle consigne a
+/// produit quelle réponse, et de revenir en arrière.
+model ToumaAiPromptVersion {
+  id      String  @id @default(cuid())
+  feature String
+  version Int
+  body    String
+  notes   String?
+  /// Une seule version active par fonctionnalité — l'unicité partielle est
+  /// posée par la migration, Prisma ne sait pas l'exprimer.
+  active  Boolean @default(false)
+
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@unique([feature, version])
+  @@index([feature, active])
+  @@map("touma_ai_prompt_versions")
+}
+
+/// Exécution d'un travail périodique d'intelligence. Sert à l'idempotence :
+/// un travail ne retraite pas une fenêtre déjà traitée.
+model ToumaAiJobRun {
+  id          String   @id @default(cuid())
+  job         String
+  /// Fenêtre traitée. L'unicité `(job, windowEnd)` est ce qui rend le travail
+  /// idempotent, quel que soit le nombre de fois où le cron le déclenche.
+  windowStart DateTime
+  windowEnd   DateTime
+
+  ok         Boolean @default(true)
+  produced   Int     @default(0)
+  error      String?
+  durationMs Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@unique([job, windowEnd])
+  @@index([job, createdAt])
+  @@map("touma_ai_job_runs")
 }
