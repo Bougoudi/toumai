@@ -154,7 +154,7 @@ export async function catalog(_params, query) {
       <form class="card filters-panel" id="filters" aria-label="${esc(t('catalog.filterAndSort'))}">
         <div class="field">
           <label for="f-q">${esc(t('catalog.keyword'))}</label>
-          <input id="f-q" name="q" type="search" value="${esc(query.get('q') || '')}" placeholder="sésame, pagne, cartons…" />
+          <input id="f-q" name="q" type="search" value="${esc(query.get('q') || '')}" placeholder="${esc(t('catalog.searchPlaceholder'))}" />
         </div>
         <div class="field">
           <label for="f-category">${esc(t('catalog.category'))}</label>

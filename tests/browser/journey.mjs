@@ -1026,10 +1026,17 @@ await step('langue : l’ossature bascule en arabe, et le sens d’écriture ave
   await ar.waitForTimeout(400);
   if ((await ar.locator('[data-set-locale]').count()) !== 2) throw new Error('le sélecteur de langue est absent');
 
-  // La couverture est annoncée : proposer « العربية » sans dire ce qui reste en
-  // français mettrait un arabophone devant une porte ouverte sur un mur.
+  // La couverture est annoncée : proposer « العربية » sans dire ce qui n'est pas
+  // traduit mettrait un arabophone devant une porte ouverte sur un mur.
+  //
+  // Le contrôle cherchait le mot « français », hérité de « restent en français ».
+  // Plus aucun écran n'y reste, et l'annonce porte désormais sur ce qui n'est
+  // jamais retraduit — le contenu saisi et le contenu figé d'un document. C'est
+  // donc cela qu'il faut trouver, et la phrase doit rester substantielle.
   const pied = ((await ar.textContent('#drawer-foot')) ?? '').replace(/\s+/g, ' ');
-  if (!/بالفرنسية|français/.test(pied)) throw new Error('la couverture de la traduction n’est pas annoncée');
+  if (!/document|مستند/.test(pied) || pied.length < 120) {
+    throw new Error('la couverture de la traduction n’est pas annoncée');
+  }
 
   await ar.click('[data-set-locale="ar"]');
   await ar.waitForTimeout(800);
@@ -1460,6 +1467,78 @@ await step('langue : compte, vitrine, provinces, zones et Finance en arabe', asy
     if (lienSource === 0) throw new Error('page de province : l’attribution GeoNames n’est plus un lien');
 
     await ar.screenshot({ path: `${OUT}/57-province-arabe.png` });
+  } finally {
+    await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+    await vendeur.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+  }
+});
+
+await step('langue : TOUMA Business et les promotions en arabe', async () => {
+  // Les deux derniers écrans. Avec eux, les quatorze fichiers de vue sont
+  // traduits — et l'étape suivante vérifie qu'il n'en reste aucun en français.
+  const ar = await sessionFor('acheteur@touma.dev');
+  await ar.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await ar.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+
+  const vendeur = await sessionFor('vendeur.cm@touma.dev');
+  await vendeur.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await vendeur.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+
+  try {
+    for (const [page, chemin, attendu, residus] of [
+      [
+        ar,
+        '/business',
+        /اشترِ بالجملة|طلبات عروض جارية|نظرة عامة/,
+        ['Vue d’ensemble', 'Achetez en gros', 'Publier une demande', 'Appels d’offres en cours', 'Offres reçues'],
+      ],
+      [
+        ar,
+        '/business/appels-offres',
+        /طلبات العروض|طلباتي|لا طلبات منشورة/,
+        ['Appels d’offres', 'Mes demandes', 'Demandes ouvertes', 'Aucune demande publiée'],
+      ],
+      [
+        ar,
+        '/business/appels-offres/nouveau',
+        /نشر طلب شراء|المنتجات المطلوبة/,
+        ['Publier une demande d’achat', 'Intitulé de la demande', 'Produits recherchés', 'Ajouter une ligne'],
+      ],
+      [
+        ar,
+        '/business/profil',
+        /ملف المؤسسة|الاسم القانوني/,
+        ['Profil entreprise', 'Raison sociale', 'Secteur d’activité', 'Identifiant fiscal'],
+      ],
+      [
+        ar,
+        '/sourcing',
+        /العثور على مورّد|عمّ تبحث؟/,
+        ['Trouver un fournisseur', 'Que cherchez-vous', 'Pays du fournisseur', 'Livrer vers', 'Rechercher'],
+      ],
+      [
+        vendeur,
+        '/vendeur/promotions',
+        /العروض|إنشاء رمز خصم/,
+        ['Promotions', 'Créer un code de réduction', 'Aucun code pour l’instant', 'Type de remise'],
+      ],
+    ]) {
+      await page.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(700);
+
+      if ((await page.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`${chemin} : le sens d’écriture n’est pas rtl`);
+      const corps = ((await page.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!attendu.test(corps)) throw new Error(`${chemin} : aucun texte arabe attendu trouvé`);
+
+      const restes = residus.filter((r) => corps.includes(r));
+      if (restes.length > 0) throw new Error(`${chemin} : résidus français — ${restes.join(', ')}`);
+
+      if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) {
+        throw new Error(`${chemin} : débordement horizontal en arabe`);
+      }
+    }
+
+    await ar.screenshot({ path: `${OUT}/58-business-arabe.png` });
   } finally {
     await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
     await vendeur.evaluate(() => localStorage.setItem('touma.locale', 'fr'));

@@ -4,39 +4,30 @@
  */
 import { api, esc, money, formatDate, label, session, statusPill, stars, emptyState, svg, toast } from './core.js';
 import { breadcrumb, statCard } from './components.js';
+import { t } from './i18n.js';
 
 const TABS = [
-  ['/touma/business', "Vue d'ensemble"],
-  ['/touma/business/appels-offres', "Mes appels d'offres"],
-  ['/touma/business/messages', 'Messagerie'],
-  ['/touma/business/appels-offres/nouveau', 'Publier une demande'],
-  ['/touma/sourcing', 'Sourcing'],
-  ['/touma/business/profil', 'Profil entreprise'],
+  ['/touma/business', 'biz.tab.overview'],
+  ['/touma/business/appels-offres', 'biz.tab.rfqs'],
+  ['/touma/business/messages', 'biz.tab.messages'],
+  ['/touma/business/appels-offres/nouveau', 'biz.tab.publish'],
+  ['/touma/sourcing', 'biz.tab.sourcing'],
+  ['/touma/business/profil', 'biz.tab.profile'],
 ];
 
 function tabs(current) {
-  return `<nav class="tabs" aria-label="TOUMA Business">
-    ${TABS.map(([href, text]) => `<a href="${href}" data-link${href === current ? ' aria-current="page"' : ''}>${text}</a>`).join('')}
+  return `<nav class="tabs" aria-label="${esc(t('biz.nav'))}">
+    ${TABS.map(([href, cle]) => `<a href="${href}" data-link${href === current ? ' aria-current="page"' : ''}>${esc(t(cle))}</a>`).join('')}
   </nav>`;
 }
 
-const RFQ_STATUS = {
-  OPEN: 'Ouvert aux offres',
-  QUOTED: 'Offres reçues',
-  AWARDED: 'Attribué',
-  CLOSED: 'Clos',
-  EXPIRED: 'Expiré',
-  CANCELLED: 'Annulé',
-};
-
-const QUOTE_STATUS = {
-  SUBMITTED: 'Offre reçue',
-  COUNTERED: 'En négociation',
-  ACCEPTED: 'Acceptée',
-  REJECTED: 'Non retenue',
-  EXPIRED: 'Expirée',
-  WITHDRAWN: 'Retirée',
-};
+/**
+ * Un appel d'offres et une offre ont chacun leur famille de statuts : « EXPIRED »
+ * se dit d'une demande dont le délai est passé et d'une offre dont la validité
+ * l'est — ce n'est pas le même objet, et le genre diffère en français.
+ */
+const etatDemande = (code) => t(`biz.rfq.${code}`);
+const etatOffre = (code) => t(`biz.quote.${code}`);
 
 // ── Vue d'ensemble ─────────────────────────────────────────────────────────
 export async function dashboard() {
@@ -49,13 +40,13 @@ export async function dashboard() {
   const quotesReceived = mine.items.reduce((acc, r) => acc + r.quoteCount, 0);
 
   return `
-    ${breadcrumb([{ label: 'Accueil', href: '/touma/' }, { label: 'TOUMA Business' }])}
+    ${breadcrumb([{ label: t('nav.home'), href: '/touma/' }, { label: t('biz.title') }])}
     <div class="row-between">
       <div>
-        <h1 style="font-size:var(--text-xl);margin-bottom:2px">TOUMA Business</h1>
-        <p class="muted small" style="margin:0">Achetez en gros : publiez votre besoin, comparez les offres, négociez, commandez.</p>
+        <h1 style="font-size:var(--text-xl);margin-bottom:2px">${esc(t('biz.title'))}</h1>
+        <p class="muted small" style="margin:0">${esc(t('biz.intro'))}</p>
       </div>
-      <a class="btn btn-accent" href="/touma/business/appels-offres/nouveau" data-link>Publier une demande</a>
+      <a class="btn btn-accent" href="/touma/business/appels-offres/nouveau" data-link>${esc(t('biz.tab.publish'))}</a>
     </div>
     ${tabs('/touma/business')}
 
@@ -63,27 +54,27 @@ export async function dashboard() {
       ? ''
       : `<div class="alert alert-info" style="margin-bottom:var(--space-5)">
           <div>
-            <strong>Complétez votre profil entreprise</strong>
-            <div class="small">Les fournisseurs répondent plus volontiers à une entreprise identifiée.
-              <a href="/touma/business/profil" data-link>Renseigner mon profil</a></div>
+            <strong>${esc(t('biz.completeProfile'))}</strong>
+            <div class="small">${esc(t('biz.completeProfileHint'))}
+              <a href="/touma/business/profil" data-link>${esc(t('biz.fillProfile'))}</a></div>
           </div>
         </div>`}
 
     <div class="grid grid-stats">
-      ${statCard('Appels d’offres en cours', awaiting.length)}
-      ${statCard('Offres reçues', quotesReceived)}
-      ${statCard('Entreprise', profile ? profile.legalName : 'Non renseignée', profile?.sector ?? '')}
+      ${statCard(t('biz.openRfqs'), awaiting.length)}
+      ${statCard(t('biz.quotesReceived'), quotesReceived)}
+      ${statCard(t('biz.company'), profile ? profile.legalName : t('biz.noCompany'), profile?.sector ?? '')}
     </div>
 
     <section class="section mt-8">
       <div class="section-head">
-        <h2>Mes dernières demandes</h2>
-        <a class="small" href="/touma/business/appels-offres" data-link>Tout voir</a>
+        <h2>${esc(t('biz.myLastRequests'))}</h2>
+        <a class="small" href="/touma/business/appels-offres" data-link>${esc(t('action.seeAll'))}</a>
       </div>
       ${mine.items.length ? rfqList(mine.items) : emptyState({
-        title: 'Aucune demande publiée',
-        body: 'Décrivez ce que vous cherchez — produit, quantité, pays de livraison — et laissez les fournisseurs vous répondre.',
-        actionLabel: 'Publier une demande',
+        title: t('biz.noRfqTitle'),
+        body: t('biz.noRfqBody'),
+        actionLabel: t('biz.tab.publish'),
         actionHref: '/touma/business/appels-offres/nouveau',
         iconName: 'inbox',
       })}
@@ -91,7 +82,7 @@ export async function dashboard() {
 
     ${session.isSeller && open.items.length
       ? `<section class="section">
-          <div class="section-head"><h2>Demandes auxquelles vous pouvez répondre</h2></div>
+          <div class="section-head"><h2>${esc(t('biz.canAnswer'))}</h2></div>
           ${rfqList(open.items)}
         </section>`
       : ''}`;
@@ -107,19 +98,21 @@ function rfqList(items) {
               <h3 style="margin-bottom:2px"><a href="/touma/business/appels-offres/${esc(r.id)}" data-link>${esc(r.title)}</a></h3>
               <div class="product-meta">
                 <span class="badge">${esc(r.reference)}</span>
-                <span class="badge badge-country">Livraison ${esc(r.countryCode)}${r.city ? ` · ${esc(r.city)}` : ''}</span>
-                ${r.sourceCountry ? `<span class="badge badge-cross">Origine ${esc(r.sourceCountry)}</span>` : ''}
-                <span>${r.items.length} ligne(s) · ${r.quoteCount} offre(s)</span>
+                <span class="badge badge-country">${esc(t('biz.deliveryBadge', { country: r.countryCode }))}${
+                  r.city ? ` · ${esc(r.city)}` : ''
+                }</span>
+                ${r.sourceCountry ? `<span class="badge badge-cross">${esc(t('biz.originBadge', { country: r.sourceCountry }))}</span>` : ''}
+                <span>${esc(t('biz.linesAndQuotes', { lines: r.items.length, quotes: r.quoteCount }))}</span>
               </div>
             </div>
             <div class="row" style="gap:var(--space-3)">
-              <span class="status status-${esc(r.status)}">${esc(RFQ_STATUS[r.status] ?? r.status)}</span>
-              <a class="btn btn-secondary btn-sm" href="/touma/business/appels-offres/${esc(r.id)}" data-link>Ouvrir</a>
+              <span class="status status-${esc(r.status)}">${esc(etatDemande(r.status))}</span>
+              <a class="btn btn-secondary btn-sm" href="/touma/business/appels-offres/${esc(r.id)}" data-link>${esc(t('biz.open'))}</a>
             </div>
           </div>
           <p class="small muted mt-6" style="margin-bottom:0">
             ${r.items.map((i) => `${i.quantity} ${esc(i.unit)} — ${esc(i.name)}`).join(' · ')}
-            ${r.deadline ? ` · réponses jusqu'au ${formatDate(r.deadline)}` : ''}
+            ${r.deadline ? esc(t('biz.answersUntil', { date: formatDate(r.deadline) })) : ''}
           </p>
         </article>`,
       )
@@ -134,29 +127,23 @@ export async function rfqs(_params, query) {
   const data = await api(`/rfqs?scope=${scope}&limit=25`);
 
   const EMPTY = {
-    mine: {
-      title: 'Aucune demande publiée',
-      body: 'Publiez votre première demande d’achat.',
-      actionLabel: 'Publier une demande',
-    },
-    open: {
-      title: 'Aucune demande ouverte',
-      body: 'Revenez plus tard : les demandes des acheteurs apparaîtront ici.',
-    },
-    invited: {
-      title: 'Aucune sollicitation reçue',
-      body: 'Quand un acheteur vous repère dans le sourcing et vous invite à répondre, sa demande apparaît ici.',
-    },
+    mine: { title: t('biz.noRfqTitle'), body: t('biz.noRfqSimpleBody'), actionLabel: t('biz.tab.publish') },
+    open: { title: t('biz.noOpenRfqTitle'), body: t('biz.noOpenRfqBody') },
+    invited: { title: t('biz.noInviteTitle'), body: t('biz.noInviteBody') },
   }[scope];
 
   return `
-    <h1 style="font-size:var(--text-xl)">Appels d'offres</h1>
+    <h1 style="font-size:var(--text-xl)">${esc(t('biz.rfqsTitle'))}</h1>
     ${tabs('/touma/business/appels-offres')}
     <div class="chip-row" style="margin-bottom:var(--space-5)">
-      <a class="chip" href="/touma/business/appels-offres" data-link aria-current="${scope === 'mine'}">Mes demandes</a>
-      <a class="chip" href="/touma/business/appels-offres?scope=open" data-link aria-current="${scope === 'open'}">Demandes ouvertes</a>
+      <a class="chip" href="/touma/business/appels-offres" data-link aria-current="${scope === 'mine'}">${esc(t('biz.myRequests'))}</a>
+      <a class="chip" href="/touma/business/appels-offres?scope=open" data-link aria-current="${scope === 'open'}">${esc(
+        t('biz.openRequests'),
+      )}</a>
       ${session.isSeller
-        ? `<a class="chip" href="/touma/business/appels-offres?scope=invited" data-link aria-current="${scope === 'invited'}">Sollicitations reçues</a>`
+        ? `<a class="chip" href="/touma/business/appels-offres?scope=invited" data-link aria-current="${scope === 'invited'}">${esc(
+            t('biz.invitations'),
+          )}</a>`
         : ''}
     </div>
     ${data.items.length
@@ -174,51 +161,48 @@ export async function newRfq() {
   const option = (c) => `<option value="${esc(c.code)}"${c.code === session.user?.countryCode ? ' selected' : ''}>${esc(c.name)}</option>`;
 
   return `
-    <h1 style="font-size:var(--text-xl)">Publier une demande d'achat</h1>
+    <h1 style="font-size:var(--text-xl)">${esc(t('biz.publishTitle'))}</h1>
     ${tabs('/touma/business/appels-offres/nouveau')}
-    <p class="muted small">
-      Décrivez précisément ce que vous cherchez. Les fournisseurs du corridor vous répondent avec un prix, un délai et une
-      durée de validité ; vous comparez, négociez, puis commandez.
-    </p>
+    <p class="muted small">${esc(t('biz.publishIntro'))}</p>
 
     <form class="card" id="rfq-form">
       <div class="field">
-        <label for="q-title">Intitulé de la demande</label>
-        <input id="q-title" required maxlength="200" placeholder="Recherche 500 kg de cacao en fèves" />
+        <label for="q-title">${esc(t('biz.rfqTitle'))}</label>
+        <input id="q-title" required maxlength="200" placeholder="${esc(t('biz.rfqTitlePlaceholder'))}" />
       </div>
       <div class="field">
-        <label for="q-description">Précisions</label>
-        <textarea id="q-description" rows="4" maxlength="4000" placeholder="Qualité attendue, conditionnement, échantillon, conditions de paiement…"></textarea>
+        <label for="q-description">${esc(t('biz.details'))}</label>
+        <textarea id="q-description" rows="4" maxlength="4000" placeholder="${esc(t('biz.detailsPlaceholder'))}"></textarea>
       </div>
       <div class="grid grid-2">
         <div class="field">
-          <label for="q-country">Pays de livraison</label>
+          <label for="q-country">${esc(t('biz.deliveryCountry'))}</label>
           <select id="q-country">${countries.items.map(option).join('')}</select>
         </div>
-        <div class="field"><label for="q-city">Ville de livraison</label><input id="q-city" maxlength="120" /></div>
+        <div class="field"><label for="q-city">${esc(t('biz.deliveryCity'))}</label><input id="q-city" maxlength="120" /></div>
         <div class="field">
-          <label for="q-source">Pays d'origine souhaité (facultatif)</label>
-          <select id="q-source"><option value="">Indifférent</option>${countries.items.map((c) => `<option value="${esc(c.code)}">${esc(c.name)}</option>`).join('')}</select>
+          <label for="q-source">${esc(t('biz.sourceCountry'))}</label>
+          <select id="q-source"><option value="">${esc(t('biz.anySource'))}</option>${countries.items.map((c) => `<option value="${esc(c.code)}">${esc(c.name)}</option>`).join('')}</select>
         </div>
         <div class="field">
-          <label for="q-currency">Devise</label>
+          <label for="q-currency">${esc(t('biz.currency'))}</label>
           <select id="q-currency"><option value="XAF">XAF</option><option value="EUR">EUR</option></select>
         </div>
         <div class="field">
-          <label for="q-deadline">Réponses attendues avant le</label>
+          <label for="q-deadline">${esc(t('biz.deadline'))}</label>
           <input id="q-deadline" type="date" />
         </div>
       </div>
 
       <fieldset>
-        <legend class="label">Produits recherchés</legend>
+        <legend class="label">${esc(t('biz.wantedProducts'))}</legend>
         <div id="rfq-items">${rfqItemRow(0, categories.items)}</div>
-        <button class="btn btn-secondary btn-sm" type="button" id="add-rfq-item">Ajouter une ligne</button>
+        <button class="btn btn-secondary btn-sm" type="button" id="add-rfq-item">${esc(t('biz.addLine'))}</button>
       </fieldset>
 
       <div class="row mt-6">
-        <button class="btn btn-accent" type="submit">Publier la demande</button>
-        <a class="btn btn-ghost" href="/touma/business/appels-offres" data-link>Annuler</a>
+        <button class="btn btn-accent" type="submit">${esc(t('biz.publish'))}</button>
+        <a class="btn btn-ghost" href="/touma/business/appels-offres" data-link>${esc(t('action.cancel'))}</a>
       </div>
     </form>`;
 }
@@ -226,16 +210,20 @@ export async function newRfq() {
 export function rfqItemRow(index, categories) {
   return `<div class="card rfq-item" style="box-shadow:none;margin-bottom:var(--space-3)">
     <div class="grid grid-2">
-      <div class="field"><label for="i-name-${index}">Produit</label><input id="i-name-${index}" class="i-name" required maxlength="200" placeholder="Cacao en fèves fermentées" /></div>
+      <div class="field"><label for="i-name-${index}">${esc(t('biz.itemName'))}</label><input id="i-name-${index}" class="i-name" required maxlength="200" placeholder="${esc(
+        t('biz.itemNamePlaceholder'),
+      )}" /></div>
       <div class="field">
-        <label for="i-category-${index}">Catégorie</label>
-        <select id="i-category-${index}" class="i-category"><option value="">Non précisée</option>${categories.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select>
+        <label for="i-category-${index}">${esc(t('biz.itemCategory'))}</label>
+        <select id="i-category-${index}" class="i-category"><option value="">${esc(t('biz.itemCategoryNone'))}</option>${categories.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select>
       </div>
-      <div class="field"><label for="i-qty-${index}">Quantité</label><input id="i-qty-${index}" class="i-qty" type="number" min="1" value="100" required /></div>
-      <div class="field"><label for="i-unit-${index}">Unité</label><input id="i-unit-${index}" class="i-unit" value="kg" maxlength="30" /></div>
-      <div class="field"><label for="i-target-${index}">Prix unitaire cible (facultatif)</label><input id="i-target-${index}" class="i-target" inputmode="decimal" placeholder="2800" /></div>
+      <div class="field"><label for="i-qty-${index}">${esc(t('biz.itemQty'))}</label><input id="i-qty-${index}" class="i-qty" type="number" min="1" value="100" required /></div>
+      <div class="field"><label for="i-unit-${index}">${esc(t('biz.itemUnit'))}</label><input id="i-unit-${index}" class="i-unit" value="kg" maxlength="30" /></div>
+      <div class="field"><label for="i-target-${index}">${esc(t('biz.itemTarget'))}</label><input id="i-target-${index}" class="i-target" inputmode="decimal" placeholder="2800" /></div>
     </div>
-    <div class="field" style="margin-bottom:0"><label for="i-desc-${index}">Détail</label><input id="i-desc-${index}" class="i-desc" maxlength="1000" placeholder="Qualité export, humidité contrôlée…" /></div>
+    <div class="field" style="margin-bottom:0"><label for="i-desc-${index}">${esc(t('biz.itemDetail'))}</label><input id="i-desc-${index}" class="i-desc" maxlength="1000" placeholder="${esc(
+      t('biz.itemDetailPlaceholder'),
+    )}" /></div>
   </div>`;
 }
 
@@ -248,28 +236,30 @@ export async function rfq(params) {
 
   return `
     ${breadcrumb([
-      { label: 'TOUMA Business', href: '/touma/business' },
-      { label: "Appels d'offres", href: '/touma/business/appels-offres' },
+      { label: t('biz.title'), href: '/touma/business' },
+      { label: t('biz.rfqsTitle'), href: '/touma/business/appels-offres' },
       { label: data.reference },
     ])}
     <div class="row-between" style="margin-bottom:var(--space-4)">
       <div>
         <h1 style="font-size:var(--text-xl);margin-bottom:2px">${esc(data.title)}</h1>
         <p class="small muted" style="margin:0">
-          ${esc(data.reference)} · publié le ${formatDate(data.createdAt)}
-          ${data.deadline ? ` · réponses jusqu'au ${formatDate(data.deadline)}` : ''}
+          ${esc(data.reference)} · ${esc(t('biz.publishedOn', { date: formatDate(data.createdAt) }))}
+          ${data.deadline ? esc(t('biz.answersUntil', { date: formatDate(data.deadline) })) : ''}
         </p>
       </div>
-      <span class="status status-${esc(data.status)}">${esc(RFQ_STATUS[data.status] ?? data.status)}</span>
+      <span class="status status-${esc(data.status)}">${esc(etatDemande(data.status))}</span>
     </div>
 
     <div class="grid grid-2">
       <section class="card">
-        <h2 style="font-size:var(--text-md)">Besoin exprimé</h2>
+        <h2 style="font-size:var(--text-md)">${esc(t('biz.needExpressed'))}</h2>
         ${data.description ? `<p class="small" style="white-space:pre-line">${esc(data.description)}</p>` : ''}
         <div class="table-wrap" style="border:0">
           <table>
-            <thead><tr><th>Produit</th><th>Quantité</th><th>Prix cible</th></tr></thead>
+            <thead><tr><th>${esc(t('biz.col.product'))}</th><th>${esc(t('biz.col.quantity'))}</th><th>${esc(
+              t('biz.col.targetPrice'),
+            )}</th></tr></thead>
             <tbody>
               ${data.items
                 .map(
@@ -284,22 +274,22 @@ export async function rfq(params) {
           </table>
         </div>
         <dl class="spec-list mt-6">
-          <div><dt>Livraison</dt><dd>${esc(data.countryCode)}${data.city ? ` · ${esc(data.city)}` : ''}</dd></div>
-          ${data.sourceCountry ? `<div><dt>Origine souhaitée</dt><dd>${esc(data.sourceCountry)}</dd></div>` : ''}
-          <div><dt>Devise</dt><dd>${esc(data.currency)}</dd></div>
-          ${data.business ? `<div><dt>Acheteur</dt><dd>${esc(data.business.legalName)}${data.business.sector ? ` — ${esc(data.business.sector)}` : ''}</dd></div>` : ''}
+          <div><dt>${esc(t('biz.deliveryLabel'))}</dt><dd>${esc(data.countryCode)}${data.city ? ` · ${esc(data.city)}` : ''}</dd></div>
+          ${data.sourceCountry ? `<div><dt>${esc(t('biz.originLabel'))}</dt><dd>${esc(data.sourceCountry)}</dd></div>` : ''}
+          <div><dt>${esc(t('biz.currencyLabel'))}</dt><dd>${esc(data.currency)}</dd></div>
+          ${data.business ? `<div><dt>${esc(t('biz.buyerLabel'))}</dt><dd>${esc(data.business.legalName)}${data.business.sector ? ` — ${esc(data.business.sector)}` : ''}</dd></div>` : ''}
         </dl>
         ${data.isOwner && ['OPEN', 'QUOTED'].includes(data.status)
-          ? `<button class="btn btn-secondary btn-sm mt-6" data-close-rfq="${esc(data.id)}">Clore cette demande</button>`
+          ? `<button class="btn btn-secondary btn-sm mt-6" data-close-rfq="${esc(data.id)}">${esc(t('biz.closeRfq'))}</button>`
           : ''}
       </section>
 
       <section>
         ${canQuote && !alreadyQuoted
           ? `<form class="card" id="quote-form" data-rfq="${esc(data.id)}">
-              <h2 style="font-size:var(--text-md)">Proposer une offre</h2>
+              <h2 style="font-size:var(--text-md)">${esc(t('biz.proposeQuote'))}</h2>
               <div class="field">
-                <label for="qf-store">Boutique</label>
+                <label for="qf-store">${esc(t('biz.quoteStore'))}</label>
                 <select id="qf-store">${stores.items.map((s) => `<option value="${esc(s.id)}">${esc(s.name)} (${esc(s.countryCode)})</option>`).join('')}</select>
               </div>
               <div id="quote-lines">
@@ -308,8 +298,12 @@ export async function rfq(params) {
                     (i, index) => `<div class="card quote-line" style="box-shadow:none;margin-bottom:var(--space-3)" data-rfq-item="${esc(i.id)}">
                       <strong class="small">${esc(i.name)} — ${i.quantity} ${esc(i.unit)}</strong>
                       <div class="grid grid-2 mt-6">
-                        <div class="field" style="margin-bottom:0"><label for="ql-qty-${index}">Quantité proposée</label><input id="ql-qty-${index}" class="ql-qty" type="number" min="1" value="${i.quantity}" /></div>
-                        <div class="field" style="margin-bottom:0"><label for="ql-price-${index}">Prix unitaire (${esc(data.currency)})</label><input id="ql-price-${index}" class="ql-price" inputmode="decimal" required placeholder="2750" /></div>
+                        <div class="field" style="margin-bottom:0"><label for="ql-qty-${index}">${esc(
+                          t('biz.proposedQty'),
+                        )}</label><input id="ql-qty-${index}" class="ql-qty" type="number" min="1" value="${i.quantity}" /></div>
+                        <div class="field" style="margin-bottom:0"><label for="ql-price-${index}">${esc(
+                          t('biz.unitPriceField', { currency: data.currency }),
+                        )}</label><input id="ql-price-${index}" class="ql-price" inputmode="decimal" required placeholder="2750" /></div>
                       </div>
                       <input type="hidden" class="ql-name" value="${esc(i.name)}" />
                       <input type="hidden" class="ql-unit" value="${esc(i.unit)}" />
@@ -318,22 +312,26 @@ export async function rfq(params) {
                   .join('')}
               </div>
               <div class="grid grid-2">
-                <div class="field"><label for="qf-shipping">Transport (${esc(data.currency)})</label><input id="qf-shipping" inputmode="decimal" value="0" /></div>
-                <div class="field"><label for="qf-lead">Délai (jours)</label><input id="qf-lead" type="number" min="0" value="10" /></div>
-                <div class="field"><label for="qf-validity">Offre valable (jours)</label><input id="qf-validity" type="number" min="1" max="120" value="14" /></div>
+                <div class="field"><label for="qf-shipping">${esc(
+                  t('biz.shippingField', { currency: data.currency }),
+                )}</label><input id="qf-shipping" inputmode="decimal" value="0" /></div>
+                <div class="field"><label for="qf-lead">${esc(t('biz.leadDays'))}</label><input id="qf-lead" type="number" min="0" value="10" /></div>
+                <div class="field"><label for="qf-validity">${esc(t('biz.validityDays'))}</label><input id="qf-validity" type="number" min="1" max="120" value="14" /></div>
               </div>
-              <div class="field"><label for="qf-message">Message au client</label><textarea id="qf-message" rows="3" maxlength="2000"></textarea></div>
-              <button class="btn btn-accent" type="submit">Envoyer mon offre</button>
+              <div class="field"><label for="qf-message">${esc(t('biz.messageToClient'))}</label><textarea id="qf-message" rows="3" maxlength="2000"></textarea></div>
+              <button class="btn btn-accent" type="submit">${esc(t('biz.sendQuote'))}</button>
             </form>`
           : ''}
 
         <div class="card${canQuote && !alreadyQuoted ? ' mt-6' : ''}">
           <h2 style="font-size:var(--text-md)">
-            ${data.isOwner ? `Offres reçues (${data.quotes.length})` : 'Mon offre'}
+            ${esc(data.isOwner ? t('biz.quotesReceivedCount', { count: data.quotes.length }) : t('biz.myQuote'))}
           </h2>
           ${data.quotes.length
             ? `<div class="stack">${data.quotes.map((q) => quoteCard(q, data, me)).join('')}</div>`
-            : `<p class="muted small" style="margin:0">${data.isOwner ? 'Aucune offre reçue pour l’instant. Les fournisseurs du corridor sont notifiés.' : 'Vous n’avez pas encore répondu à cette demande.'}</p>`}
+            : `<p class="muted small" style="margin:0">${esc(
+                t(data.isOwner ? 'biz.noQuoteYetOwner' : 'biz.noQuoteYetSupplier'),
+              )}</p>`}
         </div>
       </section>
     </div>`;
@@ -348,37 +346,39 @@ function quoteCard(q, rfqData, me) {
         <strong>${esc(q.store.name)}</strong>
         <div class="product-meta">
           <span class="badge badge-country">${esc(q.store.countryCode)}</span>
-          ${q.store.verificationStatus === 'APPROVED' ? '<span class="badge badge-verified">Vérifié</span>' : ''}
+          ${q.store.verificationStatus === 'APPROVED' ? `<span class="badge badge-verified">${esc(t('biz.verified'))}</span>` : ''}
           ${stars(q.store.ratingAverage, q.store.ratingCount)}
         </div>
       </div>
-      <span class="status status-${esc(q.status)}">${esc(QUOTE_STATUS[q.status] ?? q.status)}</span>
+      <span class="status status-${esc(q.status)}">${esc(etatOffre(q.status))}</span>
     </div>
 
     <div class="summary mt-6">
-      <div class="summary-line"><span>Marchandise</span><span>${money(q.itemsTotal, q.currency)}</span></div>
-      <div class="summary-line"><span>Transport</span><span>${money(q.shippingTotal, q.currency)}</span></div>
-      <div class="summary-line summary-total"><span>Total</span><span>${money(q.total, q.currency)}</span></div>
+      <div class="summary-line"><span>${esc(t('biz.goods'))}</span><span>${money(q.itemsTotal, q.currency)}</span></div>
+      <div class="summary-line"><span>${esc(t('biz.transport'))}</span><span>${money(q.shippingTotal, q.currency)}</span></div>
+      <div class="summary-line summary-total"><span>${esc(t('biz.total'))}</span><span>${money(q.total, q.currency)}</span></div>
     </div>
     <p class="xs muted">
-      Délai annoncé : ${q.leadTimeDays} jour(s) · offre valable jusqu'au ${formatDate(q.validUntil)}
-      ${q.expired ? ' · <span class="badge badge-danger">expirée</span>' : ''}
+      ${esc(t('biz.leadAndValidity', { days: q.leadTimeDays, date: formatDate(q.validUntil) }))}
+      ${q.expired ? ` · <span class="badge badge-danger">${esc(t('biz.expiredBadge'))}</span>` : ''}
     </p>
     ${q.message ? `<p class="small">« ${esc(q.message)} »</p>` : ''}
 
     <div class="row" style="gap:var(--space-2);flex-wrap:wrap;margin-top:var(--space-3)">
-      <a class="btn btn-secondary btn-sm" href="/touma/negociations/${esc(q.id)}" data-link>${svg('chart')} Ouvrir la négociation</a>
-      ${q.conversationId ? `<a class="btn btn-ghost btn-sm" href="/touma/messages/${esc(q.conversationId)}" data-link>${svg('inbox')} Discuter</a>` : ''}
+      <a class="btn btn-secondary btn-sm" href="/touma/negociations/${esc(q.id)}" data-link>${svg('chart')} ${esc(
+        t('biz.openNegotiation'),
+      )}</a>
+      ${q.conversationId ? `<a class="btn btn-ghost btn-sm" href="/touma/messages/${esc(q.conversationId)}" data-link>${svg('inbox')} ${esc(t('biz.discuss'))}</a>` : ''}
     </div>
 
     ${q.negotiations.length
       ? `<details style="margin-top:var(--space-3)">
-          <summary class="small strong">Négociation (${q.negotiations.length})</summary>
+          <summary class="small strong">${esc(t('biz.negotiationCount', { count: q.negotiations.length }))}</summary>
           <div class="stack" style="margin-top:var(--space-3);gap:var(--space-2)">
             ${q.negotiations
               .map(
                 (n) => `<div class="notif-item">
-                  <strong>${esc(n.author.name)}${n.kind === 'COUNTER_OFFER' ? ' — contre-proposition' : ''}</strong>
+                  <strong>${esc(n.author.name)}${n.kind === 'COUNTER_OFFER' ? esc(t('biz.counterSuffix')) : ''}</strong>
                   <p>${esc(n.body)}${n.proposedTotal ? ` <strong>${money(n.proposedTotal, q.currency)}</strong>` : ''}</p>
                   <span class="xs muted">${formatDate(n.createdAt, true)}</span>
                 </div>`,
@@ -390,27 +390,31 @@ function quoteCard(q, rfqData, me) {
 
     ${['ACCEPTED', 'REJECTED', 'WITHDRAWN'].includes(q.status) || q.expired
       ? q.orderGroupId
-        ? `<a class="btn btn-secondary btn-sm mt-6" href="/touma/commandes/groupe/${esc(q.orderGroupId)}" data-link>Voir la commande</a>`
+        ? `<a class="btn btn-secondary btn-sm mt-6" href="/touma/commandes/groupe/${esc(q.orderGroupId)}" data-link>${esc(
+            t('biz.viewOrder'),
+          )}</a>`
         : ''
       : `<form class="mt-6 negotiate-form" data-quote="${esc(q.id)}">
           <div class="field" style="margin-bottom:var(--space-2)">
-            <label for="neg-${esc(q.id)}">Message ou contre-proposition</label>
-            <textarea id="neg-${esc(q.id)}" class="neg-body" rows="2" maxlength="2000" placeholder="Pouvez-vous descendre à … ?"></textarea>
+            <label for="neg-${esc(q.id)}">${esc(t('biz.counterLabel'))}</label>
+            <textarea id="neg-${esc(q.id)}" class="neg-body" rows="2" maxlength="2000" placeholder="${esc(
+              t('biz.counterPlaceholder'),
+            )}"></textarea>
           </div>
           <div class="row" style="gap:var(--space-2)">
-            <input class="neg-total" inputmode="decimal" placeholder="Total proposé (facultatif)" style="max-width:220px" />
-            <button class="btn btn-secondary btn-sm" type="submit">Envoyer</button>
+            <input class="neg-total" inputmode="decimal" placeholder="${esc(t('biz.proposedTotal'))}" style="max-width:220px" />
+            <button class="btn btn-secondary btn-sm" type="submit">${esc(t('action.send'))}</button>
           </div>
         </form>
         ${canDecide
           ? `<div class="row mt-6">
               ${addresses.length
-                ? `<select class="accept-address" style="max-width:260px" aria-label="Adresse de livraison">
+                ? `<select class="accept-address" style="max-width:260px" aria-label="${esc(t('biz.addressAria'))}">
                     ${addresses.map((a) => `<option value="${esc(a.id)}">${esc(a.city)} — ${esc(a.line1)}</option>`).join('')}
                   </select>
-                  <button class="btn btn-accent btn-sm" data-accept-quote="${esc(q.id)}">Accepter et commander</button>`
-                : '<a class="btn btn-secondary btn-sm" href="/touma/compte" data-link>Ajoutez une adresse pour accepter</a>'}
-              <button class="btn btn-ghost btn-sm" data-reject-quote="${esc(q.id)}">Refuser</button>
+                  <button class="btn btn-accent btn-sm" data-accept-quote="${esc(q.id)}">${esc(t('biz.acceptAndOrder'))}</button>`
+                : `<a class="btn btn-secondary btn-sm" href="/touma/compte" data-link>${esc(t('biz.needAddress'))}</a>`}
+              <button class="btn btn-ghost btn-sm" data-reject-quote="${esc(q.id)}">${esc(t('biz.rejectQuote'))}</button>
             </div>`
           : ''}`}
   </article>`;
@@ -421,26 +425,30 @@ export async function profile() {
   const [profileData, countries] = await Promise.all([api('/business/profile'), api('/countries')]);
   const value = (v) => esc(v ?? '');
   return `
-    <h1 style="font-size:var(--text-xl)">Profil entreprise</h1>
+    <h1 style="font-size:var(--text-xl)">${esc(t('biz.profileTitle'))}</h1>
     ${tabs('/touma/business/profil')}
-    <p class="muted small">Ces informations sont visibles des fournisseurs auxquels vous adressez une demande.</p>
+    <p class="muted small">${esc(t('biz.profileIntro'))}</p>
 
     <form class="card" id="business-form">
-      <div class="field"><label for="b-legal">Raison sociale</label><input id="b-legal" required maxlength="200" value="${value(profileData?.legalName)}" /></div>
+      <div class="field"><label for="b-legal">${esc(t('biz.legalName'))}</label><input id="b-legal" required maxlength="200" value="${value(profileData?.legalName)}" /></div>
       <div class="grid grid-2">
-        <div class="field"><label for="b-reg">Numéro d'enregistrement (RCCM…)</label><input id="b-reg" maxlength="80" value="${value(profileData?.registrationNo)}" /></div>
-        <div class="field"><label for="b-tax">Identifiant fiscal</label><input id="b-tax" maxlength="80" value="${value(profileData?.taxId)}" /></div>
-        <div class="field"><label for="b-sector">Secteur d'activité</label><input id="b-sector" maxlength="120" value="${value(profileData?.sector)}" placeholder="Distribution agroalimentaire" /></div>
+        <div class="field"><label for="b-reg">${esc(t('biz.registrationNo'))}</label><input id="b-reg" maxlength="80" value="${value(profileData?.registrationNo)}" /></div>
+        <div class="field"><label for="b-tax">${esc(t('biz.taxId'))}</label><input id="b-tax" maxlength="80" value="${value(profileData?.taxId)}" /></div>
+        <div class="field"><label for="b-sector">${esc(t('biz.sector'))}</label><input id="b-sector" maxlength="120" value="${value(profileData?.sector)}" placeholder="${esc(
+          t('biz.sectorPlaceholder'),
+        )}" /></div>
         <div class="field">
-          <label for="b-country">Pays</label>
+          <label for="b-country">${esc(t('biz.country'))}</label>
           <select id="b-country">${countries.items.map((c) => `<option value="${esc(c.code)}"${profileData?.countryCode === c.code ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
         </div>
-        <div class="field"><label for="b-city">Ville</label><input id="b-city" maxlength="120" value="${value(profileData?.city)}" /></div>
-        <div class="field"><label for="b-phone">Téléphone</label><input id="b-phone" inputmode="tel" maxlength="30" value="${value(profileData?.phone)}" /></div>
-        <div class="field"><label for="b-website">Site web</label><input id="b-website" type="url" maxlength="200" value="${value(profileData?.website)}" placeholder="https://…" /></div>
-        <div class="field"><label for="b-volume">Volume d'achat annuel (indicatif)</label><input id="b-volume" maxlength="60" value="${value(profileData?.annualVolume)}" placeholder="50–100 M XAF" /></div>
+        <div class="field"><label for="b-city">${esc(t('biz.city'))}</label><input id="b-city" maxlength="120" value="${value(profileData?.city)}" /></div>
+        <div class="field"><label for="b-phone">${esc(t('biz.phone'))}</label><input id="b-phone" inputmode="tel" maxlength="30" value="${value(profileData?.phone)}" /></div>
+        <div class="field"><label for="b-website">${esc(t('biz.website'))}</label><input id="b-website" type="url" maxlength="200" value="${value(profileData?.website)}" placeholder="https://…" /></div>
+        <div class="field"><label for="b-volume">${esc(t('biz.annualVolume'))}</label><input id="b-volume" maxlength="60" value="${value(profileData?.annualVolume)}" placeholder="${esc(
+          t('biz.annualVolumePlaceholder'),
+        )}" /></div>
       </div>
-      <button class="btn btn-accent" type="submit">Enregistrer</button>
+      <button class="btn btn-accent" type="submit">${esc(t('action.save'))}</button>
     </form>`;
 }
 
@@ -448,8 +456,8 @@ export async function profile() {
 export async function myQuotes() {
   const data = await api('/quotes/mine');
   return `
-    <h1 style="font-size:var(--text-xl)">Mes offres</h1>
-    <p class="muted small">Réponses envoyées aux appels d'offres des acheteurs professionnels.</p>
+    <h1 style="font-size:var(--text-xl)">${esc(t('biz.myQuotes'))}</h1>
+    <p class="muted small">${esc(t('biz.myQuotesIntro'))}</p>
     ${data.items.length
       ? `<div class="stack">
           ${data.items
@@ -478,9 +486,9 @@ export async function myQuotes() {
             .join('')}
         </div>`
       : emptyState({
-          title: 'Aucune offre envoyée',
-          body: 'Consultez les demandes ouvertes et proposez vos prix.',
-          actionLabel: 'Voir les demandes',
+          title: t('biz.noQuoteSentTitle'),
+          body: t('biz.noQuoteSentBody'),
+          actionLabel: t('biz.seeRequests'),
           actionHref: '/touma/business/appels-offres?scope=open',
           iconName: 'inbox',
         })}`;

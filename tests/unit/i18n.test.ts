@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { describe, it } from "node:test";
 
@@ -73,6 +73,10 @@ describe("i18n — français et arabe", () => {
       "seller.tab.verification",
       // Même programme, nommé sur la page publique d'une province.
       "geo.verif.VERIFIED",
+      // « TOUMA Business » est le nom du produit, pas une phrase à traduire.
+      "src.businessCrumb",
+      "biz.nav",
+      "biz.title",
       "seller.import.col.status",
       // Identifiants légaux : ils figurent ainsi sur le document papier, et les
       // traduire ferait que l'écran ne correspondrait plus au document.
@@ -97,6 +101,44 @@ describe("i18n — français et arabe", () => {
       [],
       "valeurs arabes sans un seul caractère arabe",
     );
+  });
+
+  it("ne laisse aucun texte français en dur dans une vue", () => {
+    // Le point de tout ceci : « les écrans sont traduits » doit être
+    // vérifiable, pas affirmé. On relit chaque fichier de vue et on refuse
+    // toute chaîne littérale entre balises qui ressemble à une phrase.
+    //
+    // Ce que le contrôle laisse passer, délibérément : ce qui est interpolé
+    // (`${...}` — donc résolu au rendu, souvent par `t()`), les commentaires,
+    // et les quelques valeurs déclarées ci-dessous qui ne sont pas du français.
+    // Ce qui n'est pas du français : une URL, un nombre, un code en capitales
+    // (un exemple de code de réduction), et le nom de la source géographique.
+    const TOLERE = [/^https:\/\//, /^\d/, /^[A-Z0-9_]+$/, /^GeoNames$/];
+    const vues = readdirSync(new URL(RACINE))
+      .filter((f) => f.startsWith("views-") && f.endsWith(".js"))
+      .sort();
+    assert.ok(vues.length >= 14, `vues introuvables : ${vues.length}`);
+
+    const fautifs: string[] = [];
+    for (const vue of vues) {
+      const source = readFileSync(new URL(vue, RACINE), "utf8");
+      // Texte entre deux balises, et valeurs d'attributs visibles.
+      // Le motif exclut retours à la ligne, accents graves, points-virgules,
+      // parenthèses et apostrophes droites : sans quoi il attrape `a > b` et
+      // les fragments de code entre deux comparaisons, pas du texte d'écran.
+      const motifs = [/>([^<>{}$`=()']*)</g, /(?:placeholder|aria-label|title)="([^"$\n]*)"/g];
+      for (const motif of motifs) {
+        for (const [, brut] of source.matchAll(motif)) {
+          const texte = brut.trim();
+          // Deux mots d'au moins quatre lettres : en dessous, c'est un symbole
+          // (« → », « — », « 5/5 »), pas une phrase à traduire.
+          if (!/[A-Za-zÀ-ÿ]{4,}/.test(texte)) continue;
+          if (TOLERE.some((r) => r.test(texte))) continue;
+          fautifs.push(`${vue} : ${texte.slice(0, 60)}`);
+        }
+      }
+    }
+    assert.deepEqual(fautifs, [], "texte français en dur dans une vue");
   });
 
   it("pose lang et dir sur la racine du document", async () => {

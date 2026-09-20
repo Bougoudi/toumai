@@ -8,21 +8,13 @@
  */
 import { api, esc, emptyState, formatDate, money, session, stars, svg, toast } from './core.js';
 import { breadcrumb, pagination } from './components.js';
+import { t, formatNumber } from './i18n.js';
 
-const LEVEL = {
-  EXCELLENT: 'Excellent',
-  FIABLE: 'Fiable',
-  CORRECT: 'Correct',
-  A_SURVEILLER: 'À surveiller',
-  NOUVEAU: 'Nouvelle boutique',
-};
+// Les paliers de réputation sont ceux de la vitrine : une seule table.
+const niveau = (code) => t(`rep.level.${code}`);
 
-const SORTS = [
-  ['relevance', 'Pertinence'],
-  ['capacity', 'Capacité disponible'],
-  ['price', 'Prix le plus bas'],
-  ['reputation', 'Réputation'],
-];
+/** L'ordre des tris proposés — l'ordre, pas les libellés. */
+const SORTS = ['relevance', 'capacity', 'price', 'reputation'];
 
 /** Carte d'un fournisseur : ce qu'on sait de lui, et ce qu'on ne sait pas. */
 function supplierCard(item, { selectable }) {
@@ -30,11 +22,11 @@ function supplierCard(item, { selectable }) {
   const initial = (s.name || 'T').trim().charAt(0).toUpperCase();
 
   const facts = [
-    ['Capacité en stock', `${item.capacity.toLocaleString('fr-FR')} unité(s)`],
-    item.minOrderQty !== null ? ['Quantité minimale', `${item.minOrderQty}`] : null,
-    item.bestPrice ? ['À partir de', money(item.bestPrice.amount, item.bestPrice.currency)] : null,
-    item.medianLeadTimeDays !== null ? ['Délai annoncé (médiane)', `${item.medianLeadTimeDays} j`] : null,
-    ['Références correspondantes', String(item.matchingProducts)],
+    [t('src.capacity'), t('src.units', { count: formatNumber(item.capacity) })],
+    item.minOrderQty !== null ? [t('src.minQty'), `${item.minOrderQty}`] : null,
+    item.bestPrice ? [t('src.from'), money(item.bestPrice.amount, item.bestPrice.currency)] : null,
+    item.medianLeadTimeDays !== null ? [t('src.medianLead'), t('src.days', { count: item.medianLeadTimeDays })] : null,
+    [t('src.matchingProducts'), String(item.matchingProducts)],
   ].filter(Boolean);
 
   return `<article class="card">
@@ -47,8 +39,8 @@ function supplierCard(item, { selectable }) {
           </h3>
           <div class="product-meta">
             <span class="badge badge-country">${esc(s.countryCode)}${s.city ? ` · ${esc(s.city)}` : ''}</span>
-            ${s.verified ? '<span class="badge badge-verified">Vérifié</span>' : ''}
-            ${item.reputationScore !== null ? `<span class="badge badge-verified">${esc(LEVEL[item.reputationLevel] ?? item.reputationLevel)} · ${item.reputationScore}/100</span>` : ''}
+            ${s.verified ? `<span class="badge badge-verified">${esc(t('src.verified'))}</span>` : ''}
+            ${item.reputationScore !== null ? `<span class="badge badge-verified">${esc(niveau(item.reputationLevel))} · ${item.reputationScore}/100</span>` : ''}
             ${s.rating.count ? stars(s.rating.average, s.rating.count) : ''}
           </div>
         </div>
@@ -56,7 +48,7 @@ function supplierCard(item, { selectable }) {
       ${selectable
         ? `<label class="check" style="border:0;padding:0;margin:0">
             <input type="checkbox" class="supplier-pick" data-store="${esc(s.id)}" />
-            <span class="small">Solliciter</span>
+            <span class="small">${esc(t('src.solicit'))}</span>
           </label>`
         : ''}
     </div>
@@ -67,17 +59,13 @@ function supplierCard(item, { selectable }) {
 
     ${item.servesRequestedQuantity !== null
       ? `<p class="small" style="margin:var(--space-3) 0 0;color:${item.servesRequestedQuantity ? 'var(--success)' : 'var(--warning)'}">
-          ${item.servesRequestedQuantity
-            ? 'Peut servir le volume demandé sur au moins une référence.'
-            : 'Stock insuffisant pour le volume demandé — à confirmer avec lui.'}
+          ${esc(t(item.servesRequestedQuantity ? 'src.canServe' : 'src.cannotServe'))}
         </p>`
       : ''}
 
     ${item.servesDestination !== null
       ? `<p class="xs muted" style="margin:var(--space-2) 0 0">
-          ${item.servesDestination
-            ? 'A déjà expédié vers ce pays.'
-            : 'N’a pas encore expédié vers ce pays — cela ne veut pas dire qu’il ne peut pas.'}
+          ${esc(t(item.servesDestination ? 'src.hasShippedThere' : 'src.hasNotShippedThere'))}
         </p>`
       : ''}
 
@@ -118,80 +106,76 @@ export async function suppliers(_params, query) {
   };
 
   return `
-    ${breadcrumb([{ label: 'TOUMA Business', href: '/touma/business' }, { label: 'Sourcing' }])}
-    <h1 style="font-size:var(--text-xl)">Trouver un fournisseur</h1>
-    <p class="small muted">
-      Capacité, pays desservis et délais viennent des transactions réelles des boutiques, jamais de déclarations.
-    </p>
+    ${breadcrumb([{ label: t('src.businessCrumb'), href: '/touma/business' }, { label: t('src.crumb') }])}
+    <h1 style="font-size:var(--text-xl)">${esc(t('src.title'))}</h1>
+    <p class="small muted">${esc(t('src.intro'))}</p>
 
     <form id="sourcing-filters" class="card" style="margin-bottom:var(--space-5)">
       <div class="grid grid-2" style="gap:var(--space-3)">
-        <div class="field" style="margin:0"><label for="so-q">Que cherchez-vous ?</label>
-          <input id="so-q" name="q" value="${esc(query.get('q') ?? '')}" placeholder="cacao, sésame, emballage…" />
+        <div class="field" style="margin:0"><label for="so-q">${esc(t('src.whatAreYouLookingFor'))}</label>
+          <input id="so-q" name="q" value="${esc(query.get('q') ?? '')}" placeholder="${esc(t('src.searchPlaceholder'))}" />
         </div>
-        <div class="field" style="margin:0"><label for="so-category">Catégorie</label>
+        <div class="field" style="margin:0"><label for="so-category">${esc(t('src.category'))}</label>
           <select id="so-category" name="category">
-            <option value="">Toutes</option>
+            <option value="">${esc(t('src.allCategories'))}</option>
             ${categories.items.map((c) => opt(c.slug, c.name, query.get('category'))).join('')}
           </select>
         </div>
       </div>
       <div class="grid grid-2" style="gap:var(--space-3)">
-        <div class="field" style="margin:0"><label for="so-country">Pays du fournisseur</label>
+        <div class="field" style="margin:0"><label for="so-country">${esc(t('src.supplierCountry'))}</label>
           <select id="so-country" name="country">
-            <option value="">Tous</option>
+            <option value="">${esc(t('src.allCountries'))}</option>
             ${countries.items.map((c) => opt(c.code, c.name, query.get('country'))).join('')}
           </select>
         </div>
-        <div class="field" style="margin:0"><label for="so-destination">Livrer vers</label>
+        <div class="field" style="margin:0"><label for="so-destination">${esc(t('src.deliverTo'))}</label>
           <select id="so-destination" name="destination">
-            <option value="">Peu importe</option>
+            <option value="">${esc(t('src.anyDestination'))}</option>
             ${countries.items.map((c) => opt(c.code, c.name, query.get('destination'))).join('')}
           </select>
         </div>
       </div>
       <div class="grid grid-2" style="gap:var(--space-3)">
-        <div class="field" style="margin:0"><label for="so-quantity">Volume recherché</label>
+        <div class="field" style="margin:0"><label for="so-quantity">${esc(t('src.volume'))}</label>
           <input id="so-quantity" name="minQuantity" type="number" min="1" value="${esc(query.get('minQuantity') ?? '')}" placeholder="2000" />
         </div>
-        <div class="field" style="margin:0"><label for="so-sort">Trier par</label>
-          <select id="so-sort" name="sort">${SORTS.map(([v, t]) => opt(v, t, query.get('sort'))).join('')}</select>
+        <div class="field" style="margin:0"><label for="so-sort">${esc(t('src.sortBy'))}</label>
+          <select id="so-sort" name="sort">${SORTS.map((code) => opt(code, t(`src.sort.${code}`), query.get('sort'))).join('')}</select>
         </div>
       </div>
       <label class="check" style="margin:var(--space-3) 0">
         <input type="checkbox" name="verifiedOnly" value="true" ${query.get('verifiedOnly') ? 'checked' : ''} />
-        <span class="small">Fournisseurs vérifiés uniquement</span>
+        <span class="small">${esc(t('src.verifiedOnly'))}</span>
       </label>
-      <button class="btn" type="submit">Rechercher</button>
+      <button class="btn" type="submit">${esc(t('src.search'))}</button>
     </form>
 
     ${selectable
       ? `<form id="invite-form" class="card" style="margin-bottom:var(--space-5)">
           <div class="row-between" style="gap:var(--space-3);flex-wrap:wrap">
             <div class="field" style="flex:1;min-width:220px;margin:0">
-              <label for="so-rfq">Solliciter les fournisseurs cochés pour</label>
+              <label for="so-rfq">${esc(t('src.solicitFor'))}</label>
               <select id="so-rfq">
                 ${rfqs.items.map((r) => `<option value="${esc(r.id)}">${esc(r.reference)} — ${esc(r.title)}</option>`).join('')}
               </select>
             </div>
-            <button class="btn btn-accent" type="submit">Envoyer l’invitation</button>
+            <button class="btn btn-accent" type="submit">${esc(t('src.sendInvitation'))}</button>
           </div>
-          <p class="xs muted" style="margin:var(--space-2) 0 0">
-            L’appel d’offres reste ouvert à tous : l’invitation prévient le fournisseur que vous l’attendez.
-          </p>
+          <p class="xs muted" style="margin:var(--space-2) 0 0">${esc(t('src.invitationNote'))}</p>
         </form>`
       : session.user
-        ? `<p class="small muted">Publiez un appel d’offres pour pouvoir solliciter directement des fournisseurs.
-            <a href="/touma/business/appels-offres/nouveau" data-link>Publier une demande</a>.</p>`
+        ? `<p class="small muted">${esc(t('src.needRfq'))}
+            <a href="/touma/business/appels-offres/nouveau" data-link>${esc(t('src.publishRfq'))}</a>.</p>`
         : ''}
 
     ${data.items.length
       ? `<div class="grid grid-cards">${data.items.map((i) => supplierCard(i, { selectable })).join('')}</div>
          ${pagination(data, hrefFor)}`
       : emptyState({
-          title: 'Aucun fournisseur pour cette recherche',
-          body: 'Élargissez le volume, le pays ou la catégorie : le catalogue TOUMA s’étoffe boutique après boutique.',
-          actionLabel: 'Voir toutes les boutiques',
+          title: t('src.emptyTitle'),
+          body: t('src.emptyBody'),
+          actionLabel: t('src.allStores'),
           actionHref: '/touma/boutiques',
           iconName: 'store',
         })}`;
@@ -203,85 +187,101 @@ export async function supplier(params) {
   const r = d.reputation;
 
   return `
-    ${breadcrumb([{ label: 'Sourcing', href: '/touma/sourcing' }, { label: d.store.name }])}
+    ${breadcrumb([{ label: t('src.crumb'), href: '/touma/sourcing' }, { label: d.store.name }])}
     <div class="row-between" style="margin-bottom:var(--space-5)">
       <div>
         <h1 style="font-size:var(--text-xl);margin-bottom:2px">${esc(d.store.name)}</h1>
         <p class="small muted" style="margin:0">
-          ${esc(d.store.countryCode)}${d.store.city ? ` · ${esc(d.store.city)}` : ''} · sur TOUMA depuis ${formatDate(d.store.memberSince)}
+          ${esc(d.store.countryCode)}${d.store.city ? ` · ${esc(d.store.city)}` : ''} · ${esc(
+            t('src.memberSince', { date: formatDate(d.store.memberSince) }),
+          )}
         </p>
       </div>
       <div class="row" style="gap:var(--space-2)">
-        ${d.store.verified ? '<span class="badge badge-verified">Vérifié</span>' : '<span class="badge">Non vérifié</span>'}
-        ${r.published ? `<span class="badge badge-verified">${esc(LEVEL[r.level] ?? r.level)} · ${r.score}/100</span>` : ''}
+        ${
+          d.store.verified
+            ? `<span class="badge badge-verified">${esc(t('src.verified'))}</span>`
+            : `<span class="badge">${esc(t('src.notVerified'))}</span>`
+        }
+        ${r.published ? `<span class="badge badge-verified">${esc(niveau(r.level))} · ${r.score}/100</span>` : ''}
       </div>
     </div>
 
     <div class="grid grid-2" style="align-items:start">
       <div class="stack">
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Ce qu’il propose</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('src.whatHeOffers'))}</h2>
           ${d.store.description ? `<p class="small">${esc(d.store.description)}</p>` : ''}
           ${d.catalogue.length
             ? `<div class="table-wrap" style="border:0"><table>
-                <thead><tr><th>Catégorie</th><th>Références</th><th>Capacité</th><th>À partir de</th></tr></thead>
+                <thead><tr><th>${esc(t('src.col.category'))}</th><th>${esc(t('src.col.products'))}</th><th>${esc(
+                  t('src.col.capacity'),
+                )}</th><th>${esc(t('src.col.from'))}</th></tr></thead>
                 <tbody>
                   ${d.catalogue
                     .map(
                       (c) => `<tr>
                         <td>${esc(c.name)}</td>
                         <td>${c.products}</td>
-                        <td>${c.capacity.toLocaleString('fr-FR')}</td>
+                        <td>${esc(formatNumber(c.capacity))}</td>
                         <td>${c.minPrice ? money(c.minPrice, c.currency) : '—'}</td>
                       </tr>`,
                     )
                     .join('')}
                 </tbody>
               </table></div>`
-            : '<p class="muted small">Aucun produit actif pour l’instant.</p>'}
-          <a class="btn btn-secondary btn-sm mt-6" href="/touma/boutiques/${esc(d.store.slug)}" data-link>Voir la vitrine</a>
+            : `<p class="muted small">${esc(t('src.noActiveProduct'))}</p>`}
+          <a class="btn btn-secondary btn-sm mt-6" href="/touma/boutiques/${esc(d.store.slug)}" data-link>${esc(
+            t('src.viewStorefront'),
+          )}</a>
         </section>
 
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Ce qu’il a réellement fait</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('src.whatHeDid'))}</h2>
           <dl class="spec-list">
-            <div><dt>Commandes expédiées</dt><dd>${d.shippedOrders}</dd></div>
-            <div><dt>Pays desservis</dt><dd>${d.servedCountries.length ? esc(d.servedCountries.join(', ')) : 'aucun pour l’instant'}</dd></div>
-            <div><dt>Offres B2B envoyées</dt><dd>${d.quotesSent}${d.quotesAccepted ? ` (dont ${d.quotesAccepted} acceptée(s))` : ''}</dd></div>
-            <div><dt>Délai annoncé (médiane)</dt><dd>${d.medianLeadTimeDays !== null ? `${d.medianLeadTimeDays} j` : 'pas encore d’offre'}</dd></div>
-            <div><dt>Capacité totale en stock</dt><dd>${d.totalCapacity.toLocaleString('fr-FR')}</dd></div>
+            <div><dt>${esc(t('src.shippedOrders'))}</dt><dd>${d.shippedOrders}</dd></div>
+            <div><dt>${esc(t('src.servedCountries'))}</dt><dd>${
+              d.servedCountries.length ? esc(d.servedCountries.join(', ')) : esc(t('src.noneYet'))
+            }</dd></div>
+            <div><dt>${esc(t('src.quotesSent'))}</dt><dd>${esc(
+              d.quotesAccepted
+                ? t('src.quotesAccepted', { sent: d.quotesSent, accepted: d.quotesAccepted })
+                : String(d.quotesSent),
+            )}</dd></div>
+            <div><dt>${esc(t('src.medianLead'))}</dt><dd>${esc(
+              d.medianLeadTimeDays !== null ? t('src.days', { count: d.medianLeadTimeDays }) : t('src.noQuoteYet'),
+            )}</dd></div>
+            <div><dt>${esc(t('src.totalCapacity'))}</dt><dd>${esc(formatNumber(d.totalCapacity))}</dd></div>
           </dl>
-          <p class="xs muted" style="margin:var(--space-3) 0 0">
-            Ces chiffres décrivent son historique sur TOUMA. Ils ne garantissent pas une transaction.
-          </p>
+          <p class="xs muted" style="margin:var(--space-3) 0 0">${esc(t('src.historyNote'))}</p>
         </section>
       </div>
 
       <aside class="stack">
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Réputation</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('src.reputation'))}</h2>
           ${r.published
             ? `<dl class="spec-list">
-                ${r.metrics.onTimeRate !== null ? `<div><dt>Livraisons à l’heure</dt><dd>${Math.round(r.metrics.onTimeRate * 100)} %</dd></div>` : ''}
-                ${r.metrics.disputeRate !== null ? `<div><dt>Litiges</dt><dd>${Math.round(r.metrics.disputeRate * 100)} %</dd></div>` : ''}
-                ${r.metrics.responseRate !== null ? `<div><dt>Réponses aux messages</dt><dd>${Math.round(r.metrics.responseRate * 100)} %</dd></div>` : ''}
-                <div><dt>Commandes livrées</dt><dd>${r.ordersDelivered}</dd></div>
+                ${r.metrics.onTimeRate !== null ? `<div><dt>${esc(t('src.onTime'))}</dt><dd>${Math.round(r.metrics.onTimeRate * 100)} %</dd></div>` : ''}
+                ${r.metrics.disputeRate !== null ? `<div><dt>${esc(t('src.disputes'))}</dt><dd>${Math.round(r.metrics.disputeRate * 100)} %</dd></div>` : ''}
+                ${r.metrics.responseRate !== null ? `<div><dt>${esc(t('src.responses'))}</dt><dd>${Math.round(r.metrics.responseRate * 100)} %</dd></div>` : ''}
+                <div><dt>${esc(t('src.deliveredOrders'))}</dt><dd>${r.ordersDelivered}</dd></div>
               </dl>`
-            : `<p class="small muted" style="margin:0">
-                Pas encore assez de commandes livrées pour publier des indicateurs (${r.minimumOrders} minimum).
-              </p>`}
+            : `<p class="small muted" style="margin:0">${esc(t('src.notEnough', { minimum: r.minimumOrders }))}</p>`}
         </section>
 
         ${session.user
           ? `<section class="card">
-              <h2 style="font-size:var(--text-md)">Entrer en contact</h2>
-              <p class="small muted">Posez vos questions avant de commander : délais, conditionnement, capacité réelle.</p>
-              <button class="btn btn-block btn-sm" data-contact-store="${esc(d.store.id)}">${svg('inbox')} Contacter ce fournisseur</button>
+              <h2 style="font-size:var(--text-md)">${esc(t('src.getInTouch'))}</h2>
+              <p class="small muted">${esc(t('src.getInTouchHint'))}</p>
+              <button class="btn btn-block btn-sm" data-contact-store="${esc(d.store.id)}">${svg('inbox')} ${esc(
+                t('src.contactSupplier'),
+              )}</button>
             </section>`
           : `<section class="card">
-              <h2 style="font-size:var(--text-md)">Entrer en contact</h2>
+              <h2 style="font-size:var(--text-md)">${esc(t('src.getInTouch'))}</h2>
               <p class="small muted" style="margin:0">
-                <a href="/touma/connexion" data-link>Connectez-vous</a> pour écrire à ce fournisseur ou le solliciter sur un appel d’offres.
+                <a href="/touma/connexion" data-link>${esc(t('src.login'))}</a> ${esc(t('src.loginToContact'))}
               </p>
             </section>`}
       </aside>
