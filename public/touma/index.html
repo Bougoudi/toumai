@@ -4,7 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0B5D5E" />
-    <link rel="icon" href="/touma/img/icon-192.png" type="image/png" />
+    <!-- Le SVG d’abord : net à toute taille. Le PNG 32 reste le repli
+         pour les navigateurs qui ignorent un favicon vectoriel. -->
+    <link rel="icon" href="/touma/img/logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="/touma/img/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="manifest" href="/touma/manifest.webmanifest" />
     <!-- iOS n'implémente pas le manifeste : l'icône et le mode plein écran
          passent par ces trois balises, sans quoi « Sur l'écran d'accueil »
@@ -26,7 +29,7 @@
       <div class="container header-inner">
         <div class="header-main">
           <a class="brand" href="/touma/" data-link aria-label="TOUMA — accueil">
-            <span class="brand-mark" aria-hidden="true">T</span>
+            <img class="brand-mark" src="/touma/img/logo.svg" alt="" width="36" height="36" />
             <span>
               <span class="brand-name">TOUMA</span>
               <small class="brand-tagline">Connecter le commerce africain</small>

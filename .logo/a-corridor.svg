@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TOUMA">
+  <defs>
+    <linearGradient id="a-fond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f7274"/>
+      <stop offset="1" stop-color="#063536"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#a-fond)"/>
+  <!-- Barre du T : elle EST le corridor, ouverte aux deux bouts. -->
+  <path d="M20 18h24v9H20z" fill="#faf8f2"/>
+  <!-- Deux pointes orange : les marchandises circulent dans les deux sens. -->
+  <path d="M20 18 10 22.5 20 27z" fill="#e07a3f"/>
+  <path d="M44 18l10 4.5L44 27z" fill="#e07a3f"/>
+  <!-- Hampe : ancrée, immobile. L'infrastructure ne bouge pas, le commerce oui. -->
+  <rect x="27.5" y="27" width="9" height="21" rx="2" fill="#faf8f2"/>
+</svg>

@@ -126,7 +126,9 @@ export async function documentView(params) {
     <article class="card document">
       <header class="row-between" style="align-items:flex-start;margin-bottom:var(--space-6)">
         <div>
-          <div class="brand-mark" aria-hidden="true">T</div>
+          <!-- Version à une encre : une facture s’imprime souvent en noir,
+               et un dégradé y devient un aplat gris illisible. -->
+          <img class="brand-mark" src="/touma/img/logo-mono.svg" alt="" width="38" height="38" />
           <h1 style="font-size:var(--text-xl);margin:var(--space-3) 0 2px">${esc(p.title ?? typeLabel(d.type))}</h1>
           <p class="small muted" style="margin:0;font-family:var(--font-mono)">${esc(d.number)}</p>
         </div>
