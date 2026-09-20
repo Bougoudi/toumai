@@ -1586,6 +1586,64 @@ await step('langue : l’ossature aussi — confirmation et message de succès e
   }
 });
 
+await step('confiance : les trois centres, en français puis en arabe', async () => {
+  // Un score sans sa ventilation est exactement ce que V21 interdit. Ces
+  // écrans sont donc vérifiés sur ce qu'ils montrent — les composantes — et
+  // non sur la seule présence d'un chiffre.
+  const vendeur = await sessionFor('vendeur.td@touma.dev');
+  const acheteur = await sessionFor('acheteur@touma.dev');
+  const admin = await sessionFor('admin@touma.dev');
+
+  const ecrans = [
+    [vendeur, '/vendeur/confiance', /Votre confiance|Ce qui compose le score/, /ثقتك|مكوّنات النتيجة/],
+    [acheteur, '/compte/confiance', /Votre compte|Ce qui compose le score/, /حسابك|مكوّنات النتيجة/],
+    [acheteur, '/confiance/recours', /Déposer un recours|Vos explications/, /تقديم اعتراض|إيضاحاتك/],
+    [admin, '/admin/confiance', /Centre de confiance|Vendeurs vérifiés/, /مركز الثقة|بائعون موثّقون/],
+  ];
+
+  try {
+    for (const [page, chemin, attenduFr, attenduAr] of ecrans) {
+      await page.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+      await page.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(800);
+      const fr = ((await page.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!attenduFr.test(fr)) throw new Error(`${chemin} : écran français introuvable`);
+
+      await page.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+      await page.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(800);
+      if ((await page.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`${chemin} : sens d’écriture non rtl`);
+      const ar = ((await page.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!attenduAr.test(ar)) throw new Error(`${chemin} : aucun texte arabe attendu`);
+      for (const reste of ['Confiance', 'Badges', 'Historique', 'Recours', 'Vérification']) {
+        if (ar.includes(reste)) throw new Error(`${chemin} : résidu français — ${reste}`);
+      }
+      if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) {
+        throw new Error(`${chemin} : débordement horizontal en arabe`);
+      }
+    }
+    await vendeur.screenshot({ path: `${OUT}/60-confiance-arabe.png` });
+  } finally {
+    for (const [page] of ecrans) await page.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+  }
+});
+
+await step('confiance : un score sans volume ne s’affiche pas comme un mauvais score', async () => {
+  // Le point le plus facile à casser en changeant un gabarit : afficher 0 au
+  // lieu d'un tiret ferait passer un vendeur nouveau pour un mauvais vendeur.
+  const vendeur = await sessionFor('vendeur.td@touma.dev');
+  await vendeur.goto(`${BASE}/vendeur/confiance`, { waitUntil: 'networkidle' });
+  await vendeur.waitForTimeout(800);
+  const texte = ((await vendeur.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+
+  // Le seuil doit être annoncé, et chaque composante nommée — même à zéro.
+  if (!/Pas encore assez de commandes|Sur \d+ commandes/.test(texte)) {
+    throw new Error('ni le seuil ni le volume ne sont annoncés');
+  }
+  if (!/Livraisons dans le délai/.test(texte)) throw new Error('la ventilation n’est pas affichée');
+  if (/0\/100/.test(texte)) throw new Error('un score absent est affiché comme un zéro');
+});
+
 await step('langue : les statuts de commande sont traduits partout à la fois', async () => {
   // Les statuts viennent du serveur sous forme de code : les traduire au seul
   // endroit qui les rend les traduit sur tous les écrans, y compris ceux dont

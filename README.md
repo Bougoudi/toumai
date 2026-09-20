@@ -34,7 +34,7 @@ uniquement) : `admin@touma.dev`, `vendeur.td@touma.dev`, `vendeur.cm@touma.dev`,
 `acheteur@touma.dev`.
 
 ```bash
-npm test              # 540 tests : unitaires, intégration et parcours complet (Node ≥ 22)
+npm test              # 584 tests : unitaires, intégration et parcours complet (Node ≥ 22)
 npm run typecheck     # TypeScript strict
 
 # Le parcours navigateur émet plusieurs milliers de requêtes en quelques
@@ -43,7 +43,7 @@ npm run typecheck     # TypeScript strict
 # parcours refuse de démarrer sans cette marge, plutôt que de mentir sur la
 # cause. La valeur par défaut (300/minute) reste celle de la production.
 TOUMA_API_RATE_LIMIT=6000 npm run dev   # dans un autre terminal
-npm run test:browser  # 85 vérifications navigateur, de 360 à 1440 px (Chromium)
+npm run test:browser  # 87 vérifications navigateur, de 360 à 1440 px (Chromium)
 ```
 
 ## Mettre TOUMA en ligne

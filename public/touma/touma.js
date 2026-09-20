@@ -104,6 +104,10 @@ const ROUTES = [
 
   // Promotions (codes de réduction).
   { path: '/touma/vendeur/promotions', module: 'promotions', name: 'sellerCoupons', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/confiance', module: 'trust', name: 'sellerTrust', auth: true, role: 'SELLER' },
+  { path: '/touma/compte/confiance', module: 'trust', name: 'buyerTrust', auth: true },
+  { path: '/touma/confiance/recours', module: 'trust', name: 'appealForm', auth: true },
+  { path: '/touma/confiance/historique/:entityType/:entityId', module: 'trust', name: 'trustHistory', auth: true },
   { path: '/touma/admin/promotions', module: 'promotions', name: 'adminCoupons', auth: true, role: 'ADMIN' },
   { path: '/touma/promotions/:id', module: 'promotions', name: 'couponDetail', auth: true },
 
@@ -125,6 +129,7 @@ const ROUTES = [
   { path: '/touma/admin/risque', module: 'admin', name: 'risk', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/intelligence', module: 'admin', name: 'intelligence', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/moderation', module: 'admin', name: 'moderation', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/confiance', module: 'trust', name: 'adminTrust', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/:section', module: 'admin', name: 'list', auth: true, role: 'ADMIN' },
 ];
 
@@ -162,6 +167,7 @@ const LOADERS = {
   finance: () => import('./views-finance.js'),
   geo: () => import('./views-geo.js'),
   zones: () => import('./views-zones.js'),
+  trust: () => import('./views-trust.js'),
 };
 
 async function loadModule(name) {
@@ -662,6 +668,37 @@ document.addEventListener('click', (event) => {
       await render();
     });
   }
+  // ── Confiance : décisions d'administration ────────────────────────────────
+  //
+  // Les deux exigent un motif. Ce n'est pas une formalité de formulaire : une
+  // décision de confiance sans motif n'est pas contestable, et le serveur la
+  // refuse de toute façon.
+  if (d.moderateReview) {
+    const motif = prompt(t('trust.moderationReason'));
+    if (!motif) return;
+    return run(async () => {
+      await api(`/admin/trust/reviews/${d.moderateReview}/moderate`, {
+        method: 'POST',
+        body: { status: el.dataset.decision, reason: motif },
+      });
+      toast(t('trust.moderationDone'), 'success');
+      await render();
+    }, { button: el });
+  }
+
+  if (d.decideAppeal) {
+    const motivation = prompt(t('trust.appealResolution'));
+    if (!motivation) return;
+    return run(async () => {
+      await api(`/admin/trust/appeals/${d.decideAppeal}/decide`, {
+        method: 'POST',
+        body: { decision: el.dataset.decision, resolution: motivation },
+      });
+      toast(t('trust.appealDecided'), 'success');
+      await render();
+    }, { button: el });
+  }
+
   if (d.clearCart !== undefined) {
     return run(async () => {
       const ok = await confirmDialog({ title: t('sh.clearCartTitle'), body: t('sh.clearCartBody'), confirmLabel: t('cart.clear'), danger: true });
@@ -1167,6 +1204,24 @@ document.addEventListener('submit', (event) => {
     return navigate(`/touma/admin/${form.dataset.section}${q ? `?q=${encodeURIComponent(String(q))}` : ''}`);
   }
 
+  if (form.id === 'appeal-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api('/trust/appeals', {
+          method: 'POST',
+          body: {
+            subjectType: document.getElementById('ap-subject').value,
+            message: document.getElementById('ap-message').value.trim(),
+          },
+        });
+        toast(t('trust.appealSent'), 'success');
+        navigate('/touma/compte/confiance');
+      },
+      { button: submit },
+    );
+  }
+
   if (form.id === 'login-form') {
     event.preventDefault();
     return run(
@@ -1176,7 +1231,10 @@ document.addEventListener('submit', (event) => {
           body: { email: document.getElementById('l-email').value, password: document.getElementById('l-password').value },
         });
         session.write({ user: data.user, accessToken: data.accessToken, refreshToken: data.refreshToken });
-        toast(`Bienvenue, ${data.user.name.split(' ')[0]}.`, 'success');
+        // Un nom vide produirait « Bienvenue, . » — on salue sans prénom
+        // plutôt que de saluer quelqu'un qui n'en a pas donné.
+        const prenom = (data.user.name ?? '').trim().split(/\s+/)[0];
+        toast(prenom ? t('sh.welcomeBack', { name: prenom }) : t('sh.welcome'), 'success');
         navigate(document.getElementById('l-next').value || '/touma/');
       },
       { button: submit },

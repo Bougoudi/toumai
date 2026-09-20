@@ -165,8 +165,19 @@ describe("i18n — français et arabe", () => {
         const reste = ligne
           .replace(/(^|[^:])\/\/.*$/, "$1")
           .replace(/t\('[^']+'|fr\('[^']+'/g, "");
-        for (const m of reste.matchAll(/'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"/g)) {
-          const valeur = m[1] ?? m[2];
+        for (const m of reste.matchAll(
+          // Trois formes de chaîne, et la troisième manquait. Un gabarit à
+          // accents graves contenant une variable — `Bienvenue, ${prenom}.` —
+          // échappait aux deux premières : c'est par là qu'un message d'accueil
+          // est resté en français après que tout le reste eut été traduit.
+          /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`([^`\n]*)`/g,
+        )) {
+          const brut = m[1] ?? m[2] ?? m[3] ?? "";
+          // Dans un gabarit, seules les parties littérales comptent : ce qui
+          // est interpolé est résolu au rendu, souvent par `t()`.
+          const valeur = m[3] === undefined ? brut : brut.replace(/\$\{[^}]*\}/g, " ");
+          // Un gabarit qui porte du HTML est un fragment de vue, pas un libellé.
+          if (m[3] !== undefined && /[<>]/.test(brut)) continue;
           if (valeur.includes("/")) continue;
           if (PHRASE.test(valeur) && MOTS.test(valeur)) {
             fautifs.push(`${fichier} : ${valeur.slice(0, 60)}`);
