@@ -257,6 +257,13 @@ model User {
 
   /// Versements décidés par cette personne.
   payoutDecisions ToumaSellerPayout[] @relation("PayoutDecider")
+
+  // V21 — confiance
+  accountStanding   ToumaAccountStanding?
+  standingDecisions ToumaAccountStanding[] @relation("StandingActor")
+  trustAppeals      ToumaTrustAppeal[]     @relation("AppealAuthor")
+  appealsReviewed   ToumaTrustAppeal[]     @relation("AppealReviewer")
+  supplierScore     ToumaSupplierScore?    @relation("SupplierScore")
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -641,11 +648,38 @@ enum StoreStatus {
   CLOSED
 }
 
+/// États d'un dossier de vérification.
+///
+/// V21 demandait le vocabulaire NOT_STARTED / SUBMITTED / VERIFIED. Les quatre
+/// premières valeurs existaient déjà et sont câblées dans les commandes, les
+/// vues, les seeds et les tests : `APPROVED` **est** « vérifié ». Les renommer
+/// aurait touché une centaine d'appels pour un synonyme. Les trois états qui
+/// manquaient vraiment — une revue en cours, une vérification retirée, une
+/// vérification périmée — sont ajoutés.
 enum VerificationStatus {
+  /// Aucun dossier déposé (équivaut à NOT_STARTED).
   UNVERIFIED
+  /// Dossier déposé, pas encore pris en main (équivaut à SUBMITTED).
   PENDING
+  /// Un examinateur l'a pris en main.
+  UNDER_REVIEW
+  /// Vérifié (équivaut à VERIFIED).
   APPROVED
   REJECTED
+  /// Vérification retirée à la suite d'une décision de confiance.
+  SUSPENDED
+  /// Vérification arrivée à échéance : les pièces doivent être refournies.
+  EXPIRED
+}
+
+/// Niveau de vérification atteint. Chaque niveau exige les signaux du
+/// précédent plus les siens — voir `trust/verification-levels.ts`.
+enum VerificationLevel {
+  NONE
+  BASIC
+  BUSINESS
+  PRO
+  ENTERPRISE
 }
 
 enum ProductStatus {
@@ -1533,6 +1567,8 @@ model ToumaStore {
   status             StoreStatus        @default(DRAFT)
   /// Confiance Touma Verified (dénormalisé depuis la dernière vérification).
   verificationStatus VerificationStatus @default(UNVERIFIED)
+  /// Niveau de vérification en cours de validité, accordé par l’administration.
+  verificationLevel  VerificationLevel  @default(NONE)
   /// Note moyenne (0–5) et nombre d'avis, recalculés à chaque avis publié.
   ratingAverage      Decimal            @default(0) @db.Decimal(3, 2)
   ratingCount        Int                @default(0)
@@ -1584,6 +1620,13 @@ model ToumaSellerVerification {
   /// Documents (privés) : [{ kind, url, uploadedAt }] — jamais exposés publiquement.
   documents       Json               @default("[]")
   status          VerificationStatus @default(PENDING)
+  /// Niveau demandé, puis niveau accordé. Les deux, parce qu'un dossier peut
+  /// être accepté à un niveau inférieur à celui qui était visé.
+  requestedLevel  VerificationLevel  @default(BASIC)
+  grantedLevel    VerificationLevel  @default(NONE)
+  /// Une vérification ne vaut pas éternellement : un registre de commerce se
+  /// périme. Null tant qu'aucune échéance n'est fixée.
+  expiresAt       DateTime?
   reviewerId      String?
   reviewer        User?              @relation("VerificationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
   reviewerComment String?
@@ -1876,19 +1919,20 @@ model ToumaOrder {
   completedAt  DateTime?
   cancelledAt  DateTime?
 
-  items          ToumaOrderItem[]
-  payments       ToumaPayment[]
-  conversations  ToumaConversation[]
-  shipments      ToumaShipment[]
-  quotes         ToumaShippingQuote[]
-  reviews        ToumaReview[]
-  disputes       ToumaDispute[]
-  commissions    ToumaCommission[]
-  returnRequests ToumaReturnRequest[]
-  refunds        ToumaRefund[]
-  tickets        ToumaSupportTicket[]
-  loyaltyEvents  ToumaLoyaltyEvent[]
-  documents      ToumaDocument[]
+  items           ToumaOrderItem[]
+  payments        ToumaPayment[]
+  conversations   ToumaConversation[]
+  shipments       ToumaShipment[]
+  quotes          ToumaShippingQuote[]
+  reviews         ToumaReview[]
+  transactionRisk ToumaTransactionRisk?
+  disputes        ToumaDispute[]
+  commissions     ToumaCommission[]
+  returnRequests  ToumaReturnRequest[]
+  refunds         ToumaRefund[]
+  tickets         ToumaSupportTicket[]
+  loyaltyEvents   ToumaLoyaltyEvent[]
+  documents       ToumaDocument[]
 
   settlement ToumaSettlementAllocation?
 
@@ -2283,23 +2327,32 @@ model ToumaTrackingEvent {
 
 /// Avis d'un acheteur : uniquement sur un produit réellement acheté et livré.
 model ToumaReview {
-  id        String       @id @default(cuid())
-  orderId   String
-  order     ToumaOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId String
-  product   ToumaProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  rating    Int
-  comment   String?
-  /// PENDING | PUBLISHED | REJECTED — modération.
-  status    String       @default("PUBLISHED")
+  id               String                 @id @default(cuid())
+  orderId          String
+  order            ToumaOrder             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId        String
+  product          ToumaProduct           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  authorId         String
+  author           User                   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  rating           Int
+  comment          String?
+  /// Modération. Était une chaîne libre commentée ; l'enum rend les états
+  /// impossibles à mal écrire et ajoute ceux qui manquaient.
+  status           ReviewModerationStatus @default(PUBLISHED)
+  /// Pourquoi l'avis a été masqué ou rejeté, et par qui. Une décision de
+  /// modération sans motif n'est pas contestable.
+  moderationReason String?
+  moderatedById    String?
+  moderatedAt      DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  riskScore ToumaReviewRiskScore?
+
   @@unique([orderId, productId])
   @@index([productId])
+  @@index([status])
   @@map("touma_reviews")
 }
 
@@ -3689,4 +3742,312 @@ model ToumaSearchQuery {
   @@index([term])
   @@index([createdAt])
   @@map("touma_search_queries")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V21 — TOUMA TRUST
+//
+// Quatre concepts distincts, et les confondre serait la première erreur :
+//
+//   VERIFICATION — des **pièces** contrôlées par un humain ou un prestataire.
+//   REPUTATION   — ce que les acheteurs déclarent (avis).
+//   PERFORMANCE  — ce que les transactions démontrent (délais, litiges).
+//   RISK         — des signaux de fraude, qui n'ont pas vocation à être publics.
+//
+// `ToumaStoreReputation` (V17) porte déjà la PERFORMANCE d'une boutique, et
+// `ToumaRiskScore` le RISQUE d'un compte. Rien de tout cela n'est dupliqué
+// ici : le score de confiance les **agrège**, il ne les recalcule pas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum TrustEntityType {
+  SELLER
+  BUYER
+  SUPPLIER
+  PRODUCT
+}
+
+enum TrustLevel {
+  /// Pas encore assez de données. Ce n'est pas un mauvais score : c'est aucun.
+  INSUFFICIENT_DATA
+  LOW
+  MODERATE
+  GOOD
+  EXCELLENT
+}
+
+/// Score de confiance courant d'une entité. Une ligne par entité, remplacée à
+/// chaque calcul — l'historique vit dans `ToumaTrustScoreSnapshot`.
+model ToumaTrustScore {
+  id         String          @id @default(cuid())
+  entityType TrustEntityType
+  entityId   String
+
+  /// 0–100, ou null tant que le volume minimal n'est pas atteint. Un score
+  /// absent se dit « pas encore mesurable », jamais zéro.
+  score Int?
+  level TrustLevel @default(INSUFFICIENT_DATA)
+
+  /// Détail lisible : [{ code, label, weight, value, points, direction }].
+  /// C'est ce qui rend le score explicable ; il n'est jamais affiché sans lui.
+  breakdown Json @default("[]")
+
+  /// Volume sur lequel porte le calcul, pour dire « sur 142 commandes ».
+  sampleSize Int @default(0)
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([entityType, entityId])
+  @@index([entityType, score])
+  @@map("touma_trust_scores")
+}
+
+/// Historique : 90 → 87 → 84 → 88, avec la raison de chaque mouvement. Rien
+/// n'est écrasé, et un vendeur peut donc contester une baisse datée.
+model ToumaTrustScoreSnapshot {
+  id         String          @id @default(cuid())
+  entityType TrustEntityType
+  entityId   String
+
+  score     Int?
+  level     TrustLevel
+  breakdown Json       @default("[]")
+  /// Événement déclencheur (`ORDER_COMPLETED`, `DISPUTE_OPENED`, `SCHEDULED`).
+  reason    String
+  /// Écart avec le score précédent, null au premier calcul.
+  delta     Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt])
+  @@map("touma_trust_score_snapshots")
+}
+
+/// Badge attribué **par le serveur** à partir d'une règle. Le frontend ne fait
+/// que l'afficher ; il ne peut ni en créer ni en retirer.
+model ToumaTrustBadge {
+  id         String          @id @default(cuid())
+  entityType TrustEntityType
+  entityId   String
+  /// `IDENTITY_VERIFIED`, `RELIABLE_DELIVERY`, … — voir `trust/badges.ts`.
+  code       String
+
+  /// Ce qui justifie le badge au moment où il est posé : le chiffre exact,
+  /// pour qu'on puisse relire la décision plus tard.
+  evidence Json @default("{}")
+
+  awardedAt DateTime  @default(now())
+  /// Un badge se retire quand sa condition cesse d'être vraie. La ligne reste.
+  revokedAt DateTime?
+
+  @@unique([entityType, entityId, code])
+  @@index([entityType, entityId, revokedAt])
+  @@map("touma_trust_badges")
+}
+
+/// Fait qui peut faire bouger un score. Écrit par le domaine (commande,
+/// litige, avis), consommé par le moteur de confiance.
+model ToumaTrustEvent {
+  id         String          @id @default(cuid())
+  entityType TrustEntityType
+  entityId   String
+  /// `ORDER_COMPLETED`, `DISPUTE_OPENED`, `REVIEW_FLAGGED`, …
+  type       String
+  detail     Json            @default("{}")
+
+  occurredAt  DateTime  @default(now())
+  /// Null tant que le moteur ne l'a pas pris en compte.
+  processedAt DateTime?
+
+  @@index([entityType, entityId, occurredAt])
+  @@index([processedAt])
+  @@map("touma_trust_events")
+}
+
+/// État d'un compte vis-à-vis des règles de la place de marché.
+///
+/// `User.status` (ACTIVE | SUSPENDED | DELETED) reste l'état **technique** du
+/// compte. Celui-ci est l'état **de confiance**, qui a besoin de nuances que
+/// l'autre n'a pas : un compte restreint peut acheter mais plus vendre.
+enum AccountStandingStatus {
+  ACTIVE
+  RESTRICTED
+  SUSPENDED
+  BANNED
+}
+
+enum TrustAppealStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model ToumaAccountStanding {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status       AccountStandingStatus @default(ACTIVE)
+  /// Motif interne (`FRAUD`, `REVIEW_MANIPULATION`, `POLICY_VIOLATION`, …).
+  reason       String?
+  /// Ce qui est dit à l'utilisateur. Une sanction sans motif lisible n'est pas
+  /// contestable, et une décision non contestable n'a pas sa place ici.
+  publicReason String?
+  /// Pièces à l'appui de la décision — jamais exposées à l'intéressé en l'état.
+  evidence     Json                  @default("{}")
+
+  /// Qui a décidé. Une suspension automatique n'existe pas : un humain signe.
+  actorId String?
+  actor   User?   @relation("StandingActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  /// Une restriction peut être temporaire.
+  expiresAt DateTime?
+
+  decidedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("touma_account_standings")
+}
+
+/// Contestation d'une décision de confiance (refus de vérification, suspension,
+/// avis masqué). Sans recours, une décision automatique devient arbitraire.
+model ToumaTrustAppeal {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("AppealAuthor", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Ce qui est contesté : `VERIFICATION`, `STANDING`, `REVIEW`, `TRUST_SCORE`.
+  subjectType String
+  subjectId   String?
+
+  status   TrustAppealStatus @default(SUBMITTED)
+  message  String
+  /// Pièces jointes par le contestataire : [{ kind, url }].
+  evidence Json              @default("[]")
+
+  reviewerId String?
+  reviewer   User?     @relation("AppealReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  resolution String?
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status, createdAt])
+  @@map("touma_trust_appeals")
+}
+
+/// Modération d'un avis. `ToumaReview.status` était une chaîne libre commentée
+/// « PENDING | PUBLISHED | REJECTED » : un enum la remplace, avec les deux
+/// états qui manquaient — masqué après publication, et signalé en attente
+/// d'une décision humaine.
+enum ReviewModerationStatus {
+  PENDING
+  PUBLISHED
+  HIDDEN
+  REJECTED
+  FLAGGED
+}
+
+/// Ce que le moteur recommande de faire d'un avis. Il **recommande** : masquer
+/// un avis reste une décision tracée, pas une conséquence automatique d'un
+/// score probabiliste.
+enum ReviewRiskAction {
+  ALLOW
+  FLAG
+  HOLD
+  REVIEW
+}
+
+/// Signaux de manipulation sur un avis.
+model ToumaReviewRiskScore {
+  id       String      @id @default(cuid())
+  reviewId String      @unique
+  review   ToumaReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  /// 0 (rien à signaler) → 100.
+  score   Int              @default(0)
+  action  ReviewRiskAction @default(ALLOW)
+  /// [{ code, weight, detail }] — mêmes conventions que `ToumaRiskScore`.
+  signals Json             @default("[]")
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([action])
+  @@map("touma_review_risk_scores")
+}
+
+enum TransactionRiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+/// Ce qui est fait d'une transaction jugée risquée. `BLOCK` n'est jamais la
+/// conséquence d'un score seul : il faut une règle nommée qui le dise.
+enum TransactionRiskDecision {
+  ALLOW
+  REVIEW
+  REQUIRE_VERIFICATION
+  HOLD
+  BLOCK
+}
+
+/// Évaluation d'une commande au moment où elle est passée. Conservée : c'est
+/// la trace de ce que la plateforme savait quand elle a laissé passer.
+model ToumaTransactionRisk {
+  id      String     @id @default(cuid())
+  orderId String     @unique
+  order   ToumaOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  score    Int
+  level    TransactionRiskLevel
+  decision TransactionRiskDecision @default(ALLOW)
+  /// [{ code, label, weight, detail }] — chaque facteur est nommé.
+  factors  Json                    @default("[]")
+
+  /// Renseignés quand un humain a tranché après coup.
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([level, createdAt])
+  @@map("touma_transaction_risks")
+}
+
+/// Fiabilité d'un fournisseur B2B. Distincte de la réputation de détail : un
+/// bon vendeur au détail n'est pas nécessairement un fournisseur fiable — le
+/// MOQ, le délai annoncé et la tenue d'un devis ne s'y mesurent pas.
+model ToumaSupplierScore {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation("SupplierScore", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Volumes réels observés.
+  rfqsInvited     Int @default(0)
+  quotesSubmitted Int @default(0)
+  quotesAccepted  Int @default(0)
+  b2bOrders       Int @default(0)
+
+  /// Taux (0–1), nuls sous le volume minimal.
+  responseRate     Decimal? @db.Decimal(5, 4)
+  acceptanceRate   Decimal? @db.Decimal(5, 4)
+  /// Délai médian de réponse à une demande, en heures.
+  medianQuoteHours Decimal? @db.Decimal(10, 2)
+
+  score Int?
+  level TrustLevel @default(INSUFFICIENT_DATA)
+
+  computedAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([score])
+  @@map("touma_supplier_scores")
 }

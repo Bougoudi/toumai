@@ -183,6 +183,46 @@ export const env = {
     reputationMinOrders: Number(process.env.TOUMA_REPUTATION_MIN_ORDERS ?? 5),
     /** Durée de validité d'un instantané de réputation (secondes). */
     reputationTtlSeconds: Number(process.env.TOUMA_REPUTATION_TTL_SECONDS ?? 3600),
+
+    /**
+     * TOUMA Trust (V21).
+     *
+     * Les seuils et la décroissance sont des réglages d'exploitation, pas des
+     * constantes de code : une place de marché qui démarre n'a pas le volume
+     * d'une place installée, et ces valeurs devront être revues avec des
+     * vendeurs réels. Les pondérations, elles, vivent dans
+     * `src/touma/trust/weights.ts` et sont publiées.
+     */
+    trust: {
+      /** Coupe-circuit général du module (§47 — feature flags). */
+      enabled: process.env.TOUMA_TRUST_ENABLED !== 'false',
+      verificationEnabled: process.env.TOUMA_TRUST_VERIFICATION_ENABLED !== 'false',
+      reviewModerationEnabled: process.env.TOUMA_TRUST_REVIEW_MODERATION_ENABLED !== 'false',
+      supplierScoreEnabled: process.env.TOUMA_TRUST_SUPPLIER_SCORE_ENABLED !== 'false',
+      transactionRiskEnabled: process.env.TOUMA_TRUST_TRANSACTION_RISK_ENABLED !== 'false',
+      /**
+       * L'explication d'un score par l'IA reste **fermée par défaut**. Le score
+       * est déjà explicable sans elle : la ventilation suffit. L'IA ne fait que
+       * mettre en phrases, et il vaut mieux qu'elle soit absente que
+       * approximative sur un sujet qui décide d'une réputation.
+       */
+      aiEnabled: process.env.TOUMA_TRUST_AI_ENABLED === 'true',
+      /** Volume minimal avant de publier un score. */
+      minSellerOrders: Number(process.env.TOUMA_TRUST_MIN_SELLER_ORDERS ?? 5),
+      minBuyerOrders: Number(process.env.TOUMA_TRUST_MIN_BUYER_ORDERS ?? 3),
+      minProductOrders: Number(process.env.TOUMA_TRUST_MIN_PRODUCT_ORDERS ?? 5),
+      minSupplierQuotes: Number(process.env.TOUMA_TRUST_MIN_SUPPLIER_QUOTES ?? 3),
+      /** Décroissance temporelle des événements négatifs. */
+      decayHalfLifeDays: Number(process.env.TOUMA_TRUST_DECAY_HALF_LIFE_DAYS ?? 180),
+      decayHorizonDays: Number(process.env.TOUMA_TRUST_DECAY_HORIZON_DAYS ?? 730),
+      /** Durée de validité d'un score avant recalcul (secondes). */
+      ttlSeconds: Number(process.env.TOUMA_TRUST_TTL_SECONDS ?? 3600),
+      /**
+       * Écart de score à partir duquel l'intéressé est notifié. Sans ce seuil,
+       * un vendeur recevrait une notification à chaque commande livrée.
+       */
+      notifyDelta: Number(process.env.TOUMA_TRUST_NOTIFY_DELTA ?? 5),
+    },
     /** Adaptateurs actifs (mock tant qu'aucun prestataire réel n'est raccordé). */
     paymentProvider: process.env.TOUMA_PAYMENT_PROVIDER ?? 'mock',
     logisticsProvider: process.env.TOUMA_LOGISTICS_PROVIDER ?? 'mock',
