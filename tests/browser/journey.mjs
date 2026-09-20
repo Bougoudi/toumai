@@ -1385,6 +1385,87 @@ await step('langue : messagerie et administration en arabe, sans résidu', async
   }
 });
 
+await step('langue : compte, vitrine, provinces, zones et Finance en arabe', async () => {
+  // Les écrans que la couverture annonçait encore en français. Ils sont
+  // vérifiés en deux temps comme les autres : du texte arabe attendu, ET zéro
+  // reste français.
+  const ar = await sessionFor('acheteur@touma.dev');
+  await ar.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await ar.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+
+  const vendeur = await sessionFor('vendeur.cm@touma.dev');
+  await vendeur.goto(`${BASE}/`, { waitUntil: 'networkidle' });
+  await vendeur.evaluate(() => localStorage.setItem('touma.locale', 'ar'));
+
+  try {
+    for (const [page, chemin, attendu, residus] of [
+      [
+        ar,
+        '/compte',
+        /حسابي|الملف الشخصي/,
+        ['Mon compte', 'Profil', 'Notifications', 'Adresses', 'Mes commandes', 'Suivi et après-vente'],
+      ],
+      [ar, '/boutiques', /المتاجر|لا توجد متاجر/, ['Boutiques', 'Toutes', 'Vérifiées', 'Aucune boutique']],
+      [
+        ar,
+        '/provinces',
+        /مقاطعات تشاد|لكل مقاطعة صفحتها/,
+        ['Les 23 provinces', 'Chaque province a sa page', 'département', 'localités'],
+      ],
+      [
+        ar,
+        '/provinces/21',
+        /مقاطعة تشادية|التوصيل|المتاجر/,
+        ['Province du Tchad', 'Boutiques actives', 'Départements', 'Localités recensées', 'estimation indisponible'],
+      ],
+      [
+        vendeur,
+        '/vendeur/zones',
+        /مناطق الخدمة|المقاطعات/,
+        ['Zones de service', 'Provinces', 'Je livre dans tout le Tchad', 'Ne plus rien restreindre'],
+      ],
+      [
+        vendeur,
+        '/vendeur/finance',
+        /المالية|ما يعود إليك|حسب الطلب/,
+        ['Ce qui vous revient', 'Par commande', 'Fenêtre de protection', 'Mes versements', 'Réglable'],
+      ],
+      [
+        vendeur,
+        '/vendeur/versements',
+        /الدفعات|لا دفعات/,
+        ['Versements', 'Aucun versement', 'Voir ce qui m’est dû', 'À exécuter'],
+      ],
+    ]) {
+      await page.goto(`${BASE}${chemin}`, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(700);
+
+      if ((await page.getAttribute('html', 'dir')) !== 'rtl') throw new Error(`${chemin} : le sens d’écriture n’est pas rtl`);
+      const corps = ((await page.textContent('#view')) ?? '').replace(/\s+/g, ' ');
+      if (!attendu.test(corps)) throw new Error(`${chemin} : aucun texte arabe attendu trouvé`);
+
+      const restes = residus.filter((r) => corps.includes(r));
+      if (restes.length > 0) throw new Error(`${chemin} : résidus français — ${restes.join(', ')}`);
+
+      if (await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)) {
+        throw new Error(`${chemin} : débordement horizontal en arabe`);
+      }
+    }
+
+    // L'attribution GeoNames doit rester un lien : la licence CC BY 4.0
+    // l'exige, et replier la phrase dans une seule clé l'avait supprimé.
+    await ar.goto(`${BASE}/provinces/21`, { waitUntil: 'networkidle' });
+    await ar.waitForTimeout(500);
+    const lienSource = await ar.locator('#view a[href="https://www.geonames.org/"]').count();
+    if (lienSource === 0) throw new Error('page de province : l’attribution GeoNames n’est plus un lien');
+
+    await ar.screenshot({ path: `${OUT}/57-province-arabe.png` });
+  } finally {
+    await ar.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+    await vendeur.evaluate(() => localStorage.setItem('touma.locale', 'fr'));
+  }
+});
+
 await step('langue : les statuts de commande sont traduits partout à la fois', async () => {
   // Les statuts viennent du serveur sous forme de code : les traduire au seul
   // endroit qui les rend les traduit sur tous les écrans, y compris ceux dont

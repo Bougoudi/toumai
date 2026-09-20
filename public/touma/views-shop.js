@@ -285,7 +285,7 @@ export async function product(params) {
       <div class="gallery">
         <div class="gallery-main" id="gallery-main">${productImage(images[0].url, p.title)}</div>
         ${images.length > 1
-          ? `<div class="gallery-thumbs" role="tablist" aria-label="Visuels du produit">
+          ? `<div class="gallery-thumbs" role="tablist" aria-label="${esc(t('order.galleryAria'))}">
               ${images.map((img, i) => `<button type="button" data-gallery="${esc(img.url ?? '')}" aria-current="${i === 0}" aria-label="Visuel ${i + 1}">${productImage(img.url, '')}</button>`).join('')}
             </div>`
           : ''}
@@ -418,35 +418,33 @@ export async function stores(_params, query) {
   };
 
   return `
-    ${breadcrumb([{ label: 'Accueil', href: '/touma/' }, { label: 'Boutiques' }])}
+    ${breadcrumb([{ label: t('nav.home'), href: '/touma/' }, { label: t('stores.title') }])}
     <div class="row-between" style="margin-bottom:var(--space-5)">
-      <div><h1 style="margin-bottom:2px">Boutiques</h1><p class="muted small" style="margin:0">${result.total} boutique(s) active(s)</p></div>
+      <div><h1 style="margin-bottom:2px">${esc(t('stores.title'))}</h1><p class="muted small" style="margin:0">${esc(
+        t('stores.count', { count: result.total }),
+      )}</p></div>
       <div class="chip-row">
-        <a class="chip" href="/touma/boutiques" data-link aria-current="${!query.get('verified')}">Toutes</a>
-        <a class="chip" href="/touma/boutiques?verified=true" data-link aria-current="${query.get('verified') === 'true'}">Vérifiées</a>
+        <a class="chip" href="/touma/boutiques" data-link aria-current="${!query.get('verified')}">${esc(t('stores.all'))}</a>
+        <a class="chip" href="/touma/boutiques?verified=true" data-link aria-current="${query.get('verified') === 'true'}">${esc(
+          t('stores.verifiedOnly'),
+        )}</a>
       </div>
     </div>
     ${result.items.length
       ? `<div class="grid grid-cards">${result.items.map(storeCard).join('')}</div>${pagination(result, hrefFor)}`
-      : emptyState({ title: 'Aucune boutique', body: 'Aucune boutique ne correspond à ce filtre.', iconName: 'store' })}`;
+      : emptyState({ title: t('stores.emptyTitle'), body: t('stores.emptyBody'), iconName: 'store' })}`;
 }
 
 /** Libellés des paliers de réputation. Un palier n'est jamais une garantie. */
-const REPUTATION_LEVEL = {
-  EXCELLENT: 'Excellent',
-  FIABLE: 'Fiable',
-  CORRECT: 'Correct',
-  A_SURVEILLER: 'À surveiller',
-  NOUVEAU: 'Nouvelle boutique',
-};
+const niveauReputation = (code) => t(`rep.level.${code}`);
 
 const percent = (value) => `${Math.round(value * 100)} %`;
 
 /** Un délai mesuré à quelques minutes se lit mieux ainsi que « 0.0 h ». */
 const delay = (value, unit) => {
   if (value === null) return null;
-  if (value < 1) return unit === 'h' ? 'moins d’une heure' : 'moins d’un jour';
-  return unit === 'h' ? `${value.toFixed(1)} h` : `${value.toFixed(1)} j`;
+  if (value < 1) return t(unit === 'h' ? 'rep.lessThanHour' : 'rep.lessThanDay');
+  return t(unit === 'h' ? 'rep.hours' : 'rep.days', { value: value.toFixed(1) });
 };
 
 /**
@@ -456,38 +454,34 @@ const delay = (value, unit) => {
 function reputationBlock(r) {
   if (!r?.published) {
     return `<div class="card" style="box-shadow:none">
-      <h2 style="font-size:var(--text-md)">Réputation</h2>
-      <p class="small muted" style="margin:0">
-        Pas encore assez de commandes livrées pour publier des indicateurs fiables
-        (${r?.minimumOrders ?? 5} minimum). ${r?.ordersDelivered ?? 0} à ce jour.
-      </p>
+      <h2 style="font-size:var(--text-md)">${esc(t('rep.title'))}</h2>
+      <p class="small muted" style="margin:0">${esc(
+        t('rep.notEnough', { minimum: r?.minimumOrders ?? 5, delivered: r?.ordersDelivered ?? 0 }),
+      )}</p>
     </div>`;
   }
 
   const m = r.metrics;
   const rows = [
-    m.onTimeRate !== null ? ['Livraisons dans le délai annoncé', percent(m.onTimeRate)] : null,
-    m.avgPreparationHours !== null ? ['Préparation moyenne', delay(m.avgPreparationHours, 'h')] : null,
-    m.avgDeliveryDays !== null ? ['Acheminement moyen', delay(m.avgDeliveryDays, 'j')] : null,
-    m.cancellationRate !== null ? ['Commandes annulées après paiement', percent(m.cancellationRate)] : null,
-    m.disputeRate !== null ? ['Litiges ouverts', percent(m.disputeRate)] : null,
-    m.returnRate !== null ? ['Retours demandés', percent(m.returnRate)] : null,
-    m.responseRate !== null ? ['Messages auxquels le vendeur a répondu', percent(m.responseRate)] : null,
-    m.medianResponseHours !== null ? ['Délai de réponse médian', delay(m.medianResponseHours, 'h')] : null,
+    m.onTimeRate !== null ? [t('rep.onTime'), percent(m.onTimeRate)] : null,
+    m.avgPreparationHours !== null ? [t('rep.avgPreparation'), delay(m.avgPreparationHours, 'h')] : null,
+    m.avgDeliveryDays !== null ? [t('rep.avgDelivery'), delay(m.avgDeliveryDays, 'j')] : null,
+    m.cancellationRate !== null ? [t('rep.cancelled'), percent(m.cancellationRate)] : null,
+    m.disputeRate !== null ? [t('rep.disputes'), percent(m.disputeRate)] : null,
+    m.returnRate !== null ? [t('rep.returns'), percent(m.returnRate)] : null,
+    m.responseRate !== null ? [t('rep.answered'), percent(m.responseRate)] : null,
+    m.medianResponseHours !== null ? [t('rep.medianResponse'), delay(m.medianResponseHours, 'h')] : null,
   ].filter(Boolean);
 
   return `<div class="card" style="box-shadow:none">
     <div class="card-head">
-      <h2 style="font-size:var(--text-md)">Réputation</h2>
-      <span class="badge badge-verified">${esc(REPUTATION_LEVEL[r.level] ?? r.level)} · ${r.score}/100</span>
+      <h2 style="font-size:var(--text-md)">${esc(t('rep.title'))}</h2>
+      <span class="badge badge-verified">${esc(niveauReputation(r.level))} · ${r.score}/100</span>
     </div>
     <dl class="spec-list">
       ${rows.map(([labelText, value]) => `<div><dt>${esc(labelText)}</dt><dd>${esc(value)}</dd></div>`).join('')}
     </dl>
-    <p class="xs muted" style="margin:var(--space-3) 0 0">
-      Calculé sur ${r.ordersDelivered} commande(s) livrée(s). Ces chiffres décrivent
-      l’historique de la boutique ; ils ne garantissent pas une transaction.
-    </p>
+    <p class="xs muted" style="margin:var(--space-3) 0 0">${esc(t('rep.computedOn', { count: r.ordersDelivered }))}</p>
   </div>`;
 }
 
@@ -501,7 +495,7 @@ export async function store(params) {
   const initial = (s.name || 'T').trim().charAt(0).toUpperCase();
 
   return `
-    ${breadcrumb([{ label: 'Accueil', href: '/touma/' }, { label: 'Boutiques', href: '/touma/boutiques' }, { label: s.name }])}
+    ${breadcrumb([{ label: t('nav.home'), href: '/touma/' }, { label: t('store.crumb'), href: '/touma/boutiques' }, { label: s.name }])}
     <div class="card card-flush">
       <div class="store-banner">${s.bannerUrl ? `<img src="${esc(s.bannerUrl)}" alt="" />` : ''}</div>
       <div class="store-head">
@@ -510,8 +504,12 @@ export async function store(params) {
           <h1 style="font-size:var(--text-xl);margin-bottom:var(--space-1)">${esc(s.name)}</h1>
           <div class="product-meta">
             <span class="badge badge-country">${esc(s.countryCode)}${s.city ? ` · ${esc(s.city)}` : ''}</span>
-            ${s.verificationStatus === 'APPROVED' ? '<span class="badge badge-verified">Vendeur vérifié</span>' : '<span class="badge">Vérification en cours</span>'}
-            ${reputation?.published ? `<span class="badge badge-verified">${esc(REPUTATION_LEVEL[reputation.level] ?? reputation.level)} · ${reputation.score}/100</span>` : ''}
+            ${
+              s.verificationStatus === 'APPROVED'
+                ? `<span class="badge badge-verified">${esc(t('store.verified'))}</span>`
+                : `<span class="badge">${esc(t('store.verifying'))}</span>`
+            }
+            ${reputation?.published ? `<span class="badge badge-verified">${esc(niveauReputation(reputation.level))} · ${reputation.score}/100</span>` : ''}
             ${stars(s.ratingAverage, s.ratingCount)}
           </div>
         </div>
@@ -519,20 +517,20 @@ export async function store(params) {
       <div style="padding:0 var(--space-5) var(--space-5)">
         ${s.description ? `<p class="small">${esc(s.description)}</p>` : ''}
         <div class="grid grid-stats">
-          <div class="stat-card"><div class="stat-label">Produits en ligne</div><div class="stat-value">${s.productCount}</div></div>
-          <div class="stat-card"><div class="stat-label">Ventes réalisées</div><div class="stat-value">${s.salesCount}</div></div>
-          <div class="stat-card"><div class="stat-label">Avis</div><div class="stat-value">${s.ratingCount}</div></div>
-          <div class="stat-card"><div class="stat-label">Sur TOUMA depuis</div><div class="stat-value" style="font-size:var(--text-md)">${formatDate(s.createdAt)}</div></div>
+          <div class="stat-card"><div class="stat-label">${esc(t('store.productsOnline'))}</div><div class="stat-value">${s.productCount}</div></div>
+          <div class="stat-card"><div class="stat-label">${esc(t('store.salesMade'))}</div><div class="stat-value">${s.salesCount}</div></div>
+          <div class="stat-card"><div class="stat-label">${esc(t('store.reviews'))}</div><div class="stat-value">${s.ratingCount}</div></div>
+          <div class="stat-card"><div class="stat-label">${esc(t('store.memberSince'))}</div><div class="stat-value" style="font-size:var(--text-md)">${formatDate(s.createdAt)}</div></div>
         </div>
         <div class="mt-6">${reputationBlock(reputation)}</div>
       </div>
     </div>
 
     <section class="section mt-8">
-      <div class="section-head"><h2>Produits (${products.total})</h2></div>
+      <div class="section-head"><h2>${esc(t('store.productsCount', { count: products.total }))}</h2></div>
       ${products.items.length
         ? `<div class="grid grid-products">${products.items.map((p) => productCard(p)).join('')}</div>`
-        : emptyState({ title: 'Aucun produit publié', body: 'Cette boutique n’a pas encore mis de produit en ligne.', iconName: 'box' })}
+        : emptyState({ title: t('store.noProductTitle'), body: t('store.noProductBody'), iconName: 'box' })}
     </section>`;
 }
 
@@ -684,7 +682,7 @@ export async function checkout(_params, query) {
               <div class="field"><label for="a-line1">${esc(t('checkout.line1'))}</label><input id="a-line1" name="line1" required autocomplete="address-line1" /></div>
               <div class="field">
                 <label for="a-district">${esc(t('checkout.district'))}</label>
-                <input id="a-district" name="district" placeholder="Klemat, Akwa, Moursal…" />
+                <input id="a-district" name="district" placeholder="${esc(t('order.districtPlaceholder'))}" />
                 <span class="field-hint">${esc(t('checkout.districtHint'))}</span>
               </div>
               <div class="field">
@@ -955,12 +953,14 @@ function summaryBlock(data, groups = null) {
 export async function orderGroup(params) {
   const g = await api(`/orders/groups/${params.id}`);
   return `
-    ${breadcrumb([{ label: 'Mes commandes', href: '/touma/commandes' }, { label: g.reference }])}
+    ${breadcrumb([{ label: t('nav.myOrders'), href: '/touma/commandes' }, { label: g.reference }])}
     <div class="row-between" style="margin-bottom:var(--space-5)">
       <div>
-        <h1 style="font-size:var(--text-xl);margin-bottom:2px">Panier ${esc(g.reference)}</h1>
+        <h1 style="font-size:var(--text-xl);margin-bottom:2px">${esc(t('group.title', { reference: g.reference }))}</h1>
         <p class="small muted" style="margin:0">
-          ${formatDate(g.createdAt, true)} · ${g.orders.length} vendeur(s)${g.crossBorder ? ' · transfrontalier' : ''}
+          ${formatDate(g.createdAt, true)} · ${esc(t('group.meta', { sellers: g.orders.length }))}${
+            g.crossBorder ? esc(t('group.crossBorder')) : ''
+          }
         </p>
       </div>
       ${statusPill(g.status)}
@@ -969,21 +969,23 @@ export async function orderGroup(params) {
     <div class="grid grid-2">
       <div class="stack">
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Commandes par vendeur</h2>
-          <p class="small muted">Vous avez payé une seule fois ; chaque vendeur prépare et expédie sa part.</p>
+          <h2 style="font-size:var(--text-md)">${esc(t('group.bySeller'))}</h2>
+          <p class="small muted">${esc(t('group.bySellerHint'))}</p>
           <div class="stack" style="gap:var(--space-3)">
             ${g.orders
               .map(
                 (o) => `<div class="row-between card" style="box-shadow:none">
                   <div>
                     <strong>${esc(o.store.name)}</strong>
-                    <div class="small muted">${esc(o.orderNumber)} · ${o.itemCount} article(s) · ${esc(o.store.countryCode)}</div>
-                    ${o.shipment ? `<div class="xs muted">Suivi ${esc(o.shipment.trackingNumber)}</div>` : ''}
+                    <div class="small muted">${esc(
+                      t('group.orderMeta', { number: o.orderNumber, items: o.itemCount, country: o.store.countryCode }),
+                    )}</div>
+                    ${o.shipment ? `<div class="xs muted">${esc(t('group.tracking', { number: o.shipment.trackingNumber }))}</div>` : ''}
                   </div>
                   <div class="row" style="gap:var(--space-3)">
                     ${statusPill(o.status)}
                     <strong>${money(o.total, o.currency)}</strong>
-                    <a class="btn btn-secondary btn-sm" href="/touma/commandes/${esc(o.id)}" data-link>Suivre</a>
+                    <a class="btn btn-secondary btn-sm" href="/touma/commandes/${esc(o.id)}" data-link>${esc(t('group.follow'))}</a>
                   </div>
                 </div>`,
               )
@@ -994,31 +996,37 @@ export async function orderGroup(params) {
 
       <aside class="stack">
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Paiement</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('group.payment'))}</h2>
           <div class="summary">
-            <div class="summary-line"><span>Marchandise</span><span>${money(g.itemsTotal, g.currency)}</span></div>
-            <div class="summary-line"><span>Livraison</span><span>${money(g.shippingTotal, g.currency)}</span></div>
+            <div class="summary-line"><span>${esc(t('group.goods'))}</span><span>${money(g.itemsTotal, g.currency)}</span></div>
+            <div class="summary-line"><span>${esc(t('cart.shipping'))}</span><span>${money(g.shippingTotal, g.currency)}</span></div>
             ${Number(g.discountTotal) > 0
-              ? `<div class="summary-line" style="color:var(--success)"><span>Remise</span><span>− ${money(g.discountTotal, g.currency)}</span></div>`
+              ? `<div class="summary-line" style="color:var(--success)"><span>${esc(t('group.discount'))}</span><span>− ${money(g.discountTotal, g.currency)}</span></div>`
               : ''}
-            <div class="summary-line summary-total"><span>Total payé</span><span>${money(g.total, g.currency)}</span></div>
+            <div class="summary-line summary-total"><span>${esc(t('group.totalPaid'))}</span><span>${money(g.total, g.currency)}</span></div>
           </div>
           ${g.payment
             ? `<p class="row mt-6" style="gap:var(--space-2)">${statusPill(g.payment.status)}<span class="small muted">${esc(label(g.payment.method))}</span></p>`
-            : `<button class="btn btn-accent btn-block mt-6" data-pay-group="${esc(g.id)}">Payer ${money(g.total, g.currency)}</button>`}
+            : `<button class="btn btn-accent btn-block mt-6" data-pay-group="${esc(g.id)}">${esc(
+                t('group.pay', { amount: money(g.total, g.currency) }),
+              )}</button>`}
         </section>
 
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Livraison</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('group.delivery'))}</h2>
           <p class="small" style="margin:0">
             ${esc(g.shippingSnapshot?.fullName ?? '')}<br />
             ${esc(g.shippingSnapshot?.line1 ?? '')}<br />
             ${g.shippingSnapshot?.district ? `${esc(g.shippingSnapshot.district)}<br />` : ''}
-            ${g.shippingSnapshot?.landmark ? `<span class="muted">Repère : ${esc(g.shippingSnapshot.landmark)}</span><br />` : ''}
+            ${
+              g.shippingSnapshot?.landmark
+                ? `<span class="muted">${esc(t('group.landmark', { landmark: g.shippingSnapshot.landmark }))}</span><br />`
+                : ''
+            }
             ${esc(g.shippingSnapshot?.city ?? '')} — ${esc(g.shippingSnapshot?.countryCode ?? '')}
           </p>
           ${g.shippingSnapshot?.pickupPoint
-            ? `<p class="small mt-6" style="margin-bottom:0"><span class="badge badge-country">Point relais</span>
+            ? `<p class="small mt-6" style="margin-bottom:0"><span class="badge badge-country">${esc(t('group.pickupPoint'))}</span>
                 <strong>${esc(g.shippingSnapshot.pickupPoint.name)}</strong> — ${esc(g.shippingSnapshot.pickupPoint.addressLine)}</p>`
             : ''}
         </section>
@@ -1086,11 +1094,13 @@ export async function order(params) {
   const payment = o.payments?.[0];
 
   return `
-    ${breadcrumb([{ label: 'Mes commandes', href: '/touma/commandes' }, { label: o.orderNumber }])}
+    ${breadcrumb([{ label: t('nav.myOrders'), href: '/touma/commandes' }, { label: o.orderNumber }])}
     <div class="row-between" style="margin-bottom:var(--space-5)">
       <div>
-        <h1 style="font-size:var(--text-xl);margin-bottom:2px">Commande ${esc(o.orderNumber)}</h1>
-        <p class="small muted" style="margin:0">${formatDate(o.createdAt, true)} · ${esc(o.store.name)} (${esc(o.store.countryCode)})${o.crossBorder ? ' · transfrontalière' : ''}</p>
+        <h1 style="font-size:var(--text-xl);margin-bottom:2px">${esc(t('order.title', { number: o.orderNumber }))}</h1>
+        <p class="small muted" style="margin:0">${esc(
+          t('order.meta', { date: formatDate(o.createdAt, true), store: o.store.name, country: o.store.countryCode }),
+        )}${o.crossBorder ? esc(t('order.crossBorder')) : ''}</p>
       </div>
       ${statusPill(o.status)}
     </div>
@@ -1098,15 +1108,17 @@ export async function order(params) {
     <div class="grid grid-2">
       <div class="stack">
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Suivi de la commande</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('order.tracking'))}</h2>
           ${orderTimeline(o)}
         </section>
 
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Articles</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('order.items'))}</h2>
           <div class="table-wrap" style="border:0">
             <table>
-              <thead><tr><th>Produit</th><th>Qté</th><th>Prix</th><th>Total</th></tr></thead>
+              <thead><tr><th>${esc(t('order.col.product'))}</th><th>${esc(t('order.col.qty'))}</th><th>${esc(
+                t('order.col.price'),
+              )}</th><th>${esc(t('order.col.total'))}</th></tr></thead>
               <tbody>
                 ${o.items
                   .map(
@@ -1120,27 +1132,29 @@ export async function order(params) {
             </table>
           </div>
           <div class="summary mt-6">
-            <div class="summary-line"><span>Sous-total</span><span>${money(o.subtotal, o.currency)}</span></div>
-            <div class="summary-line"><span>Livraison</span><span>${money(o.shippingTotal, o.currency)}</span></div>
+            <div class="summary-line"><span>${esc(t('cart.subtotal'))}</span><span>${money(o.subtotal, o.currency)}</span></div>
+            <div class="summary-line"><span>${esc(t('cart.shipping'))}</span><span>${money(o.shippingTotal, o.currency)}</span></div>
             ${Number(o.discountTotal) > 0
-              ? `<div class="summary-line" style="color:var(--success)"><span>Remise</span><span>− ${money(o.discountTotal, o.currency)}</span></div>`
+              ? `<div class="summary-line" style="color:var(--success)"><span>${esc(t('group.discount'))}</span><span>− ${money(o.discountTotal, o.currency)}</span></div>`
               : ''}
-            <div class="summary-line summary-total"><span>Total</span><span>${money(o.total, o.currency)}</span></div>
+            <div class="summary-line summary-total"><span>${esc(t('order.col.total'))}</span><span>${money(o.total, o.currency)}</span></div>
           </div>
         </section>
 
         ${['DELIVERED', 'COMPLETED'].includes(o.status)
           ? `<section class="card">
-              <h2 style="font-size:var(--text-md)">Votre avis</h2>
+              <h2 style="font-size:var(--text-md)">${esc(t('order.reviewTitle'))}</h2>
               <form id="review-form" data-order="${esc(o.id)}">
-                <div class="field"><label for="r-product">Produit</label>
+                <div class="field"><label for="r-product">${esc(t('order.reviewProduct'))}</label>
                   <select id="r-product">${o.items.filter((i) => i.productId).map((i) => `<option value="${esc(i.productId)}">${esc(i.titleSnapshot)}</option>`).join('')}</select>
                 </div>
-                <div class="field"><label for="r-rating">Note</label>
-                  <select id="r-rating">${[5, 4, 3, 2, 1].map((n) => `<option value="${n}">${'★'.repeat(n)} (${n}/5)</option>`).join('')}</select>
+                <div class="field"><label for="r-rating">${esc(t('order.reviewRating'))}</label>
+                  <select id="r-rating">${[5, 4, 3, 2, 1]
+                    .map((n) => `<option value="${n}">${esc(t('order.reviewStars', { stars: '★'.repeat(n), n }))}</option>`)
+                    .join('')}</select>
                 </div>
-                <div class="field"><label for="r-comment">Commentaire (facultatif)</label><textarea id="r-comment" rows="3" maxlength="2000"></textarea></div>
-                <button class="btn" type="submit">Publier mon avis</button>
+                <div class="field"><label for="r-comment">${esc(t('order.reviewComment'))}</label><textarea id="r-comment" rows="3" maxlength="2000"></textarea></div>
+                <button class="btn" type="submit">${esc(t('order.reviewSubmit'))}</button>
               </form>
             </section>`
           : ''}
@@ -1148,25 +1162,30 @@ export async function order(params) {
 
       <aside class="stack">
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Paiement</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('order.payment'))}</h2>
           ${payment
             ? `<p class="row" style="gap:var(--space-2)">${statusPill(payment.status)} <span class="small muted">${esc(label(payment.method))} · ${money(payment.amount, payment.currency)}</span></p>`
-            : '<p class="muted small">Aucun paiement enregistré.</p>'}
+            : `<p class="muted small">${esc(t('order.noPayment'))}</p>`}
           ${o.status === 'PENDING'
-            ? `<div class="field"><label for="method">Moyen de paiement</label>
+            ? `<div class="field"><label for="method">${esc(t('order.methodLabel'))}</label>
                  <select id="method">
-                   <option value="MOBILE_MONEY">Mobile money</option>
-                   <option value="CARD">Carte bancaire</option>
-                   <option value="BANK_TRANSFER">Virement bancaire</option>
-                   <option value="CASH_ON_DELIVERY">Paiement à la livraison</option>
+                   ${
+                     // Les moyens de paiement sont des codes serveur : `label()`
+                     // les traduit déjà partout, ici comme ailleurs.
+                     ['MOBILE_MONEY', 'CARD', 'BANK_TRANSFER', 'CASH_ON_DELIVERY']
+                       .map((code) => `<option value="${code}">${esc(label(code))}</option>`)
+                       .join('')
+                   }
                  </select></div>
-               <button class="btn btn-accent btn-block" data-pay-order="${esc(o.id)}">Payer ${money(o.total, o.currency)}</button>
-               <button class="btn btn-ghost btn-block btn-sm mt-6" data-cancel-order="${esc(o.id)}">Annuler la commande</button>`
+               <button class="btn btn-accent btn-block" data-pay-order="${esc(o.id)}">${esc(
+                 t('order.pay', { amount: money(o.total, o.currency) }),
+               )}</button>
+               <button class="btn btn-ghost btn-block btn-sm mt-6" data-cancel-order="${esc(o.id)}">${esc(t('order.cancel'))}</button>`
             : ''}
         </section>
 
         <section class="card">
-          <h2 style="font-size:var(--text-md)">Livraison</h2>
+          <h2 style="font-size:var(--text-md)">${esc(t('order.delivery'))}</h2>
           <p class="small">
             ${esc(o.shippingSnapshot?.fullName ?? '')}<br />
             ${esc(o.shippingSnapshot?.line1 ?? '')}<br />
@@ -1175,13 +1194,13 @@ export async function order(params) {
           ${shipment
             ? `<div class="row" style="gap:var(--space-2)">${statusPill(shipment.status)}<span class="small muted">${esc(shipment.trackingNumber)}</span></div>
                <div class="mt-6">${trackingTimeline(shipment.events)}</div>
-               ${o.status === 'DELIVERED' ? `<button class="btn btn-block" data-complete-order="${esc(o.id)}">Confirmer la réception</button>` : ''}`
-            : '<p class="muted small">Le vendeur n’a pas encore créé l’expédition.</p>'}
+               ${o.status === 'DELIVERED' ? `<button class="btn btn-block" data-complete-order="${esc(o.id)}">${esc(t('order.confirmReceipt'))}</button>` : ''}`
+            : `<p class="muted small">${esc(t('order.noShipment'))}</p>`}
         </section>
 
         ${documents.items.length
           ? `<section class="card">
-              <h2 style="font-size:var(--text-md)">Documents</h2>
+              <h2 style="font-size:var(--text-md)">${esc(t('order.documents'))}</h2>
               <div class="stack" style="gap:var(--space-2)">
                 ${documents.items
                   .map(
@@ -1197,7 +1216,7 @@ export async function order(params) {
 
         ${o.refunds?.length
           ? `<section class="card">
-              <h2 style="font-size:var(--text-md)">Remboursements</h2>
+              <h2 style="font-size:var(--text-md)">${esc(t('order.refunds'))}</h2>
               <div class="stack" style="gap:var(--space-2)">
                 ${o.refunds
                   .map(
@@ -1208,35 +1227,43 @@ export async function order(params) {
                   )
                   .join('')}
               </div>
-              <p class="small muted" style="margin:var(--space-3) 0 0">Total remboursé : ${money(o.refundedTotal, o.currency)}.</p>
+              <p class="small muted" style="margin:var(--space-3) 0 0">${esc(
+                t('order.refundedTotal', { amount: money(o.refundedTotal, o.currency) }),
+              )}</p>
             </section>`
           : ''}
 
         ${['DELIVERED', 'COMPLETED'].includes(o.status) && o.status !== 'REFUNDED'
           ? `<section class="card">
-              <h2 style="font-size:var(--text-md)">Retour</h2>
-              <p class="small muted">Un article ne convient pas ? Demandez son retour et son remboursement.</p>
-              <a class="btn btn-secondary btn-block btn-sm" href="/touma/retours/nouveau?commande=${esc(o.id)}" data-link>Demander un retour</a>
+              <h2 style="font-size:var(--text-md)">${esc(t('order.returnTitle'))}</h2>
+              <p class="small muted">${esc(t('order.returnBody'))}</p>
+              <a class="btn btn-secondary btn-block btn-sm" href="/touma/retours/nouveau?commande=${esc(o.id)}" data-link>${esc(
+                t('order.returnAction'),
+              )}</a>
             </section>`
           : ''}
 
         ${['PAID', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'IN_TRANSIT', 'DELIVERED'].includes(o.status)
           ? `<section class="card">
-              <h2 style="font-size:var(--text-md)">Un problème ?</h2>
+              <h2 style="font-size:var(--text-md)">${esc(t('order.problemTitle'))}</h2>
               <form id="dispute-form" data-order="${esc(o.id)}">
-                <div class="field"><label for="d-reason">Motif</label>
+                <div class="field"><label for="d-reason">${esc(t('order.disputeReason'))}</label>
                   <select id="d-reason">
-                    <option value="NOT_RECEIVED">Commande non reçue</option>
-                    <option value="DAMAGED">Marchandise endommagée</option>
-                    <option value="NOT_AS_DESCRIBED">Non conforme à la description</option>
-                    <option value="WRONG_ITEM">Mauvais article</option>
-                    <option value="OTHER">Autre</option>
+                    ${
+                      // Les motifs sont ceux du moteur de litige : mêmes codes,
+                      // mêmes libellés que dans le dossier une fois ouvert.
+                      ['NOT_RECEIVED', 'DAMAGED', 'NOT_AS_DESCRIBED', 'WRONG_ITEM', 'OTHER']
+                        .map((code) => `<option value="${code}">${esc(t(`dispute.reason.${code}`))}</option>`)
+                        .join('')
+                    }
                   </select></div>
-                <div class="field"><label for="d-details">Détails</label><textarea id="d-details" rows="3" maxlength="2000"></textarea></div>
-                <button class="btn btn-secondary btn-block" type="submit">Ouvrir un litige</button>
+                <div class="field"><label for="d-details">${esc(t('order.disputeDetails'))}</label><textarea id="d-details" rows="3" maxlength="2000"></textarea></div>
+                <button class="btn btn-secondary btn-block" type="submit">${esc(t('order.openDispute'))}</button>
               </form>
-              <a class="btn btn-ghost btn-block btn-sm mt-6" href="/touma/litiges" data-link>Suivre mes litiges</a>
-              <a class="btn btn-ghost btn-block btn-sm" href="/touma/aide/nouveau?commande=${esc(o.id)}&sujet=ORDER" data-link>Contacter l’assistance</a>
+              <a class="btn btn-ghost btn-block btn-sm mt-6" href="/touma/litiges" data-link>${esc(t('order.followDisputes'))}</a>
+              <a class="btn btn-ghost btn-block btn-sm" href="/touma/aide/nouveau?commande=${esc(o.id)}&sujet=ORDER" data-link>${esc(
+                t('order.contactSupport'),
+              )}</a>
             </section>`
           : ''}
       </aside>

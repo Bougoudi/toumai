@@ -71,6 +71,8 @@ describe("i18n — français et arabe", () => {
     // Ce qui reste en caractères latins est une marque ou un code, jamais une phrase.
     const MARQUES = new Set([
       "seller.tab.verification",
+      // Même programme, nommé sur la page publique d'une province.
+      "geo.verif.VERIFIED",
       "seller.import.col.status",
       // Identifiants légaux : ils figurent ainsi sur le document papier, et les
       // traduire ferait que l'écran ne correspondrait plus au document.
