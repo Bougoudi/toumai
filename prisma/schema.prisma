@@ -264,6 +264,11 @@ model User {
   trustAppeals      ToumaTrustAppeal[]     @relation("AppealAuthor")
   appealsReviewed   ToumaTrustAppeal[]     @relation("AppealReviewer")
   supplierScore     ToumaSupplierScore?    @relation("SupplierScore")
+
+  // V22 — croissance
+  promotionsCreated ToumaPromotion[]      @relation("PromotionAuthor")
+  campaignsCreated  ToumaCampaign[]       @relation("CampaignAuthor")
+  promotionUsages   ToumaPromotionUsage[]
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -1578,6 +1583,7 @@ model ToumaStore {
   quotes         ToumaQuote[]
   conversations  ToumaConversation[]
   verifications  ToumaSellerVerification[]
+  promotions     ToumaPromotion[]
   payouts        ToumaSellerPayout[]
   commissions    ToumaCommission[]
   returns        ToumaReturnRequest[]
@@ -1699,14 +1705,15 @@ model ToumaProduct {
   weightGrams    Int           @default(500)
   keywords       String        @default("")
 
-  images     ToumaProductImage[]
-  priceTiers ToumaPriceTier[]
-  variants   ToumaProductVariant[]
-  inventory  ToumaInventory[]
-  cartItems  ToumaCartItem[]
-  orderItems ToumaOrderItem[]
-  reviews    ToumaReview[]
-  favorites  ToumaFavorite[]
+  images       ToumaProductImage[]
+  priceTiers   ToumaPriceTier[]
+  variants     ToumaProductVariant[]
+  inventory    ToumaInventory[]
+  cartItems    ToumaCartItem[]
+  orderItems   ToumaOrderItem[]
+  reviews      ToumaReview[]
+  priceHistory ToumaProductPriceHistory[]
+  favorites    ToumaFavorite[]
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -1926,6 +1933,7 @@ model ToumaOrder {
   quotes          ToumaShippingQuote[]
   reviews         ToumaReview[]
   transactionRisk ToumaTransactionRisk?
+  promotionUsages ToumaPromotionUsage[]
   disputes        ToumaDispute[]
   commissions     ToumaCommission[]
   returnRequests  ToumaReturnRequest[]
@@ -4050,4 +4058,261 @@ model ToumaSupplierScore {
 
   @@index([score])
   @@map("touma_supplier_scores")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V22 — TOUMA GROWTH
+//
+// Ce que V22 **n'a pas refait** : `ToumaCoupon` porte déjà un moteur de remise
+// serveur — fonction pure, financement tracé, répartition au centime près,
+// limites par acheteur, plafond de remise. `ToumaLoyaltyAccount` porte déjà les
+// points. Les dupliquer aurait produit deux moteurs divergents sur le même
+// panier.
+//
+// Ce que V22 ajoute, et qui manquait vraiment :
+//
+//   • une **promotion sans code** — une remise qui s'applique parce que le
+//     panier remplit des conditions, pas parce qu'on a tapé un mot ;
+//   • des **conditions composables** stockées en structure, jamais évaluées
+//     depuis une chaîne ;
+//   • une **priorité** et un cumul explicites, parce que deux remises qui se
+//     rencontrent doivent se départager de façon prévisible ;
+//   • un **budget** qui arrête une campagne plutôt que de la laisser courir ;
+//   • un **historique de prix**, sans lequel aucun « prix barré » n'est
+//     vérifiable — et un prix barré invérifiable est un mensonge.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum PromotionType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_SHIPPING
+  TIERED_DISCOUNT
+  BUNDLE_DISCOUNT
+  FIRST_ORDER
+}
+
+enum PromotionStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  EXPIRED
+  ARCHIVED
+}
+
+/// Qui paie la remise. `PARTNER` existe pour un financement tiers ; tant
+/// qu'aucun partenariat n'est signé, aucune promotion ne peut le porter — le
+/// service le refuse, parce qu'une remise dont le financeur est imaginaire
+/// fausserait le règlement du vendeur.
+enum PromotionFunding {
+  PLATFORM
+  SELLER
+  PARTNER
+}
+
+/// Comment une promotion se comporte face à une autre.
+enum PromotionStacking {
+  /// Peut s'ajouter à d'autres remises cumulables.
+  STACKABLE
+  /// S'applique seule parmi les non-cumulables ; la meilleure l'emporte.
+  NON_STACKABLE
+  /// Exclut toute autre remise, y compris un code saisi par l'acheteur.
+  EXCLUSIVE
+}
+
+model ToumaPromotion {
+  id          String          @id @default(cuid())
+  name        String
+  description String          @default("")
+  type        PromotionType
+  status      PromotionStatus @default(DRAFT)
+
+  /// Boutique propriétaire, ou null pour une promotion de la place de marché.
+  /// Un vendeur ne peut jamais créer une promotion financée par TOUMA : le
+  /// service lie `storeId` et `funding`.
+  storeId String?
+  store   ToumaStore? @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  funding  PromotionFunding  @default(PLATFORM)
+  stacking PromotionStacking @default(NON_STACKABLE)
+  /// Départage deux promotions concurrentes. Le plus grand l'emporte ; à
+  /// égalité, la remise la plus avantageuse pour l'acheteur.
+  priority Int               @default(0)
+
+  /// Pourcentage (0–100) ou montant fixe selon `type`.
+  value             Decimal  @default(0) @db.Decimal(18, 4)
+  /// Obligatoire pour un montant fixe : aucune conversion approximative.
+  currency          String?
+  /// Plafond de remise pour un pourcentage.
+  maxDiscountAmount Decimal? @db.Decimal(18, 4)
+
+  startsAt DateTime  @default(now())
+  endsAt   DateTime?
+
+  /// Campagne de rattachement, quand la promotion en fait partie.
+  campaignId String?
+  campaign   ToumaCampaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  rules  ToumaPromotionRule[]
+  budget ToumaPromotionBudget?
+  usages ToumaPromotionUsage[]
+
+  createdById String?
+  createdBy   User?   @relation("PromotionAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, startsAt, endsAt])
+  @@index([storeId, status])
+  @@map("touma_promotions")
+}
+
+/// Condition d'application.
+///
+/// Stockée en **structure**, jamais en expression à évaluer : `eval()` sur une
+/// règle commerciale, c'est une exécution de code arbitraire déguisée en
+/// paramètre. Le moteur ne connaît que les opérateurs déclarés ci-dessous.
+enum PromotionRuleKind {
+  MIN_ORDER_AMOUNT
+  MIN_QUANTITY
+  PRODUCT
+  CATEGORY
+  SELLER
+  COUNTRY
+  PROVINCE
+  FIRST_ORDER
+  NEW_CUSTOMER
+  CUSTOMER_SEGMENT
+  MIN_STOCK
+  MAX_STOCK
+}
+
+model ToumaPromotionRule {
+  id          String            @id @default(cuid())
+  promotionId String
+  promotion   ToumaPromotion    @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  kind        PromotionRuleKind
+
+  /// Seuil numérique, pour les règles qui en ont un.
+  threshold Decimal? @db.Decimal(18, 4)
+  /// Identifiants visés (produits, catégories, boutiques, provinces, pays).
+  /// Une liste vide signifie « aucune restriction sur cette dimension ».
+  values    String[] @default([])
+  /// `true` inverse la règle : « sauf ces catégories ».
+  negated   Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([promotionId])
+  @@map("touma_promotion_rules")
+}
+
+/// Budget d'une promotion.
+///
+/// `spent` n'est jamais écrit par une lecture-puis-écriture : l'incrément est
+/// conditionnel en SQL, de sorte que deux commandes simultanées ne peuvent pas
+/// dépasser l'enveloppe. Sans cela, une campagne à fort trafic déborde
+/// exactement au moment où elle coûte le plus cher.
+model ToumaPromotionBudget {
+  id          String         @id @default(cuid())
+  promotionId String         @unique
+  promotion   ToumaPromotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  total    Decimal @db.Decimal(18, 4)
+  spent    Decimal @default(0) @db.Decimal(18, 4)
+  currency String
+
+  /// Suspend la promotion dès que l'enveloppe est épuisée.
+  stopWhenExhausted Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("touma_promotion_budgets")
+}
+
+/// Une application effective, conservée pour l'analyse et le budget.
+model ToumaPromotionUsage {
+  id          String         @id @default(cuid())
+  promotionId String
+  promotion   ToumaPromotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  userId  String
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId String?
+  order   ToumaOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  amount   Decimal @db.Decimal(18, 4)
+  currency String
+
+  createdAt DateTime @default(now())
+
+  @@index([promotionId, createdAt])
+  @@index([userId])
+  @@map("touma_promotion_usages")
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  ENDED
+  ARCHIVED
+}
+
+/// Campagne : un regroupement de promotions sous un même nom et une même
+/// période. Aucun événement culturel n'est codé en dur — ni Ramadan, ni
+/// rentrée : une campagne est une ligne créée par un humain, avec ses dates.
+model ToumaCampaign {
+  id          String         @id @default(cuid())
+  name        String
+  description String         @default("")
+  status      CampaignStatus @default(DRAFT)
+
+  startsAt DateTime
+  endsAt   DateTime
+
+  /// Portée géographique. Vide = partout où TOUMA opère.
+  countryCodes String[] @default([])
+  provinceIds  String[] @default([])
+
+  promotions ToumaPromotion[]
+
+  createdById String?
+  createdBy   User?   @relation("CampaignAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, startsAt])
+  @@map("touma_campaigns")
+}
+
+/// Historique de prix.
+///
+/// **Sans lui, un « prix barré » n'est pas vérifiable.** Afficher « 25 000 →
+/// 20 000 » suppose que 25 000 a réellement été demandé, et pendant combien de
+/// temps. Cette table le prouve ou le dément ; l'affichage d'une économie s'y
+/// adosse et se tait quand elle n'y trouve rien.
+model ToumaProductPriceHistory {
+  id        String       @id @default(cuid())
+  productId String
+  product   ToumaProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+
+  price    Decimal @db.Decimal(18, 4)
+  currency String
+  /// Ce qui a produit ce prix : `SELLER`, `IMPORT`, `PROMOTION`, `ADMIN`.
+  source   String  @default("SELLER")
+
+  validFrom DateTime  @default(now())
+  /// Null tant que ce prix est celui en vigueur.
+  validTo   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, validFrom])
+  @@index([productId, validTo])
+  @@map("touma_product_price_history")
 }

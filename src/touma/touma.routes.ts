@@ -32,6 +32,7 @@ import { loyaltyRouter } from './loyalty/loyalty.routes.js';
 import { documentRouter } from './documents/document.routes.js';
 import { reputationRouter } from './reputation/reputation.routes.js';
 import { adminTrustRouter, trustRouter } from './trust/trust.routes.js';
+import { adminGrowthRouter, growthRouter, sellerGrowthRouter } from './growth/growth.routes.js';
 import { sourcingRouter } from './sourcing/sourcing.routes.js';
 
 /**
@@ -164,6 +165,9 @@ toumaV1Router.use('/documents', documentRouter);
 toumaV1Router.use('/reputation', reputationRouter);
 toumaV1Router.use('/trust', trustRouter);
 toumaV1Router.use('/admin/trust', adminTrustRouter);
+toumaV1Router.use('/growth', growthRouter);
+toumaV1Router.use('/seller/marketing', sellerGrowthRouter);
+toumaV1Router.use('/admin/marketing', adminGrowthRouter);
 toumaV1Router.use('/sourcing', sourcingRouter);
 toumaV1Router.use('/admin', adminRouter);
 

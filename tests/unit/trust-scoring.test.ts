@@ -117,8 +117,14 @@ describe('Score de confiance — paliers', () => {
 describe('Décroissance temporelle', () => {
   const jours = (n: number) => new Date(Date.now() - n * 86_400_000);
 
-  it('compte un fait du jour à plein poids', () => {
+  it('compte un fait du jour à plein poids, à la milliseconde près', () => {
+    // La formule continue rendait 0,999999996 une milliseconde après le fait :
+    // exact, et faux en pratique. Le même calcul donnait alors deux résultats
+    // selon la milliseconde d'exécution.
     assert.equal(decayFactor(new Date()), 1);
+    assert.equal(decayFactor(new Date(Date.now() - 1)), 1);
+    assert.equal(decayFactor(new Date(Date.now() - 3600_000)), 1, 'une heure reste « aujourd’hui »');
+    assert.ok(decayFactor(jours(2)) < 1, 'au-delà d’un jour, la décroissance reprend');
   });
 
   it('compte un fait vieux d’une demi-vie pour moitié', () => {

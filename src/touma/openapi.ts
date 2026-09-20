@@ -284,6 +284,37 @@ export function toumaOpenApiDocument() {
       '/admin/trust/recompute/{entityType}/{entityId}': {
         post: op('Confiance', 'Recalculer une confiance à la demande', { role: 'ADMIN', params: ['entityType', 'entityId'] }),
       },
+
+      // ── Croissance : promotions, campagnes (V22) ──────────────────────────
+      //
+      // Aucune de ces routes ne permet d'écrire un prix. Une promotion réduit
+      // un prix au moment du calcul ; elle ne le remplace jamais en base.
+      '/growth/promotions': {
+        get: op('Croissance', 'Promotions en cours', { auth: false, query: ['page', 'limit'] }),
+      },
+      '/growth/promotions/{id}': {
+        get: op('Croissance', 'Fiche d’une promotion en cours', { auth: false, params: ['id'] }),
+      },
+      '/seller/marketing/promotions': {
+        get: op('Croissance', 'Mes promotions, avec ce qu’elles ont coûté', { role: 'SELLER', query: ['storeId', 'page', 'limit'] }),
+        post: op('Croissance', 'Créer une promotion (en brouillon, financée par la boutique)', { role: 'SELLER', body: true }),
+      },
+      '/seller/marketing/promotions/{id}': {
+        patch: op('Croissance', 'Modifier, planifier, suspendre ou archiver une promotion', { role: 'SELLER', params: ['id'], body: true }),
+      },
+      '/seller/marketing/promotions/{id}/performance': {
+        get: op('Croissance', 'Ce qu’une promotion a réellement coûté — sans ROI inventé', { role: 'SELLER', params: ['id'] }),
+      },
+      '/seller/marketing/promotions/preview': {
+        post: op('Croissance', 'Évaluer un panier contre ses promotions, avant publication', { role: 'SELLER', body: true }),
+      },
+      '/admin/marketing/overview': {
+        get: op('Croissance', 'Tableau de bord marketing — décomptes observés, par devise', { role: 'ADMIN' }),
+      },
+      '/admin/marketing/campaigns': {
+        get: op('Croissance', 'Campagnes', { role: 'ADMIN', query: ['page', 'limit'] }),
+        post: op('Croissance', 'Créer une campagne (aucun événement culturel codé en dur)', { role: 'ADMIN', body: true }),
+      },
       '/sourcing/suppliers': {
         get: op('Sourcing', 'Trouver un fournisseur', {
           auth: false,

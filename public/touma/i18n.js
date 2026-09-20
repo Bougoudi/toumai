@@ -2191,6 +2191,8 @@ const FR = {
   'trust.appealResolution': 'Motivation de la décision (communiquée à l’intéressé) :',
   'trust.appealDecided': 'Recours tranché.',
   'trust.appealSent': 'Recours déposé. Un examinateur vous répondra avec un motif.',
+  'price.savings': 'Vous économisez {amount}',
+  'price.referenceHeld': 'prix pratiqué {days} jours',
 
   // Ossature : confirmations, messages de succès, motifs proposés dans une
   // liste. Ils se superposent à n'importe quel écran — ils suivent donc la
@@ -4375,6 +4377,8 @@ const AR = {
   'trust.appealResolution': 'تعليل القرار (يُبلَّغ به المعني):',
   'trust.appealDecided': 'تمّ البتّ في الاعتراض.',
   'trust.appealSent': 'قُدّم الاعتراض. سيردّ عليك فاحص مع ذكر السبب.',
+  'price.savings': 'توفّر {amount}',
+  'price.referenceHeld': 'سعر مطبَّق لمدة {days} يوماً',
 
   'sh.loggedOut': 'تم تسجيل خروجك.',
   'sh.notFoundTitle': 'الصفحة غير موجودة',

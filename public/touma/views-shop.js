@@ -302,8 +302,16 @@ export async function product(params) {
 
         <div class="price-block mt-6">
           <span class="price-lg">${money(p.price, p.currency)}</span>
-          ${p.compareAtPrice ? `<span class="price-compare">${money(p.compareAtPrice, p.currency)}</span>` : ''}
+          ${p.referencePrice
+            ? `<span class="price-compare">${money(p.referencePrice.amount, p.referencePrice.currency)}</span>`
+            : ''}
         </div>
+        ${p.referencePrice && p.savings
+          ? `<p class="small" style="color:var(--success);margin:2px 0 0">
+              ${esc(t('price.savings', { amount: money(p.savings, p.currency) }))}
+              <span class="xs muted">— ${esc(t('price.referenceHeld', { days: p.referencePrice.heldDays }))}</span>
+            </p>`
+          : ''}
         <p class="small muted">
           ${esc(p.inStock ? t('product.inStock', { count: p.stock }) : t('product.outOfStock'))}
           ${p.minOrderQty > 1 ? ` · ${esc(t('product.minOrder', { count: p.minOrderQty }))}` : ''}

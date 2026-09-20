@@ -225,6 +225,38 @@ export const env = {
        */
       notifyDelta: Number(process.env.TOUMA_TRUST_NOTIFY_DELTA ?? 5),
     },
+
+    /**
+     * TOUMA Growth (V22).
+     *
+     * Chaque levier a son drapeau parce qu'ils s'arrêtent séparément : couper
+     * les promotions automatiques un jour de bug n'a aucune raison de couper
+     * aussi la fidélité, qui porte des points déjà gagnés.
+     */
+    growth: {
+      promotionsEnabled: process.env.TOUMA_GROWTH_PROMOTIONS_ENABLED !== 'false',
+      couponsEnabled: process.env.TOUMA_GROWTH_COUPONS_ENABLED !== 'false',
+      campaignsEnabled: process.env.TOUMA_GROWTH_CAMPAIGNS_ENABLED !== 'false',
+      sellerMarketingEnabled: process.env.TOUMA_GROWTH_SELLER_MARKETING_ENABLED !== 'false',
+      /**
+       * Ventes flash, parrainage, automatisation et tests A/B sont **fermés par
+       * défaut**. Ce ne sont pas des réglages de confort : chacun a un mode
+       * d'échec qui se paie cher — survente pour une vente flash, fraude pour
+       * un parrainage, courriels en rafale pour une automatisation. Ils
+       * s'ouvrent quand quelqu'un a décidé de les exploiter, pas parce qu'ils
+       * ont été écrits.
+       */
+      flashSalesEnabled: process.env.TOUMA_GROWTH_FLASH_SALES_ENABLED === 'true',
+      referralsEnabled: process.env.TOUMA_GROWTH_REFERRALS_ENABLED === 'true',
+      marketingAutomationEnabled: process.env.TOUMA_GROWTH_AUTOMATION_ENABLED === 'true',
+      abTestingEnabled: process.env.TOUMA_GROWTH_AB_TESTING_ENABLED === 'true',
+      /**
+       * Durée minimale pendant laquelle un prix doit avoir été pratiqué pour
+       * qu'on puisse l'afficher barré. Sans elle, il suffirait de monter un
+       * prix une heure pour annoncer une remise le lendemain.
+       */
+      referencePriceMinDays: Number(process.env.TOUMA_GROWTH_REFERENCE_PRICE_MIN_DAYS ?? 30),
+    },
     /** Adaptateurs actifs (mock tant qu'aucun prestataire réel n'est raccordé). */
     paymentProvider: process.env.TOUMA_PAYMENT_PROVIDER ?? 'mock',
     logisticsProvider: process.env.TOUMA_LOGISTICS_PROVIDER ?? 'mock',

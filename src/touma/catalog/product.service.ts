@@ -3,6 +3,7 @@ import { prisma } from '../../db/prisma.js';
 import { replaceTiers } from './pricing.js';
 import { env } from '../../config/env.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
+import { recordPrice, referencePrice, savings } from '../growth/price-history.js';
 import { uniqueSlug } from '../lib/slug.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
@@ -150,6 +151,18 @@ export const productService = {
     if (product.status !== 'ACTIVE' && !isOwner) throw notFound('Produit introuvable.');
 
     const stock = totalStock(product.inventory);
+
+    // Prix de référence **vérifié**, calculé depuis l'historique réel.
+    //
+    // `compareAtPrice` est ce que le vendeur *déclare* ; il reste rendu pour
+    // que son propre écran le lui montre, mais il n'est plus ce que la fiche
+    // publique barre. Un prix barré que personne ne peut vérifier est une
+    // affirmation commerciale invérifiable — et l'import CSV accepte une
+    // colonne « prix_barre », donc n'importe quel chiffre pouvait y entrer en
+    // masse.
+    const reference = await referencePrice(product.id, product.price, product.currency);
+    const economie = savings(reference, product.price);
+
     return {
       id: product.id,
       title: product.title,
@@ -158,7 +171,21 @@ export const productService = {
       brand: product.brand,
       sku: product.sku,
       price: product.price.toString(),
+      /** Déclaré par le vendeur. Jamais affiché barré sans preuve. */
       compareAtPrice: product.compareAtPrice?.toString() ?? null,
+      /**
+       * Prix barré affichable, et ce qui le justifie. `null` quand aucun prix
+       * plus élevé n'a réellement été pratiqué assez longtemps.
+       */
+      referencePrice: reference.amount
+        ? {
+            amount: reference.amount.toString(),
+            currency: reference.currency,
+            since: reference.since,
+            heldDays: reference.heldDays,
+          }
+        : null,
+      savings: economie ? economie.toString() : null,
       currency: product.currency,
       minOrderQty: product.minOrderQty,
       weightGrams: product.weightGrams,
@@ -305,6 +332,13 @@ export const productService = {
       } else {
         await tx.toumaInventory.create({ data: { productId: product.id, variantId: null, quantity: input.quantity } });
       }
+      // L'historique est ce qui rendra un futur prix barré vérifiable.
+      // Consigné dans la même transaction que le produit : un prix sans son
+      // histoire est un prix qu'on ne pourra jamais justifier.
+      await tx.toumaProductPriceHistory.create({
+        data: { productId: product.id, price: product.price, currency: product.currency, source: 'SELLER' },
+      });
+
       return product;
     });
   },
@@ -339,6 +373,28 @@ export const productService = {
 
     return prisma.$transaction(async (tx) => {
       const product = await tx.toumaProduct.update({ where: { id: productId }, data });
+
+      // Changement de prix : on clôt le précédent et on ouvre le nouveau, dans
+      // la même transaction. Un prix qui change sans laisser de trace rend
+      // impossible toute justification ultérieure d'une remise.
+      const prixChange = input.price !== undefined && !product.price.equals(existing.price);
+      const deviseChange = input.currency !== undefined && product.currency !== existing.currency;
+      if (prixChange || deviseChange) {
+        const maintenant = new Date();
+        await tx.toumaProductPriceHistory.updateMany({
+          where: { productId, variantId: null, validTo: null },
+          data: { validTo: maintenant },
+        });
+        await tx.toumaProductPriceHistory.create({
+          data: {
+            productId,
+            price: product.price,
+            currency: product.currency,
+            source: 'SELLER',
+            validFrom: maintenant,
+          },
+        });
+      }
       if (input.images) {
         await tx.toumaProductImage.deleteMany({ where: { productId } });
         await tx.toumaProductImage.createMany({

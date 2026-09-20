@@ -10,6 +10,7 @@ import { notify } from '../lib/notifications.js';
 import { logisticsService } from '../logistics/logistics.service.js';
 import { couponService, type BasketStoreLine } from '../promotions/coupon.service.js';
 import { assessTransaction, recordTransactionRisk } from '../trust/transaction-risk.js';
+import { promotionService } from '../growth/promotion.service.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { commissionFor } from '../payments/commission.service.js';
 import { sellerServes } from '../logistics/service-zones.js';
@@ -246,9 +247,58 @@ export const checkoutService = {
       if (sellerFunded) sellerFundedByStore.set(storeId, (sellerFundedByStore.get(storeId) ?? ZERO).plus(amount));
     };
 
+    // ── Promotions automatiques ──────────────────────────────────────────────
+    //
+    // Évaluées **avant** le code de réduction, parce qu'une promotion
+    // exclusive peut interdire d'en appliquer un — et l'acheteur doit
+    // l'apprendre avant de croire que son code a été ignoré par erreur.
+    //
+    // Le montant est recalculé ici, au moment de créer la commande, et non
+    // repris de l'aperçu : un prix affiché il y a dix minutes ne doit jamais
+    // devenir le montant débité.
+    const promotions = await promotionService.evaluateCart({
+      userId: user.id,
+      lines: basketLines.map((l) => {
+        const items = groups.get(l.storeId) ?? [];
+        return {
+          storeId: l.storeId,
+          subtotal: l.subtotal,
+          shipping: l.shipping,
+          productIds: items.map((i) => i.productId),
+          categoryIds: items.map((i) => i.product.categoryId).filter((c): c is string => Boolean(c)),
+          quantity: items.reduce((acc, i) => acc + i.quantity, 0),
+        };
+      }),
+      currency: basketCurrency,
+      destinationCountry: address.countryCode,
+      destinationProvinceId: address.provinceId ?? null,
+      previousOrders: await prisma.toumaOrder.count({
+        where: { buyerId: user.id, status: { notIn: ['CANCELLED'] } },
+      }),
+      segments: [],
+    });
+
+    for (const promo of promotions.applied) {
+      for (const [storeId, part] of promo.byStore) {
+        if (!part.greaterThan(0)) continue;
+        // Une promotion vendeur réduit son propre revenu ; une promotion
+        // TOUMA est payée par la plateforme et le vendeur reste réglé plein
+        // tarif. Se tromper ici fausse le règlement, silencieusement.
+        addDiscount(storeId, part, promo.funding === 'SELLER');
+      }
+    }
+
     let coupon: Awaited<ReturnType<typeof couponService.findCoupon>> = null;
     let couponDiscount = ZERO;
     if (input.couponCode) {
+      if (promotions.blocksCoupon) {
+        // Dire lequel, plutôt que « code refusé » : sinon l'acheteur croit que
+        // son code est invalide alors qu'il bénéficie déjà de mieux.
+        const exclusive = promotions.applied[0]?.name ?? '';
+        throw badRequest(
+          `La promotion « ${exclusive} » déjà appliquée à votre panier ne se cumule avec aucun code de réduction.`,
+        );
+      }
       coupon = await couponService.findCoupon(input.couponCode);
       if (!coupon) throw badRequest('Code de réduction inconnu.');
       const [previousOrderCount, userRedemptions] = await Promise.all([
@@ -579,6 +629,30 @@ export const checkoutService = {
         }),
       ),
     ]);
+
+    // Consommation du budget des promotions appliquées.
+    //
+    // **Après** la création des commandes, et sans les faire échouer : le
+    // budget est un garde-fou de dépense, pas une condition de vente. Si
+    // l'enveloppe vient d'être épuisée par une commande concurrente, la remise
+    // de celle-ci a déjà été accordée — la refuser rétroactivement serait
+    // changer un prix après l'avoir affiché. La promotion est alors suspendue
+    // pour les suivantes, ce qui est le bon moment pour s'arrêter.
+    await Promise.all(
+      promotions.applied.flatMap((promo) =>
+        orders
+          .filter((o) => promo.byStore.has(o.storeId))
+          .map((o) =>
+            promotionService.consume(
+              promo.promotionId,
+              user.id,
+              o.id,
+              promo.byStore.get(o.storeId)!,
+              basketCurrency,
+            ),
+          ),
+      ),
+    );
 
     // Trace de ce que la plateforme savait au moment où elle a laissé passer.
     // Écrite après coup : elle ne doit pas retarder la commande, et son absence

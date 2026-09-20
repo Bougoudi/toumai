@@ -113,10 +113,21 @@ export const DECAY = {
   horizonDays: env.touma.trust.decayHorizonDays,
 };
 
-/** Facteur de décroissance d'un événement, entre 0 et 1. */
+/**
+ * Facteur de décroissance d'un événement, entre 0 et 1.
+ *
+ * **Un fait du jour pèse exactement 1.** La formule continue rendait
+ * 0,999999996 pour un fait vieux d'une milliseconde : mathématiquement exact,
+ * et faux en pratique — un litige ouvert il y a une seconde n'est pas
+ * « légèrement moins récent » qu'un litige ouvert à l'instant. La journée est
+ * l'unité de la décroissance, elle doit l'être aussi de son plancher.
+ *
+ * Sans ce palier, le même calcul rendait deux résultats selon la
+ * milliseconde d'exécution.
+ */
 export function decayFactor(occurredAt: Date, now: Date = new Date()): number {
   const ageDays = (now.getTime() - occurredAt.getTime()) / 86_400_000;
-  if (ageDays <= 0) return 1;
+  if (ageDays < 1) return 1;
   if (ageDays >= DECAY.horizonDays) return 0;
   return 0.5 ** (ageDays / DECAY.halfLifeDays);
 }
