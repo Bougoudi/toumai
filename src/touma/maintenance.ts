@@ -8,6 +8,7 @@ import { purgeExpiredKeys } from './lib/idempotency.js';
 import { purgeWebhookDeliveries } from './payments/webhook-log.js';
 import { processTrustEvents } from './trust/events.js';
 import { flashSaleService } from './growth/flash-sale.service.js';
+import { runAiJobsOnce } from './ai/jobs.js';
 
 /**
  * Entretien périodique du domaine TOUMA.
@@ -98,6 +99,15 @@ export const maintenanceJobs = {
    * décomptes du vendeur.
    */
   flashSales: () => flashSaleService.closeExpired(),
+  /**
+   * Travaux d'intelligence (V23) : expiration des confirmations, purge des
+   * mémoires, observations de stock. Idempotents par fenêtre — deux passages
+   * sur la même heure ne produisent rien la seconde fois.
+   */
+  intelligence: async () => {
+    await runAiJobsOnce();
+    return 0;
+  },
 };
 
 /** Joue tous les travaux une fois. Employé au démarrage et par les tests. */
@@ -121,6 +131,7 @@ export function startToumaMaintenance(): void {
   cron.schedule(c.disputes, safe('litiges', maintenanceJobs.disputes));
   cron.schedule(c.trust, safe('confiance', maintenanceJobs.trust));
   cron.schedule(c.flashSales, safe('ventes flash', maintenanceJobs.flashSales));
+  cron.schedule(c.intelligence, safe('intelligence', maintenanceJobs.intelligence));
   cron.schedule(c.purges, safe('purges', async () => {
     const cles = await maintenanceJobs.idempotency();
     const webhooks = await maintenanceJobs.webhooks();

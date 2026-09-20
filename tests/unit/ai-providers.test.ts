@@ -62,6 +62,17 @@ describe('Analyse d’une intention d’achat', () => {
     }
   });
 
+  it('élague les mots vides aux extrémités, jamais au milieu', () => {
+    // « un téléphone à » ne figure dans aucun titre : la recherche catalogue
+    // compare par inclusion, et la formulation française la plus courante ne
+    // rendait rien.
+    assert.equal(parseShoppingIntent('Je cherche un téléphone à moins de 100 000 XAF').terms, 'téléphone');
+    assert.equal(parseShoppingIntent('Bonjour, je veux une robe pour un mariage svp').terms, 'robe pour un mariage');
+    // Au milieu, un mot vide porte du sens : « sac de voyage » est un nom.
+    assert.equal(parseShoppingIntent('un sac de voyage').terms, 'sac de voyage');
+    assert.equal(parseShoppingIntent('Trouve-moi des chaussures en cuir').terms, 'chaussures en cuir');
+  });
+
   it('laisse à null ce qui n’a pas été exprimé', () => {
     const i = parseShoppingIntent('chaussures en cuir');
     // `null` veut dire « non exprimé ». Un budget par défaut filtrerait sur une

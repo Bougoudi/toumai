@@ -20,6 +20,7 @@ import { reviewRouter } from './reviews/review.routes.js';
 import { disputeRouter } from './disputes/dispute.routes.js';
 import { notificationRouter } from './notifications/notification.routes.js';
 import { aiRouter } from './ai/ai.routes.js';
+import { adminAiRouter, aiChatRouter, businessAiRouter, sellerAiRouter } from './ai/chat.routes.js';
 import { adminRouter } from './admin/admin.routes.js';
 import { sellerRouter } from './seller/seller.routes.js';
 import { businessRouter, negotiationRouter, quoteRouter, rfqRouter } from './b2b/b2b.routes.js';
@@ -147,6 +148,13 @@ toumaV1Router.use('/reviews', reviewRouter);
 toumaV1Router.use('/disputes', disputeRouter);
 toumaV1Router.use('/notifications', notificationRouter);
 toumaV1Router.use('/ai', aiRouter);
+// L'assistant conversationnel, un routeur par espace : c'est l'espace qui
+// décide des outils accessibles, et le laisser au choix de l'appelant
+// reviendrait à laisser un acheteur demander la surface vendeur.
+toumaV1Router.use('/ai', aiChatRouter);
+toumaV1Router.use('/seller/ai', sellerAiRouter);
+toumaV1Router.use('/business/ai', businessAiRouter);
+toumaV1Router.use('/admin/ai', adminAiRouter);
 toumaV1Router.use('/seller', sellerRouter);
 toumaV1Router.use('/business', businessRouter);
 toumaV1Router.use('/rfqs', rfqRouter);

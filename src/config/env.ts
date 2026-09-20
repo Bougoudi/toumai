@@ -129,6 +129,12 @@ export const env = {
       trust: process.env.TOUMA_CRON_TRUST ?? '*/5 * * * *',
       /** Clôture des ventes flash : la minute suffit, elles sont courtes. */
       flashSales: process.env.TOUMA_CRON_FLASH_SALES ?? '* * * * *',
+      /**
+       * Travaux d'intelligence : la fenêtre est l'heure, donc l'horaire aussi.
+       * Les faire tourner plus souvent ne produirait rien de plus — la
+       * deuxième passe de la même heure est refusée par l'unicité en base.
+       */
+      intelligence: process.env.TOUMA_CRON_INTELLIGENCE ?? '7 * * * *',
       /** Les purges n'ont aucune urgence : une fois par nuit suffit. */
       purges: process.env.TOUMA_CRON_PURGES ?? '30 3 * * *',
     },

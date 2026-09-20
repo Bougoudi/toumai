@@ -429,6 +429,37 @@ export function toumaOpenApiDocument() {
       '/shipping/{id}/cancel': { post: op('Touma Logistics', 'Annuler une expédition', { params: ['id'], role: 'SELLER' }) },
       '/ai/provider': { get: op('Touma AI', 'Adaptateur d’IA actif', { auth: false }) },
 
+      // ── Touma Intelligence (V23) ───────────────────────────────────────────
+      '/ai/chat': { post: op('Touma Intelligence', 'Assistant acheteur : la réponse est composée à partir des données réelles, jamais inventée', { auth: false, body: true }) },
+      '/ai/capabilities': { get: op('Touma Intelligence', 'Outils réellement disponibles depuis l’espace acheteur', { auth: false }) },
+      '/ai/conversations': { get: op('Touma Intelligence', 'Mes conversations avec l’assistant') },
+      '/ai/conversations/{id}': {
+        get: op('Touma Intelligence', 'Une conversation, ses messages et la trace des outils appelés', { params: ['id'] }),
+        delete: op('Touma Intelligence', 'Supprimer une de mes conversations', { params: ['id'] }),
+      },
+      '/ai/feedback': { post: op('Touma Intelligence', 'Signaler une réponse (incorrecte, prix faux, produit faux…)', { body: true }) },
+      '/ai/confirmations': { get: op('Touma Intelligence', 'Actions en attente de ma confirmation') },
+      '/ai/confirmations/{id}/confirm': { post: op('Touma Intelligence', 'Confirmer une action sensible proposée par l’assistant', { params: ['id'] }) },
+      '/ai/confirmations/{id}/reject': { post: op('Touma Intelligence', 'Refuser une action proposée par l’assistant', { params: ['id'] }) },
+      '/ai/memory': {
+        get: op('Touma Intelligence', 'Ce que l’assistant a retenu de moi, avec sa date d’expiration'),
+        delete: op('Touma Intelligence', 'Effacer ce que l’assistant a retenu', { query: ['key'] }),
+      },
+      '/seller/ai': { post: op('Touma Intelligence', 'Copilote vendeur : ventes, stock, brouillon de fiche', { role: 'SELLER', body: true }) },
+      '/seller/ai/capabilities': { get: op('Touma Intelligence', 'Outils disponibles depuis l’espace vendeur', { role: 'SELLER' }) },
+      '/business/ai': { post: op('Touma Intelligence', 'Assistant professionnel : fournisseurs, devis, demande de devis', { body: true }) },
+      '/business/ai/capabilities': { get: op('Touma Intelligence', 'Outils disponibles depuis l’espace professionnel') },
+      '/admin/ai/query': { post: op('Touma Intelligence', 'Agent d’administration, en lecture : les décisions restent humaines', { role: 'ADMIN', body: true }) },
+      '/admin/ai/usage': { get: op('Touma Intelligence', 'Consommation et coûts estimés de l’IA', { role: 'ADMIN', query: ['days'] }) },
+      '/admin/ai/quality': { get: op('Touma Intelligence', 'Qualité : échecs d’outils, signalements factuels, latence', { role: 'ADMIN', query: ['days'] }) },
+      '/admin/ai/feedback': { get: op('Touma Intelligence', 'File des signalements non traités', { role: 'ADMIN', query: ['days'] }) },
+      '/admin/ai/jobs': { get: op('Touma Intelligence', 'Exécutions des travaux périodiques d’intelligence', { role: 'ADMIN' }) },
+      '/admin/ai/prompts': {
+        get: op('Touma Intelligence', 'Versions d’invites de production', { role: 'ADMIN' }),
+        post: op('Touma Intelligence', 'Créer une version d’invite (inactive par défaut)', { role: 'ADMIN', body: true }),
+      },
+      '/admin/ai/prompts/{id}/activate': { post: op('Touma Intelligence', 'Activer une version d’invite (une seule active par fonctionnalité)', { role: 'ADMIN', params: ['id'] }) },
+
       // ── Notifications ───────────────────────────────────────────────────
       '/notifications/{id}/read': { post: op('Auth', 'Marquer une notification comme lue', { params: ['id'] }) },
       '/notifications/read-all': { post: op('Auth', 'Tout marquer comme lu') },

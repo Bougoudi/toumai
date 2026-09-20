@@ -236,13 +236,14 @@ export function parseShoppingIntent(phrase: string): {
 
   // Les mots de budget ne sont pas des mots de recherche : chercher « moins »
   // dans le catalogue ne rend rien.
-  const terms = brut
+  const termesBruts = brut
     .replace(new RegExp(`(?:moins de|sous|max(?:imum)?|jusqu'?[àa]|budget de|plus de|au moins|[àa] partir de)\\s*${nombre}`, 'gi'), ' ')
     .replace(/\b(?:xaf|fcfa|f\s?cfa|cfa|francs?|eur|euros?|usd|dollars?)\b/gi, ' ')
     .replace(/(?:livr[ée]e?\s+(?:à|a|au|dans|vers)|destination)\s+[a-zà-ÿ'’\- ]{3,40}/gi, ' ')
     .replace(/\b(?:je cherche|je veux|trouve[- ]moi|montre[- ]moi|il me faut)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  const terms = elaguerMotsVides(termesBruts);
 
   return {
     terms,
@@ -253,4 +254,45 @@ export function parseShoppingIntent(phrase: string): {
     verifiedOnly: /\bverifi/i.test(sansAccents),
     inStockOnly: /\b(?:en stock|disponible|dispo)\b/i.test(sansAccents),
   };
+}
+
+/**
+ * Mots vides français, retirés **uniquement aux extrémités**.
+ *
+ * « Je cherche un téléphone à moins de 100 000 XAF » laissait « un téléphone à »
+ * une fois le budget extrait. La recherche catalogue compare cette chaîne par
+ * inclusion : « un téléphone à » ne figure dans aucun titre, et la formulation
+ * française la plus courante ne rendait rien.
+ *
+ * Aux extrémités seulement, et c'est le point délicat : retirer les mots vides
+ * partout casserait « sac de voyage », dont le « de » fait partie du nom. Un
+ * article en tête et une préposition orpheline en queue ne portent aucun sens ;
+ * une préposition au milieu, si.
+ */
+const MOTS_VIDES = new Set([
+  'je', 'j', 'tu', 'il', 'elle', 'on', 'nous', 'vous', 'un', 'une', 'des', 'du',
+  'de', 'le', 'la', 'les', 'l', 'a', 'à', 'au', 'aux', 'pour', 'avec', 'en',
+  'et', 'ou', 'moi', 'me', 'mon', 'ma', 'mes', 'ce', 'cet', 'cette', 'que',
+  'qui', 'plaît', 'plait', 'stp', 'svp', 'bonjour', 'salut', 'merci',
+]);
+
+export function elaguerMotsVides(phrase: string): string {
+  const mots = phrase.split(/\s+/).filter(Boolean);
+  // La ponctuation est retirée avant comparaison : « Bonjour, » est le même
+  // mot vide que « bonjour », et le laisser tel quel bloquait l'élagage de
+  // tout ce qui le suivait.
+  const vide = (m: string) =>
+    MOTS_VIDES.has(
+      m
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/['\u2019]/g, '')
+        .replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ''),
+    );
+  let debut = 0;
+  let fin = mots.length;
+  while (debut < fin && vide(mots[debut])) debut += 1;
+  while (fin > debut && vide(mots[fin - 1])) fin -= 1;
+  return mots.slice(debut, fin).join(' ');
 }
