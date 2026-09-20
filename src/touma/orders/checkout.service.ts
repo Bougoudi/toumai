@@ -9,6 +9,7 @@ import { generatePickupCode, hashPickupCode } from '../logistics/pickup-code.js'
 import { notify } from '../lib/notifications.js';
 import { logisticsService } from '../logistics/logistics.service.js';
 import { couponService, type BasketStoreLine } from '../promotions/coupon.service.js';
+import { assessTransaction, recordTransactionRisk } from '../trust/transaction-risk.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { commissionFor } from '../payments/commission.service.js';
 import { sellerServes } from '../logistics/service-zones.js';
@@ -320,6 +321,37 @@ export const checkoutService = {
         : null,
     };
 
+    // ── Risque de la transaction, boutique par boutique ──────────────────────
+    //
+    // Évalué **avant** d'écrire quoi que ce soit, et hors de la transaction :
+    // un refus doit arriver avant que du stock soit décrémenté. Seule une règle
+    // portant sur un fait certain (compte banni, boutique fermée) peut refuser ;
+    // un cumul de facteurs ne refuse jamais — il retient un versement ou fait
+    // relire, ce qui protège sans accuser.
+    const risques = new Map<string, Awaited<ReturnType<typeof assessTransaction>>>();
+    for (const line of basketLines) {
+      const evaluation = await assessTransaction({
+        buyerId: user.id,
+        storeId: line.storeId,
+        amount: Number(line.subtotal),
+        currency: basketCurrency,
+        // Non connu à ce stade : le paiement est créé après la commande.
+        // Le facteur correspondant ne sera donc pas mesuré ici.
+        destinationCountry: address.countryCode,
+        shippingAddressId: address.id,
+      });
+      if (evaluation.decision === 'BLOCK') {
+        // Le motif rendu nomme la règle, pas le score : « compte suspendu »
+        // est contestable, « score de risque 82 » ne l'est pas.
+        throw badRequest(
+          evaluation.rule === 'STORE_INACTIVE'
+            ? 'Cette boutique n’accepte plus de commandes.'
+            : 'Votre compte ne peut pas passer commande. Vous pouvez contester cette décision depuis votre espace.',
+        );
+      }
+      risques.set(line.storeId, evaluation);
+    }
+
     // Codes de retrait, en clair, le temps de la requête seulement. Ils sont
     // rendus une fois à l'acheteur et ne sont jamais relus depuis la base, qui
     // n'en garde que l'empreinte.
@@ -547,6 +579,16 @@ export const checkoutService = {
         }),
       ),
     ]);
+
+    // Trace de ce que la plateforme savait au moment où elle a laissé passer.
+    // Écrite après coup : elle ne doit pas retarder la commande, et son absence
+    // ne doit pas l'empêcher.
+    await Promise.all(
+      orders.map((o) => {
+        const evaluation = risques.get(o.storeId);
+        return evaluation ? recordTransactionRisk(o.id, evaluation) : Promise.resolve();
+      }),
+    );
 
     return {
       group,

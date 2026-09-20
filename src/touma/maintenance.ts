@@ -6,6 +6,7 @@ import { refreshEligibility } from './finance/settlement.service.js';
 import { sweepDisputes } from './disputes/escalation.js';
 import { purgeExpiredKeys } from './lib/idempotency.js';
 import { purgeWebhookDeliveries } from './payments/webhook-log.js';
+import { processTrustEvents } from './trust/events.js';
 
 /**
  * Entretien périodique du domaine TOUMA.
@@ -79,6 +80,15 @@ export const maintenanceJobs = {
   idempotency: () => purgeExpiredKeys(),
   /** Retire les traces de webhook au-delà de la durée de conservation. */
   webhooks: () => purgeWebhookDeliveries(env.touma.webhookRetentionDays),
+  /**
+   * Recalcule la confiance des entités touchées depuis le dernier passage.
+   *
+   * Hors du chemin critique : un acheteur qui confirme sa réception n'a pas à
+   * attendre l'agrégat de réputation de son vendeur. Et comme chaque score se
+   * recalcule depuis des faits en base plutôt que depuis un cumul d'incréments,
+   * un événement perdu ne corrompt rien — il retarde.
+   */
+  trust: () => processTrustEvents(),
 };
 
 /** Joue tous les travaux une fois. Employé au démarrage et par les tests. */
@@ -100,6 +110,7 @@ export function startToumaMaintenance(): void {
   cron.schedule(c.reservations, safe('réservations', maintenanceJobs.reservations));
   cron.schedule(c.settlements, safe('règlements', maintenanceJobs.settlements));
   cron.schedule(c.disputes, safe('litiges', maintenanceJobs.disputes));
+  cron.schedule(c.trust, safe('confiance', maintenanceJobs.trust));
   cron.schedule(c.purges, safe('purges', async () => {
     const cles = await maintenanceJobs.idempotency();
     const webhooks = await maintenanceJobs.webhooks();

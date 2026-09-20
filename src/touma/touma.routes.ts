@@ -31,6 +31,7 @@ import { couponRouter } from './promotions/coupon.routes.js';
 import { loyaltyRouter } from './loyalty/loyalty.routes.js';
 import { documentRouter } from './documents/document.routes.js';
 import { reputationRouter } from './reputation/reputation.routes.js';
+import { adminTrustRouter, trustRouter } from './trust/trust.routes.js';
 import { sourcingRouter } from './sourcing/sourcing.routes.js';
 
 /**
@@ -161,6 +162,8 @@ toumaV1Router.use('/coupons', couponRouter);
 toumaV1Router.use('/loyalty', loyaltyRouter);
 toumaV1Router.use('/documents', documentRouter);
 toumaV1Router.use('/reputation', reputationRouter);
+toumaV1Router.use('/trust', trustRouter);
+toumaV1Router.use('/admin/trust', adminTrustRouter);
 toumaV1Router.use('/sourcing', sourcingRouter);
 toumaV1Router.use('/admin', adminRouter);
 

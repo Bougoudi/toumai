@@ -10,6 +10,7 @@ import { paginated, type PageParams } from '../lib/pagination.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import { refundService } from '../payments/refund.service.js';
 import { reputationService } from '../reputation/reputation.service.js';
+import { recordTrustEvent } from '../trust/events.js';
 import type { ApproveReturnInput, CreateReturnInput, ListReturnsQuery, ReceiveReturnInput, RefundInput } from './return.schema.js';
 
 /**
@@ -298,6 +299,12 @@ export const returnService = {
 
     // Un retour compte dans la réputation de la boutique.
     await reputationService.invalidate(order.storeId);
+    await recordTrustEvent({
+      entityType: 'SELLER',
+      entityId: order.storeId,
+      type: 'ORDER_REFUNDED',
+      detail: { orderId: order.id },
+    });
 
     await audit({
       actorId: user.id,

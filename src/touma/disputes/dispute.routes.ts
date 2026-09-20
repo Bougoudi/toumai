@@ -12,6 +12,7 @@ import { badRequest, conflict, notFound } from '../lib/errors.js';
 import { notify } from '../lib/notifications.js';
 import { authenticate, currentUser, requireAdmin } from '../middleware/toumaAuth.js';
 import { reputationService } from '../reputation/reputation.service.js';
+import { recordTrustEvent } from '../trust/events.js';
 import { refreshGroupStatus } from '../orders/group-status.js';
 
 /**
@@ -225,6 +226,10 @@ disputeRouter.post(
 
     // Un litige pèse dans la réputation de la boutique : son instantané est périmé.
     await reputationService.invalidate(order.storeId);
+    await recordTrustEvent([
+      { entityType: 'SELLER', entityId: order.storeId, type: 'DISPUTE_OPENED', detail: { disputeId: dispute.id } },
+      { entityType: 'BUYER', entityId: order.buyerId, type: 'DISPUTE_OPENED', detail: { disputeId: dispute.id } },
+    ]);
 
     const counterpartId = order.buyerId === user.id ? order.store.ownerId : order.buyerId;
     await notify({

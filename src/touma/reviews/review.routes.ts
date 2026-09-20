@@ -5,6 +5,8 @@ import { prisma } from '../../db/prisma.js';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { authenticate, currentUser } from '../middleware/toumaAuth.js';
+import { scoreAndStore } from '../trust/review-risk.js';
+import { recordTrustEvent } from '../trust/events.js';
 
 /**
  * Avis Touma. Règle stricte : **seul un acheteur ayant réellement reçu le
@@ -87,6 +89,19 @@ reviewRouter.post(
       });
       return created;
     });
-    res.status(201).json(review);
+    // Évaluation anti-manipulation : elle **signale**, elle ne masque pas. Hors
+    // transaction, et sans jamais faire échouer le dépôt de l'avis — un avis
+    // sincère ne doit pas être perdu parce qu'un contrôle a bronché.
+    await scoreAndStore(review.id).catch(() => null);
+    await recordTrustEvent([
+      { entityType: 'SELLER', entityId: order.storeId, type: 'REVIEW_CREATED', detail: { reviewId: review.id } },
+      { entityType: 'PRODUCT', entityId: input.productId, type: 'REVIEW_CREATED', detail: { reviewId: review.id } },
+    ]);
+
+    // L'auteur n'apprend pas si son avis a été signalé, ni sur quels critères :
+    // le lui dire apprendrait à un faux avis comment passer au travers. Le
+    // statut de modération est donc retiré de la réponse.
+    const { status: _statutModeration, ...publiable } = review;
+    res.status(201).json(publiable);
   }),
 );

@@ -125,6 +125,8 @@ export const env = {
       reservations: process.env.TOUMA_CRON_RESERVATIONS ?? '*/2 * * * *',
       settlements: process.env.TOUMA_CRON_SETTLEMENTS ?? '*/10 * * * *',
       disputes: process.env.TOUMA_CRON_DISPUTES ?? '*/15 * * * *',
+      /** Recalcul de la confiance : utile, jamais urgent. */
+      trust: process.env.TOUMA_CRON_TRUST ?? '*/5 * * * *',
       /** Les purges n'ont aucune urgence : une fois par nuit suffit. */
       purges: process.env.TOUMA_CRON_PURGES ?? '30 3 * * *',
     },

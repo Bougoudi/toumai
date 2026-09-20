@@ -233,6 +233,57 @@ export function toumaOpenApiDocument() {
       '/reputation/store/{idOrSlug}': { get: op('Réputation', 'Réputation publique d’une boutique', { auth: false, params: ['idOrSlug'] }) },
       '/reputation/mine/{storeId}': { get: op('Réputation', 'Ma réputation, recalculée à la demande', { params: ['storeId'], role: 'SELLER' }) },
       '/reputation/leaderboard': { get: op('Réputation', 'Classement des boutiques par score', { role: 'ADMIN', query: ['limit'] }) },
+
+      // ── Confiance, réputation et vérification (V21) ───────────────────────
+      //
+      // Aucune de ces routes ne permet d'écrire un score, un badge ou un statut
+      // de vérification : ce sont des lectures, plus un recours déposé par
+      // l'intéressé et des décisions d'administration auditées.
+      '/trust/weights': {
+        get: op('Confiance', 'Pondérations, seuils et règles de badges — publiés pour être contestables', { auth: false }),
+      },
+      '/trust/sellers/{idOrSlug}': {
+        get: op('Confiance', 'Confiance publique d’une boutique, avec sa ventilation', { auth: false, params: ['idOrSlug'] }),
+      },
+      '/trust/products/{idOrSlug}': {
+        get: op('Confiance', 'Confiance d’un produit', { auth: false, params: ['idOrSlug'] }),
+      },
+      '/trust/suppliers/{userId}': {
+        get: op('Confiance', 'Confiance d’un fournisseur B2B', { auth: false, params: ['userId'] }),
+      },
+      '/trust/me': { get: op('Confiance', 'Ma confiance : score, badges, état du compte, recours') },
+      '/trust/history/{entityType}/{entityId}': {
+        get: op('Confiance', 'Historique daté d’un score — l’intéressé ou l’administration', { params: ['entityType', 'entityId'] }),
+      },
+      '/trust/verification/requirements': {
+        get: op('Confiance', 'Ce qui manque pour atteindre un niveau de vérification', { query: ['level', 'storeId'] }),
+      },
+      '/trust/appeals': {
+        get: op('Confiance', 'Mes recours'),
+        post: op('Confiance', 'Contester une décision de confiance', { body: true }),
+      },
+      '/admin/trust/overview': { get: op('Confiance', 'Tableau de bord de la confiance', { role: 'ADMIN' }) },
+      '/admin/trust/reviews': {
+        get: op('Confiance', 'File de modération des avis', { role: 'ADMIN', query: ['status', 'page', 'limit'] }),
+      },
+      '/admin/trust/reviews/{id}/moderate': {
+        post: op('Confiance', 'Décider du sort d’un avis — motif obligatoire, audité', { role: 'ADMIN', params: ['id'], body: true }),
+      },
+      '/admin/trust/risk': {
+        get: op('Confiance', 'Transactions évaluées à risque', { role: 'ADMIN', query: ['level', 'page', 'limit'] }),
+      },
+      '/admin/trust/appeals': {
+        get: op('Confiance', 'File des recours', { role: 'ADMIN', query: ['status', 'page', 'limit'] }),
+      },
+      '/admin/trust/appeals/{id}/decide': {
+        post: op('Confiance', 'Trancher un recours — motivation obligatoire', { role: 'ADMIN', params: ['id'], body: true }),
+      },
+      '/admin/trust/users/{id}/standing': {
+        post: op('Confiance', 'Restreindre, suspendre, bannir ou rétablir un compte', { role: 'ADMIN', params: ['id'], body: true }),
+      },
+      '/admin/trust/recompute/{entityType}/{entityId}': {
+        post: op('Confiance', 'Recalculer une confiance à la demande', { role: 'ADMIN', params: ['entityType', 'entityId'] }),
+      },
       '/sourcing/suppliers': {
         get: op('Sourcing', 'Trouver un fournisseur', {
           auth: false,

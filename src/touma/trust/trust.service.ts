@@ -422,3 +422,29 @@ export const trustService = {
   /** Facteur de décroissance, exposé pour que le calcul reste vérifiable. */
   decayFactor,
 };
+
+/**
+ * Réduit une ventilation à ce qui peut être rendu public.
+ *
+ * **Le défaut que ceci corrige.** La composante `FRAUD_SIGNALS` porte, dans son
+ * détail, le score de risque du compte propriétaire. Rendue telle quelle sur la
+ * fiche publique d'une boutique, elle publiait à tout visiteur une suspicion
+ * interne — c'est-à-dire, en pratique, une accusation non établie, sur une page
+ * que n'importe qui peut lire.
+ *
+ * **Ce qui est fait, et pourquoi pas autre chose.** La composante n'est pas
+ * retirée : le total ne s'additionnerait plus et le score cesserait d'être
+ * vérifiable. Elle n'est pas non plus laissée en l'état. Elle est **rendue
+ * opaque** : les points restent, le motif disparaît. Un acheteur voit un score
+ * plus bas sans qu'on lui dise de quoi le vendeur est soupçonné ; le vendeur,
+ * lui, voit dans son espace que des contrôles internes lui coûtent des points
+ * et peut contester — sans qu'on lui apprenne quelles règles contourner.
+ */
+export function redactForPublic(components: TrustBreakdown['components']): TrustBreakdown['components'] {
+  const INTERNES = new Set(['FRAUD_SIGNALS']);
+  return components.map((c) =>
+    INTERNES.has(c.code)
+      ? { ...c, code: 'INTERNAL_CHECKS', value: null, detail: {} }
+      : c,
+  );
+}

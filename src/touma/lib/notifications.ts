@@ -56,7 +56,19 @@ export type NotificationType =
   | 'DISPUTE_RESOLVED'
   | 'EVIDENCE_ADDED'
   | 'FUNDS_HELD'
-  | 'FUNDS_RELEASED';
+  | 'FUNDS_RELEASED'
+  // ── Confiance, réputation et vérification (V21) ──────────────────────────
+  //
+  // Ces notifications ne sont pas coupables par préférence : elles portent des
+  // décisions qui restreignent un compte ou y répondent. Quelqu'un dont la
+  // boutique est restreinte doit l'apprendre, même s'il a tout coupé.
+  | 'TRUST_STANDING_CHANGED'
+  | 'TRUST_STANDING_RESTORED'
+  | 'TRUST_APPEAL_APPROVED'
+  | 'TRUST_APPEAL_REJECTED'
+  | 'TRUST_SCORE_CHANGED'
+  | 'TRUST_BADGE_AWARDED'
+  | 'TRUST_REVIEW_FLAGGED';
 
 /**
  * Catégories de préférence. Elles regroupent les types : un utilisateur coupe

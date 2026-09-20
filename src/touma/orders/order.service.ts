@@ -7,6 +7,7 @@ import { paginated, type PageParams } from '../lib/pagination.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import { loyaltyService } from '../loyalty/loyalty.service.js';
 import { reputationService } from '../reputation/reputation.service.js';
+import { recordTrustEvent, type TrustEventType } from '../trust/events.js';
 import { refundService } from '../payments/refund.service.js';
 import type { ListOrdersQuery } from './order.schema.js';
 
@@ -305,7 +306,25 @@ export const orderService = {
 
     // Livraison et annulation changent la réputation de la boutique : son
     // instantané est périmé, il sera recalculé à la prochaine lecture.
-    if (['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(status)) await reputationService.invalidate(order.storeId);
+    if (['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(status)) {
+      await reputationService.invalidate(order.storeId);
+      // La confiance du vendeur, celle de l'acheteur et celle de chaque produit
+      // de la commande bougent ensemble. Consigner plutôt que recalculer : le
+      // recalcul suit en tâche de fond, hors du chemin de l'acheteur.
+      const items = await prisma.toumaOrderItem.findMany({
+        where: { orderId: order.id },
+        select: { productId: true },
+      });
+      const type: TrustEventType =
+        status === 'CANCELLED' ? 'ORDER_CANCELLED' : status === 'DELIVERED' ? 'DELIVERY_COMPLETED' : 'ORDER_COMPLETED';
+      await recordTrustEvent([
+        { entityType: 'SELLER', entityId: order.storeId, type, detail: { orderId: order.id } },
+        { entityType: 'BUYER', entityId: order.buyerId, type, detail: { orderId: order.id } },
+        ...items
+          .filter((i): i is { productId: string } => Boolean(i.productId))
+          .map((i) => ({ entityType: 'PRODUCT' as const, entityId: i.productId, type, detail: { orderId: order.id } })),
+      ]);
+    }
 
     await notify({
       userId: order.buyerId,
