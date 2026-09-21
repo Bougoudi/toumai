@@ -8,6 +8,7 @@ import { codService } from './cod.service.js';
 import { refundService } from './refund.service.js';
 import { idempotent } from '../lib/idempotency.js';
 import { paymentMethodsFor } from './methods.service.js';
+import { badRequest } from '../lib/errors.js';
 
 export const paymentRouter = Router();
 
@@ -192,7 +193,23 @@ paymentWebhookRouter.post(
   '/:provider',
   express.raw({ type: '*/*', limit: '512kb' }),
   asyncHandler(async (req, res) => {
-    const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
+    /**
+     * Le corps doit être **brut**, et l'absence de repli est délibérée.
+     *
+     * Une re-sérialisation de secours (`Buffer.from(JSON.stringify(req.body))`)
+     * occupait cette ligne. Elle ne réparait rien : elle produisait des octets
+     * différents de ceux que le prestataire avait signés, donc une signature
+     * invalide — mais elle le faisait **silencieusement**, si bien que la vraie
+     * cause (un analyseur de corps monté trop tôt) ressemblait à une
+     * falsification. Mieux vaut une erreur qui nomme le défaut.
+     */
+    if (!Buffer.isBuffer(req.body)) {
+      throw badRequest(
+        'Corps de webhook déjà analysé : la signature ne peut plus être vérifiée sur les octets d’origine. ' +
+          'Le routeur de webhooks doit être monté avant tout analyseur de corps.',
+      );
+    }
+    const raw = req.body;
     // L'origine est consignée avec la tentative : sans elle, « on a reçu douze
     // webhooks mal signés » ne se distingue pas de « douze appelants distincts
     // ont essayé ».

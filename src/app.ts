@@ -77,6 +77,23 @@ export function createApp() {
     asyncHandler(paymentController.iyzicoCallback),
   );
 
+  /**
+   * Webhooks de paiement Touma : corps **brut** requis.
+   *
+   * Ce montage était placé après `express.json()`, alors que son commentaire
+   * affirmait le contraire. La conséquence n'avait rien de théorique :
+   * `express.json()` consommait le flux, `express.raw()` du routeur n'avait
+   * plus rien à lire, et la signature était vérifiée sur une **re-sérialisation**
+   * du corps analysé. Un prestataire réel signe ses propres octets — avec ses
+   * espaces, son ordre de clés, ses échappements — et aucune de ses
+   * notifications n'aurait passé la vérification : tous ses paiements seraient
+   * restés non confirmés, rejetés comme falsifiés.
+   *
+   * Vérifié avant correction : un corps espacé, signé correctement, repartait
+   * en 403. Seule la forme compacte de `JSON.stringify` passait.
+   */
+  app.use('/api/v1/payments/webhook', paymentWebhookRouter);
+
   // Import de catalogue : le corps est du CSV brut, pas du JSON. Monté avant
   // express.json() qui le rejetterait comme malformé.
   app.use(express.text({ type: ['text/csv', 'text/plain'], limit: '2mb' }));
@@ -105,10 +122,6 @@ export function createApp() {
   // Toute route de l'application (hors fichiers statiques, déjà servis) renvoie
   // la coquille : le routeur côté client prend ensuite la main.
   app.get(/^\/touma(\/.*)?$/, asyncHandler(marketplaceShell));
-
-  // Webhooks de paiement Touma : corps BRUT requis pour vérifier la signature
-  // (monté AVANT express.json(), qui casserait la vérification).
-  app.use('/api/v1/payments/webhook', paymentWebhookRouter);
 
   // Santé / disponibilité
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'toumai' }));

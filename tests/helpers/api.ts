@@ -111,7 +111,20 @@ export function uniqueEmail(prefix: string): string {
  * que la fenêtre d'acceptation est bien appliquée.
  */
 export function signWebhook(payload: unknown, secret: string, at: Date = new Date()): { raw: Buffer; signature: string } {
-  const raw = Buffer.from(JSON.stringify(payload));
+  return signWebhookRaw(Buffer.from(JSON.stringify(payload)), secret, at);
+}
+
+/**
+ * Signe des **octets choisis**, et pas un objet re-sérialisé.
+ *
+ * `signWebhook` passait toujours par `JSON.stringify`, donc toujours par la
+ * forme compacte. C'est ce qui a permis à toute la suite de rester verte alors
+ * qu'un analyseur de corps monté trop tôt faisait vérifier la signature sur une
+ * re-sérialisation : la seule sérialisation testée était justement celle qui
+ * survivait à l'aller-retour. Un prestataire réel signe ses propres octets —
+ * avec ses espaces et son ordre de clés — et ce tour-là ne lui est pas offert.
+ */
+export function signWebhookRaw(raw: Buffer, secret: string, at: Date = new Date()): { raw: Buffer; signature: string } {
   const t = Math.floor(at.getTime() / 1000);
   const signed = Buffer.concat([Buffer.from(`${t}.`, 'utf8'), raw]);
   return { raw, signature: `t=${t},v1=${createHmac('sha256', secret).update(signed).digest('hex')}` };

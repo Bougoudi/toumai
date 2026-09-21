@@ -3,7 +3,7 @@ import { createHash, createHmac } from 'node:crypto';
 import { after, before, describe, it } from 'node:test';
 import { prisma } from '../../src/db/prisma.js';
 import { env } from '../../src/config/env.js';
-import { promoteToAdmin, registerUser, signWebhook, TestApi, uniqueEmail } from '../helpers/api.js';
+import { promoteToAdmin, registerUser, signWebhook, signWebhookRaw, TestApi, uniqueEmail } from '../helpers/api.js';
 import { ensureReferenceData, ensureSchema } from '../helpers/db.js';
 import { purgeWebhookDeliveries } from '../../src/touma/payments/webhook-log.js';
 import { REDACTED } from '../../src/touma/lib/redact.js';
@@ -111,6 +111,37 @@ describe('Un webhook refusé laisse une trace', () => {
 
     const trace = await traceDe(raw);
     assert.match(trace!.reason ?? '', /mal formée|absent/i);
+  });
+
+  it('vérifie la signature sur les octets reçus, quelle que soit leur mise en forme', async () => {
+    /**
+     * Le défaut que ce test existe pour empêcher.
+     *
+     * `express.json()` était monté avant le routeur de webhooks. Il consommait
+     * le flux ; `express.raw()` n'avait plus rien à lire ; la signature était
+     * alors vérifiée sur une **re-sérialisation** compacte du corps analysé.
+     * Un prestataire réel signe ses propres octets — Stripe, un agrégateur
+     * mobile money, n'importe lequel — avec ses espaces et son ordre de clés.
+     * Aucune de ses notifications n'aurait passé la vérification : ses
+     * paiements seraient restés non confirmés, rejetés comme falsifiés.
+     *
+     * Toute la suite restait verte parce que `signWebhook` signait toujours la
+     * sortie de `JSON.stringify`, c'est-à-dire la seule forme qui survivait à
+     * l'aller-retour. D'où des octets écrits à la main ici.
+     */
+    const ref = `mockpay_forme_${Date.now()}`;
+    const corps = `{\n  "id": "evt-forme-${Date.now()}",\n  "type": "payment.succeeded",\n  "data": { "providerRef": "${ref}", "status": "SUCCEEDED" }\n}`;
+    const { raw, signature } = signWebhookRaw(Buffer.from(corps, 'utf8'), env.touma.paymentWebhookSecret);
+
+    const res = await api.request('POST', '/api/v1/payments/webhook/mock', { raw, headers: { 'x-touma-signature': signature } });
+    // 404 « paiement inconnu » : la signature est passée, seule la référence
+    // n'existe pas. Un 403 signifierait que la mise en forme a été jugée
+    // falsifiée — le défaut d'origine.
+    assert.equal(res.status, 404, 'une signature valide sur un corps espacé doit être acceptée');
+
+    const trace = await traceDe(raw);
+    assert.equal(trace!.signatureValid, true);
+    assert.equal(trace!.outcome, 'UNKNOWN_PAYMENT');
   });
 
   it('consigne un prestataire inconnu plutôt que de répondre 500', async () => {

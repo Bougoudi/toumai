@@ -40,6 +40,16 @@ COPY --from=build /app/public ./dist/public
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
+# L'application tournait en root : l'image `node` fournit un utilisateur `node`
+# sans privilège, et rien ici n'exige root. Une exécution du serveur applicatif
+# en root transforme n'importe quelle exécution de code arbitraire en contrôle
+# total du conteneur (V25 §35).
+#
+# `var/` porte le stockage local des pièces jointes quand aucun stockage objet
+# n'est configuré : il doit rester inscriptible par cet utilisateur.
+RUN mkdir -p /app/var && chown -R node:node /app
+USER node
+
 EXPOSE 3000
 
 # Sonde de disponibilité : l'API n'est déclarée saine que si PostgreSQL répond.
