@@ -3,7 +3,9 @@ import { prisma } from '../../../db/prisma.js';
 import { forbidden } from '../../lib/errors.js';
 import { briefService } from '../insights/brief.service.js';
 import { demandIntelligence } from '../insights/demand.service.js';
+import { cartInsights } from '../insights/cart.service.js';
 import { priceIntelligence } from '../insights/price.service.js';
+import { riskInsights } from '../insights/risk.service.js';
 import { registerTool, type ToolContext, type ToolResult } from './registry.js';
 
 /**
@@ -114,6 +116,43 @@ registerTool({
     return {
       data: bilan,
       summary: `Bilan sur ${bilan.periodDays} jour(s) : ${bilan.observed.orders} commande(s), ${bilan.anomalies.length} anomalie(s), ${bilan.questions.length} point(s) à vérifier.`,
+    };
+  },
+});
+
+registerTool({
+  name: 'analyseMyCart',
+  description:
+    'Analyse le panier de l’utilisateur connecté : total par devise, découpage par vendeur, doublons, stock insuffisant, et alternatives réellement moins chères de la même catégorie. Ne modifie jamais le panier.',
+  risk: 'READ_ONLY',
+  surfaces: ['BUYER'],
+  roles: ['BUYER', 'SELLER', 'ADMIN'],
+  inputSchema: z.object({ targetSaving: z.string().regex(/^\d+(\.\d{1,4})?$/).optional() }),
+  async handler(input, ctx): Promise<ToolResult> {
+    if (!ctx.user) throw forbidden('Cet outil demande un compte connecté.');
+    const analyse = await cartInsights.analyse(ctx.user.id, { targetSaving: input.targetSaving });
+    if (analyse.empty) return { data: analyse, summary: 'Panier vide.' };
+    return {
+      data: analyse,
+      summary: `${analyse.sellers.length} vendeur(s), ${analyse.alternatives.length} alternative(s) moins chère(s), ${analyse.stockIssues.length} problème(s) de stock.`,
+    };
+  },
+});
+
+registerTool({
+  name: 'getRiskReviewQueue',
+  description:
+    'File de revue de fraude : rapprochements de faits mesurés sur les commandes, les avis et les comptes. N’applique aucune décision — suspension, blocage et restriction restent humains.',
+  risk: 'READ_ONLY',
+  surfaces: ['ADMIN'],
+  roles: ['ADMIN'],
+  inputSchema: z.object({ days: z.number().int().min(1).max(365).optional() }),
+  async handler(input, ctx): Promise<ToolResult> {
+    if (!ctx.user || ctx.user.role !== 'ADMIN') throw forbidden('Outil réservé à l’administration.');
+    const file = await riskInsights.reviewQueue(input.days ?? 30);
+    return {
+      data: file,
+      summary: file.total === 0 ? `${INDISPONIBLE} Aucun signal au-dessus des seuils.` : `${file.total} signal(aux) à examiner sur ${file.days} jours.`,
     };
   },
 });

@@ -96,3 +96,37 @@ vérifier*. Le cahier des charges demandait « explications possibles » ; c'est
 devenu des questions, délibérément. « Les ventes ont baissé de 30 % — vérifier
 s'il y a eu une rupture » est utile. « Les ventes ont baissé parce qu'il y a eu
 une rupture » serait faux une fois sur deux, et se lirait comme un constat.
+
+## Fraude et panier
+
+**La fraude n'est pas décidée.** V21 évalue déjà une transaction, un avis, un
+compte ; rien n'assemblait ces évaluations. L'apport est là : rapprocher des
+évaluations existantes pour faire apparaître ce qu'aucune ne montre seule —
+une boutique dont les commandes sont massivement classées à risque, une salve
+d'avis signalés, des paiements qui échouent en série.
+
+Aucune fonction ne suspend, ne bloque, ne restreint. Elles remplissent une
+**file de revue humaine**, avec les faits qui l'ont remplie et un plancher
+d'échantillon : deux commandes toutes deux critiques font 100 %, et pourtant
+il n'y a rien à en conclure — sans plancher, cette boutique serait en tête des
+suspects sans rien avoir fait.
+
+La confiance rendue mesure l'échantillon, pas une probabilité de fraude. Elle
+est volontairement grossière : « 73 % de confiance » se lirait comme une
+probabilité, ce qu'elle n'est pas.
+
+Une salve d'avis signalés peut être un achat d'avis comme une campagne de
+dénigrement. Les deux produisent le même signal et appellent des suites
+opposées ; l'outil ne tranche pas lequel, et le dit.
+
+**Le panier n'est jamais modifié.** L'analyse rend le total par devise, le
+découpage par vendeur — qui détermine le nombre d'expéditions —, les doublons,
+les stocks insuffisants et les alternatives réellement moins chères de la même
+catégorie.
+
+Chaque alternative porte sa mise en garde : ce n'est pas le même produit.
+Marque, taille, qualité et garantie peuvent différer, et présenter
+« 12 000 XAF d'économie » sans le dire ferait passer un autre article pour une
+remise. Un objectif d'économie hors d'atteinte est annoncé comme tel, avec le
+maximum réellement atteignable — jamais contourné par une proposition qui n'y
+répond pas.

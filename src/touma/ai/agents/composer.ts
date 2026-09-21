@@ -75,6 +75,10 @@ function redigerSelonIntention(intent: Intent, r: ToolCallOutcome[]): Reponse {
       return depenses(r);
     case 'CART_REVIEW':
       return panier(r);
+    case 'CART_OPTIMISE':
+      return panierOptimise(r);
+    case 'ADMIN_RISK':
+      return risque(r);
     case 'REORDER':
       return reachat(r);
     case 'SELLER_SALES':
@@ -566,6 +570,92 @@ function bilan(r: ToolCallOutcome[]): Reponse {
     cards: [],
     unavailable: (d.unavailable as string[]) ?? [],
     suggestions: ['Analyser le stock', 'Voir la demande non satisfaite'],
+  };
+}
+
+/**
+ * Panier : comment réduire.
+ *
+ * Chaque alternative porte sa mise en garde. Présenter « 8 000 XAF
+ * d'économie » sans dire que ce n'est pas le même produit ferait passer un
+ * autre article pour une remise.
+ */
+function panierOptimise(r: ToolCallOutcome[]): Reponse {
+  const d = donnees<Record<string, any>>(r, 'analyseMyCart');
+  if (!d) return vide('Je n’ai pas pu lire votre panier.');
+  if (d.empty) return vide('Votre panier est vide.');
+
+  const lignes: string[] = [];
+  const totaux = (d.byCurrency as Array<Record<string, any>>) ?? [];
+  lignes.push(`Total : ${totaux.map((t) => `${t.total} ${t.currency}`).join(' + ')}.`);
+  if (d.shippingNote) lignes.push(d.shippingNote);
+
+  const alternatives = (d.alternatives as Array<Record<string, any>>) ?? [];
+  if (alternatives.length === 0) {
+    lignes.push('Je ne trouve aucune alternative moins chère dans les mêmes catégories.');
+  } else {
+    lignes.push('Alternatives moins chères, dans la même catégorie :');
+    lignes.push(
+      alternatives
+        .slice(0, 5)
+        .map(
+          (a) =>
+            `• ${a.replaces.title} (${a.replaces.unitPrice}) → ${a.with.title} (${a.with.unitPrice} ${a.currency}, ${a.with.storeName ?? 'vendeur inconnu'}${a.with.verified ? ', vérifié' : ', non vérifié'}) — ${a.savingTotal} ${a.currency} de moins`,
+        )
+        .join('\n'),
+    );
+    lignes.push(alternatives[0].caution);
+  }
+
+  const objectif = d.targetSaving as Record<string, any> | null;
+  if (objectif) {
+    lignes.push(
+      objectif.reachable
+        ? `Votre objectif de ${objectif.requested} ${objectif.currency} est atteignable : ces remplacements totalisent ${objectif.bestAchievable} ${objectif.currency}.`
+        : `Votre objectif de ${objectif.requested} ${objectif.currency} n’est pas atteignable par des remplacements : ils totalisent au mieux ${objectif.bestAchievable} ${objectif.currency}. Retirer un article est la seule autre voie.`,
+    );
+  }
+
+  const doublons = (d.duplicates as Array<Record<string, any>>) ?? [];
+  if (doublons.length > 0) lignes.push(`Doublons : ${doublons.map((x) => x.title).join(', ')} figure(nt) sur plusieurs lignes.`);
+
+  const stock = (d.stockIssues as Array<Record<string, any>>) ?? [];
+  if (stock.length > 0) {
+    lignes.push(`Stock insuffisant : ${stock.map((s) => `${s.title} (${s.available} disponible(s) pour ${s.requested} demandé(s))`).join(' ; ')}.`);
+  }
+
+  lignes.push('Je ne modifie pas votre panier : retirer, remplacer ou garder reste de votre main.');
+
+  return {
+    text: lignes.join('\n\n'),
+    cards: [],
+    unavailable: (d.unavailable as string[]) ?? [],
+    suggestions: ['Voir mon panier', 'Comparer deux produits'],
+  };
+}
+
+/** File de revue de fraude. Des faits rapprochés, aucune accusation. */
+function risque(r: ToolCallOutcome[]): Reponse {
+  const d = donnees<Record<string, any>>(r, 'getRiskReviewQueue');
+  if (!d) return vide('Je n’ai pas pu établir la file de revue.');
+  const signaux = (d.signals as Array<Record<string, any>>) ?? [];
+  if (signaux.length === 0) {
+    return { text: `${INDISPONIBLE} ${d.note ?? 'Aucun signal au-dessus des seuils.'}`, cards: [], unavailable: [], suggestions: [] };
+  }
+  return {
+    text: [
+      `${signaux.length} signal(aux) sur ${d.days} jours :`,
+      signaux
+        .map(
+          (s) =>
+            `• [${s.code}] ${s.subjectType} ${s.subjectLabel ?? s.subjectId} — confiance ${s.confidence} sur ${s.sampleSize} observation(s)\n  À vérifier : ${s.recommendedReview}`,
+        )
+        .join('\n'),
+      d.disclaimer,
+    ].join('\n\n'),
+    cards: signaux.map((s) => ({ type: 'DATA', tool: 'getRiskReviewQueue', summary: `${s.code} — ${s.subjectLabel ?? s.subjectId}`, data: s.evidence })),
+    unavailable: [],
+    suggestions: ['Voir le bilan de la plateforme'],
   };
 }
 

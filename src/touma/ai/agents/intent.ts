@@ -26,6 +26,7 @@ export type Intent =
   | 'ORDER_LIST'
   | 'SPENDING'
   | 'CART_REVIEW'
+  | 'CART_OPTIMISE'
   | 'REORDER'
   | 'SELLER_SALES'
   | 'SELLER_INVENTORY'
@@ -43,6 +44,7 @@ export type Intent =
   | 'ADMIN_DELIVERY_ISSUES'
   | 'ADMIN_UNMET_DEMAND'
   | 'ADMIN_BRIEF'
+  | 'ADMIN_RISK'
   | 'HELP'
   | 'UNKNOWN';
 
@@ -76,6 +78,8 @@ const MOTS: Record<string, RegExp> = {
   commande: /\b(commande|commandes|colis|livraison de ma|ou est ma|suivi)\b/,
   depense: /\b(depense|depense|combien ai je|combien j ai|total depense|mes achats)\b/,
   panier: /\b(panier|mon panier)\b/,
+  reduire: /\b(reduire|reduir|economiser|moins cher|alleger|baisser le total|diminuer)\b/,
+  fraude: /\b(fraude|suspect|abus|risque|arnaque|surveiller)\b/,
   reachat: /\b(racheter|reachat|recommander la meme|comme d habitude|renouveler)\b/,
   confiance: /\b(fiable|confiance|serieux|verifie|reputation|pourquoi ce vendeur|ce vendeur est il)\b/,
   livraison: /\b(livraison|livrer|delai|combien de temps|expedition|frais de port)\b/,
@@ -139,6 +143,15 @@ export function planFromMessage(message: string, ctx: ToolContext, memoire: Reco
   }
 
   if (MOTS.panier.test(texte)) {
+    if (MOTS.reduire.test(texte)) {
+      // « Réduire mon panier de 10 000 » : le montant cité est l'objectif.
+      const montant = /(\d[\d\s.\u202f\u00a0]*\d|\d+)/.exec(brut)?.[1]?.replace(/[\s.\u202f\u00a0]/g, '');
+      return {
+        intent: 'CART_OPTIMISE',
+        calls: [{ tool: 'analyseMyCart', args: montant ? { targetSaving: montant } : {} }],
+        understood: montant ? `Chercher comment réduire votre panier de ${montant}.` : 'Chercher comment réduire votre panier.',
+      };
+    }
     return { intent: 'CART_REVIEW', calls: [{ tool: 'getMyCart', args: {} }], understood: 'Examiner votre panier.' };
   }
 
@@ -276,6 +289,9 @@ function planBusiness(texte: string, brut: string, ids: string[]): Plan {
 
 function planAdmin(texte: string): Plan {
   const jours = /\b(90|trimestre)\b/.test(texte) ? 90 : /\b(7|semaine)\b/.test(texte) ? 7 : /\b(aujourd hui|today)\b/.test(texte) ? 1 : 30;
+  if (/\bfraude|suspect|abus|risque|arnaque|surveiller/.test(texte)) {
+    return { intent: 'ADMIN_RISK', calls: [{ tool: 'getRiskReviewQueue', args: { days: jours } }], understood: `File de revue de fraude sur ${jours} jours.` };
+  }
   if (/\bbilan|resume|rapport|synthese|point du jour|que s est il passe/.test(texte)) {
     return { intent: 'ADMIN_BRIEF', calls: [{ tool: 'getPlatformBrief', args: { days: jours <= 7 ? jours : 7 } }], understood: `Bilan de la plateforme sur ${jours <= 7 ? jours : 7} jour(s).` };
   }
