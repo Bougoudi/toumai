@@ -153,6 +153,88 @@ export interface ProductReview {
   author: { name: string } | null;
 }
 
+// ── Commerce transfrontalier (V24) ───────────────────────────────────────────
+
+/**
+ * Capacité **réelle** d'un corridor.
+ *
+ * Elle est transmise à part du statut déclaré, et les deux ne sont jamais
+ * fondus en un seul champ. Un exploitant peut écrire « ACTIVE » dans une table ;
+ * cela ne fait apparaître ni transporteur ni moyen de paiement. Une interface
+ * qui n'afficherait que le statut déclaré annoncerait un corridor ouvert là où
+ * rien ne peut circuler.
+ */
+export interface CorridorCapability {
+  /** Statut enregistré par l'exploitant. */
+  declaredStatus: 'ACTIVE' | 'LIMITED' | 'COMING_SOON' | 'SUSPENDED' | 'CLOSED';
+  /** Ce qui fonctionne réellement aujourd'hui. */
+  operational: boolean;
+  /** Ce qui manque pour que le corridor fonctionne. Vide s'il fonctionne. */
+  missing: string[];
+  paymentMethods: string[];
+  shippingProviders: string[];
+  currencies: string[];
+}
+
+/** Un corridor tel que le rend la liste publique. */
+export interface CorridorSummary {
+  id: string;
+  /** Code canonique : `TD_CM`. */
+  code: string;
+  /** Adresse lisible des pages publiques : `tchad-cameroun`. */
+  slug: string;
+  originCountry: CountryCode;
+  originCountryName: string | null;
+  destinationCountry: CountryCode;
+  destinationCountryName: string | null;
+  declaredStatus: CorridorCapability['declaredStatus'];
+  operational: boolean;
+  missing: string[];
+  supportedCurrencies: CurrencyCode[];
+  paymentMethods: string[];
+  shippingProviders: string[];
+  requiredDocuments: string[];
+  estimatedTransitMinDays: number | null;
+  estimatedTransitMaxDays: number | null;
+}
+
+/**
+ * Itinéraire déclaré sur un corridor.
+ *
+ * `attributed` dit si quelqu'un l'affirme. Un itinéraire sans source n'est
+ * l'avis de personne, et l'interface doit pouvoir l'écrire plutôt que de le
+ * présenter comme un fait établi.
+ */
+export interface CorridorRoute {
+  id: string;
+  name: string;
+  legs: unknown;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  attributed: boolean;
+}
+
+/** Un corridor et son détail. */
+export interface CorridorDetail {
+  id: string;
+  code: string;
+  slug: string;
+  originCountry: CountryCode;
+  originCountryName: string | null;
+  destinationCountry: CountryCode;
+  destinationCountryName: string | null;
+  status: CorridorCapability['declaredStatus'];
+  supportedCurrencies: CurrencyCode[];
+  supportedPaymentMethods: string[];
+  supportedShippingMethods: string[];
+  requiredDocuments: string[];
+  estimatedTransitMinDays: number | null;
+  estimatedTransitMaxDays: number | null;
+  notes: string | null;
+  capability: CorridorCapability;
+  routes: CorridorRoute[];
+}
+
 // ── Erreurs ──────────────────────────────────────────────────────────────────
 
 /**
@@ -176,4 +258,7 @@ export const ENDPOINTS = {
   product: (slug: string) => `${API_BASE}/products/${encodeURIComponent(slug)}`,
   stores: `${API_BASE}/stores`,
   store: (slug: string) => `${API_BASE}/stores/${encodeURIComponent(slug)}`,
+  corridors: `${API_BASE}/trade/corridors`,
+  /** Accepte le code (`TD_CM`) comme l'adresse lisible (`tchad-cameroun`). */
+  corridor: (reference: string) => `${API_BASE}/trade/corridors/${encodeURIComponent(reference)}`,
 } as const;

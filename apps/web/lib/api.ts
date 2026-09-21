@@ -1,4 +1,12 @@
-import { ENDPOINTS, type Country, type Paginated, type Product, type ProductSummary } from '@touma/contracts';
+import {
+  ENDPOINTS,
+  type CorridorDetail,
+  type CorridorSummary,
+  type Country,
+  type Paginated,
+  type Product,
+  type ProductSummary,
+} from '@touma/contracts';
 
 /**
  * Accès à l'API TOUMA depuis le serveur de rendu.
@@ -13,6 +21,17 @@ const API_URL = (process.env.TOUMA_API_URL ?? 'http://127.0.0.1:3000').replace(/
 
 /** Adresse publique de l'application authentifiée, vers laquelle on renvoie. */
 export const APP_URL = (process.env.TOUMA_APP_URL ?? API_URL).replace(/\/+$/, '');
+
+/**
+ * Adresse publique de la vitrine elle-même.
+ *
+ * Elle sert aux URL canoniques, au plan du site et aux données structurées —
+ * trois endroits où une adresse relative ne veut rien dire. Non configurée,
+ * on retombe sur l'adresse de l'application : mieux vaut une canonique
+ * imparfaite qu'une canonique absente qui laisse un moteur choisir lui-même
+ * quelle variante d'URL indexer.
+ */
+export const SITE_URL = (process.env.TOUMA_SITE_URL ?? APP_URL).replace(/\/+$/, '');
 
 export class ApiUnavailable extends Error {}
 
@@ -32,16 +51,35 @@ async function read<T>(path: string, revalidate = 30): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function listProducts(params: { page?: number; limit?: number; q?: string } = {}): Promise<Paginated<ProductSummary>> {
+export function listProducts(params: { page?: number; limit?: number; q?: string; country?: string } = {}): Promise<Paginated<ProductSummary>> {
   const query = new URLSearchParams();
   query.set('limit', String(params.limit ?? 24));
   if (params.page) query.set('page', String(params.page));
   if (params.q) query.set('q', params.q);
+  // Filtre par pays du vendeur : ce qui rend utile un lien « tout le catalogue
+  // du Tchad » depuis une page de corridor (§60).
+  if (params.country) query.set('country', params.country.toUpperCase());
   return read<Paginated<ProductSummary>>(`${ENDPOINTS.products}?${query}`);
 }
 
 export function getProduct(slug: string): Promise<Product> {
   return read<Product>(ENDPOINTS.product(slug));
+}
+
+/**
+ * Corridors configurés, avec leur capacité réelle.
+ *
+ * Une minute de cache : un corridor ne s'ouvre pas toutes les trente secondes,
+ * et une page publique qui annonce « ouvert » doit cesser de le dire vite
+ * quand l'exploitant le suspend.
+ */
+export function listCorridors(): Promise<{ items: CorridorSummary[]; note?: string }> {
+  return read<{ items: CorridorSummary[]; note?: string }>(ENDPOINTS.corridors, 60);
+}
+
+/** Un corridor par son adresse lisible (`tchad-cameroun`) ou son code. */
+export function getCorridor(reference: string): Promise<CorridorDetail> {
+  return read<CorridorDetail>(ENDPOINTS.corridor(reference), 60);
 }
 
 export function listCountries(): Promise<{ items: Country[] }> {

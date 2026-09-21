@@ -51,6 +51,40 @@ export function corridorCode(origine: string, destination: string): string {
   return `${origine.toUpperCase()}_${destination.toUpperCase()}`;
 }
 
+/**
+ * Fragment d'URL d'un nom de pays : `Côte d'Ivoire` → `cote-d-ivoire`.
+ *
+ * Les accents sont décomposés puis retirés, et tout ce qui n'est ni lettre ni
+ * chiffre devient un tiret. Un nom entièrement non latin — l'arabe, par
+ * exemple — ne laisserait rien : l'appelant retombe alors sur le code pays,
+ * qui est toujours écrivable en URL.
+ */
+export function slugPays(nom: string): string {
+  return nom
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
+ * Adresse lisible d'un corridor : `tchad-cameroun`.
+ *
+ * C'est le serveur qui la calcule, et lui seul. La vitrine publique en a
+ * besoin pour ses pages, et si elle la recalculait de son côté, la moindre
+ * divergence — une apostrophe, un accent — produirait des liens morts que
+ * personne ne verrait avant un moteur de recherche.
+ *
+ * Les noms manquants retombent sur les codes pays : `td-cm` reste une adresse
+ * valide, et c'est préférable à une page sans URL.
+ */
+export function corridorSlug(nomOrigine: string | null | undefined, nomDestination: string | null | undefined, codeOrigine: string, codeDestination: string): string {
+  const origine = slugPays(nomOrigine ?? '') || codeOrigine.toLowerCase();
+  const destination = slugPays(nomDestination ?? '') || codeDestination.toLowerCase();
+  return `${origine}-${destination}`;
+}
+
 export const corridorService = {
   /**
    * Corridor d'un couple de pays, dans **ce sens**.
@@ -77,12 +111,47 @@ export const corridorService = {
       where: options.status ? { status: options.status } : {},
       orderBy: [{ originCountry: 'asc' }, { destinationCountry: 'asc' }],
     });
+    const noms = await this.countryNames(corridors.flatMap((c) => [c.originCountry, c.destinationCountry]));
     return Promise.all(
       corridors.map(async (c) => ({
         ...c,
+        originCountryName: noms.get(c.originCountry) ?? null,
+        destinationCountryName: noms.get(c.destinationCountry) ?? null,
+        slug: corridorSlug(noms.get(c.originCountry), noms.get(c.destinationCountry), c.originCountry, c.destinationCountry),
         capability: await this.capability(c.originCountry, c.destinationCountry),
       })),
     );
+  },
+
+  /**
+   * Noms des pays, indexés par code.
+   *
+   * Le corridor ne porte que des codes ISO ; les noms vivent dans le
+   * référentiel géographique. Une page publique écrite « TD → CM » ne veut
+   * rien dire pour un commerçant, d'où cette jointure.
+   */
+  async countryNames(codes: string[]): Promise<Map<string, string>> {
+    const uniques = [...new Set(codes.map((c) => c.toUpperCase()))];
+    if (uniques.length === 0) return new Map();
+    const pays = await prisma.country.findMany({ where: { code: { in: uniques } }, select: { code: true, name: true } });
+    return new Map(pays.map((p) => [p.code, p.name]));
+  },
+
+  /**
+   * Corridor désigné par son code (`TD_CM`) **ou** par son adresse lisible
+   * (`tchad-cameroun`), avec sa capacité réelle.
+   *
+   * Les deux références rendent le même objet : une page publique et un écran
+   * d'administration ne doivent pas lire deux formes différentes du même
+   * corridor. Rien ne correspond → 404, jamais un corridor deviné d'après une
+   * URL.
+   */
+  async byReference(reference: string) {
+    const normalise = reference.trim().toLowerCase();
+    const corridors = await this.list();
+    const trouve = corridors.find((c) => c.slug === normalise || c.code.toLowerCase() === normalise);
+    if (!trouve) throw notFound('Corridor introuvable.');
+    return trouve;
   },
 
   /**
@@ -157,7 +226,7 @@ export const corridorService = {
       const simules = transporteurs.filter((t) => estSimulation(t.code)).map((t) => t.code);
       manquants.push(
         simules.length > 0
-          ? `Aucun transporteur **réel** ne couvre les deux pays de ce corridor. Seul un adaptateur de simulation est enregistré (${simules.join(', ')}), et une simulation n’achemine aucun colis.`
+          ? `Aucun transporteur réel ne couvre les deux pays de ce corridor : seul un adaptateur de simulation est enregistré (${simules.join(', ')}), et une simulation n’achemine aucun colis.`
           : 'Aucun transporteur enregistré ne couvre les deux pays de ce corridor.',
       );
     }

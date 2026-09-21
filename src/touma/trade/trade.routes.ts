@@ -80,8 +80,12 @@ tradeRouter.get(
       items: corridors.map((c) => ({
         id: c.id,
         code: c.code,
+        /** Adresse lisible des pages publiques : `tchad-cameroun` (§61). */
+        slug: c.slug,
         originCountry: c.originCountry,
+        originCountryName: c.originCountryName,
         destinationCountry: c.destinationCountry,
+        destinationCountryName: c.destinationCountryName,
         /** Statut déclaré par l'exploitant. */
         declaredStatus: c.status,
         /** Ce qui fonctionne réellement. Les deux sont rendus, jamais fondus. */
@@ -99,11 +103,16 @@ tradeRouter.get(
   }),
 );
 
+/**
+ * Un corridor, par son code (`TD_CM`) **ou** par son adresse lisible
+ * (`tchad-cameroun`). Les pages publiques n'ont que la seconde, et leur
+ * imposer de deviner la première reviendrait à recopier la règle de
+ * fabrication du slug hors du serveur.
+ */
 tradeRouter.get(
   '/corridors/:code',
   asyncHandler(async (req, res) => {
-    const corridor = await corridorService.byCode(req.params.code);
-    const capability = await corridorService.capability(corridor.originCountry, corridor.destinationCountry);
+    const { capability, ...corridor } = await corridorService.byReference(req.params.code);
     const routes = await prisma.toumaTradeRoute.findMany({ where: { corridorId: corridor.id, active: true } });
     res.json({
       ...corridor,

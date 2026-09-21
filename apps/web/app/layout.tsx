@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
-import { APP_URL } from '../lib/api';
+import { APP_URL, ApiUnavailable, listCorridors, SITE_URL } from '../lib/api';
 import './globals.css';
 
 export const metadata: Metadata = {
+  // Sans base, Next.js ne peut pas résoudre les URL canoniques ni celles
+  // d'OpenGraph, et les émet relatives — ce qu'aucun moteur ne sait recoller.
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'TOUMA — place de marché du commerce africain',
     template: '%s — TOUMA',
@@ -13,7 +16,31 @@ export const metadata: Metadata = {
   openGraph: { type: 'website', siteName: 'TOUMA', locale: 'fr_FR' },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+/**
+ * Bandeau de corridor.
+ *
+ * Il annonçait « Corridor ouvert : Tchad ↔ Cameroun », écrit en dur. C'était
+ * faux dès que le corridor était suspendu, et faux depuis toujours tant
+ * qu'aucun transporteur réel ne le couvrait : exactement l'affirmation que §72
+ * interdit. Il lit maintenant l'état réel, et ne dit rien quand il ne sait pas.
+ */
+async function bandeauCorridors(): Promise<string | null> {
+  try {
+    const ouverts = (await listCorridors()).items.filter((c) => c.operational);
+    if (ouverts.length === 0) return null;
+    return `Corridor${ouverts.length > 1 ? 's' : ''} ouvert${ouverts.length > 1 ? 's' : ''} : ${ouverts
+      .map((c) => `${c.originCountryName ?? c.originCountry} → ${c.destinationCountryName ?? c.destinationCountry}`)
+      .join(' · ')}`;
+  } catch (err) {
+    // Une API muette n'autorise pas à annoncer un corridor ouvert.
+    if (err instanceof ApiUnavailable) return null;
+    throw err;
+  }
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const bandeau = await bandeauCorridors();
+
   return (
     <html lang="fr">
       <body>
@@ -27,13 +54,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </a>
             <nav aria-label="Navigation principale">
               <a href="/produits">Catalogue</a>
+              <a href="/trade">Corridors</a>
               {/* Tout ce qui demande un compte vit dans l'application, pas ici. */}
               <a href={`${APP_URL}/touma/`}>Mon compte</a>
               <a href={`${APP_URL}/touma/inscription`}>Ouvrir une boutique</a>
             </nav>
           </div>
         </header>
-        <div className="corridor">Corridor ouvert : Tchad ↔ Cameroun</div>
+        {bandeau ? <div className="corridor">{bandeau}</div> : null}
         <main>{children}</main>
         <footer className="site-footer">
           <div className="container">

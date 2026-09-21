@@ -113,9 +113,17 @@ npm run build --workspace @touma/web     # compilation de la vitrine
 npm run typecheck --workspace @touma/web
 ```
 
-La vitrine lit `TOUMA_API_URL` (adresse de l'API, `http://127.0.0.1:3000` par
-défaut) et `TOUMA_APP_URL` (adresse publique de l'application authentifiée, vers
-laquelle pointent les liens « Commander », « Mon compte »).
+La vitrine lit trois adresses :
+
+| Variable | Rôle | Défaut |
+| --- | --- | --- |
+| `TOUMA_API_URL` | API lue au rendu | `http://127.0.0.1:3000` |
+| `TOUMA_APP_URL` | application authentifiée, vers laquelle pointent « Commander », « Mon compte » | `TOUMA_API_URL` |
+| `TOUMA_SITE_URL` | la vitrine elle-même : URL canoniques, plan du site, données structurées | `TOUMA_APP_URL` |
+
+`TOUMA_SITE_URL` mérite d'être renseignée explicitement en production : une URL
+canonique relative ne veut rien dire pour un moteur de recherche, qui choisit
+alors lui-même quelle variante d'adresse indexer.
 
 L'image Docker de production installe les dépendances avec `--workspaces=false` :
 elle ne contient que l'API. La vitrine se déploie séparément — c'est une

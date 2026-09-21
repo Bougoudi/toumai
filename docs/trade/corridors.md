@@ -77,3 +77,35 @@ Puis, par l'API d'administration :
 
 Aucune de ces étapes n'est faite au déploiement. Un corridor livré ouvert
 serait un corridor ouvert sans que personne ne l'ait décidé.
+
+## Pages publiques et référencement
+
+Un corridor a une adresse lisible, calculée par le serveur à partir des noms
+des deux pays : `TD_CM` → `tchad-cameroun`. Elle est rendue par
+`GET /api/v1/trade/corridors` (champ `slug`), et
+`GET /api/v1/trade/corridors/:reference` accepte indifféremment le code ou le
+slug, avec la même réponse.
+
+C'est le serveur qui la fabrique, et lui seul. Si la vitrine recalculait la
+règle de son côté, une apostrophe ou un accent traité autrement produirait des
+liens morts que personne ne verrait avant un moteur de recherche.
+
+La vitrine publie `/trade` (liste) et `/trade/<slug>` (fiche). Trois règles y
+sont tenues :
+
+| Situation | Page | Indexation |
+|---|---|---|
+| aucun corridor pour cette adresse | 404 | — |
+| corridor configuré, **non** opérationnel | rendue, avec ce qui manque | `noindex, follow` |
+| corridor **réellement** opérationnel | rendue | indexable, plan du site, balisage `Service` |
+
+La distinction entre les deux dernières lignes est le cœur de la règle. Une
+page de corridor fermé reste utile — savoir ce qui manque vaut mieux qu'un
+404 — mais la proposer à l'indexation ferait figurer dans un moteur de
+recherche un corridor par lequel rien ne passe.
+
+« Opérationnel » n'est jamais le statut déclaré : c'est le résultat recalculé à
+chaque lecture. Retirer le dernier transporteur réel d'un corridor le fait
+sortir du plan du site et réapparaître en `noindex` à la revalidation suivante,
+sans qu'aucune page soit modifiée. Le bandeau « corridor ouvert » de la vitrine
+suit la même source, et disparaît dans les mêmes conditions.

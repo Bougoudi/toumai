@@ -237,6 +237,41 @@ describe('API publique', () => {
     assert.match(res.body.note, /statut déclaré ne suffit pas/i);
   });
 
+  it('chaque corridor porte une adresse lisible et les noms des deux pays', async () => {
+    const { origine, destination } = await paireDePays(suffixe());
+    await corridorService.createCorridor({ originCountry: origine, destinationCountry: destination });
+
+    const res = await api.request('GET', '/api/v1/trade/corridors');
+    const corridor = res.body.items.find((c: any) => c.code === `${origine}_${destination}`);
+    assert.ok(corridor, 'le corridor créé apparaît dans la liste publique');
+    // « TD → CM » ne veut rien dire pour un commerçant : les noms viennent du
+    // référentiel, et le slug est fabriqué par le serveur, une seule fois.
+    assert.equal(corridor.originCountryName, `Pays d’essai ${origine} (origine)`);
+    assert.equal(corridor.destinationCountryName, `Pays d’essai ${destination} (destination)`);
+    assert.equal(corridor.slug, `pays-d-essai-${origine.toLowerCase()}-origine-pays-d-essai-${destination.toLowerCase()}-destination`);
+  });
+
+  it('un corridor se lit par son code comme par son adresse lisible, à l’identique', async () => {
+    const { origine, destination } = await paireDePays(suffixe());
+    await corridorService.createCorridor({ originCountry: origine, destinationCountry: destination });
+    const liste = await api.request('GET', '/api/v1/trade/corridors');
+    const { slug, code } = liste.body.items.find((c: any) => c.code === `${origine}_${destination}`);
+
+    const parCode = await api.request('GET', `/api/v1/trade/corridors/${code}`);
+    const parSlug = await api.request('GET', `/api/v1/trade/corridors/${slug}`);
+    assert.equal(parCode.status, 200);
+    assert.equal(parSlug.status, 200);
+    // Deux formes d'adresse, une seule réponse : une page publique et un écran
+    // d'administration ne doivent pas lire deux versions du même corridor.
+    assert.deepEqual(parSlug.body, parCode.body);
+    assert.equal(parSlug.body.slug, slug);
+  });
+
+  it('une adresse qui ne désigne aucun corridor rend 404, jamais un corridor deviné', async () => {
+    const res = await api.request('GET', '/api/v1/trade/corridors/pays-imaginaire-autre-pays-imaginaire');
+    assert.equal(res.status, 404);
+  });
+
   it('un vendeur n’atteint pas l’administration du commerce', async () => {
     const vendeur = await registerUser(api, { name: 'Vendeur Trade', email: uniqueEmail(`trv-${suffixe()}`), role: 'SELLER' });
     const res = await api.request('GET', '/api/v1/admin/trade/overview', { token: vendeur.accessToken });
