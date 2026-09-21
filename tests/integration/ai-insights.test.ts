@@ -13,12 +13,23 @@ import type { ToumaRequestUser } from '../../src/touma/middleware/toumaAuth.js';
 const api = new TestApi();
 const suffixe = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+/** Termes créés par ce fichier, retirés à la fin. */
+const termesCrees: string[] = [];
+
 before(async () => {
   ensureSchema();
   await ensureReferenceData();
   await api.start();
 });
-after(async () => api.stop());
+
+after(async () => {
+  // Le tableau de bord Intelligence borne sa liste à vingt termes. Les
+  // dizaines de recherches fabriquées ici en évinçaient de vraies, et le test
+  // de ce tableau échouait — non par sa faute, mais parce que ce fichier
+  // laissait ses données derrière lui.
+  if (termesCrees.length > 0) await prisma.toumaSearchQuery.deleteMany({ where: { term: { in: termesCrees } } });
+  await api.stop();
+});
 
 function ctx(user: ToumaRequestUser | null, surface: ToolContext['surface'] = 'SELLER'): ToolContext {
   return { user, surface, conversationId: null, locale: 'fr' };
@@ -145,6 +156,7 @@ describe('Intelligence de prix', () => {
 describe('Intelligence de demande', () => {
   it('n’annonce pas de hausse sur un volume dérisoire', async () => {
     const terme = `terme-${suffixe()}`;
+    termesCrees.push(terme);
     await prisma.toumaSearchQuery.createMany({
       data: [
         { term: terme, rawTerm: terme, resultCount: 0, createdAt: new Date(Date.now() - 40 * 86_400_000) },
@@ -162,6 +174,7 @@ describe('Intelligence de demande', () => {
 
   it('annonce une hausse quand le volume la rend lisible', async () => {
     const terme = `terme-${suffixe()}`;
+    termesCrees.push(terme);
     const anciennes = Array.from({ length: 10 }, () => ({ term: terme, rawTerm: terme, resultCount: 2, createdAt: new Date(Date.now() - 40 * 86_400_000) }));
     const recentes = Array.from({ length: 30 }, () => ({ term: terme, rawTerm: terme, resultCount: 2 }));
     await prisma.toumaSearchQuery.createMany({ data: [...anciennes, ...recentes] });
@@ -182,6 +195,7 @@ describe('Intelligence de demande', () => {
 
   it('repère les recherches qui ne trouvent jamais rien', async () => {
     const terme = `introuvable-${suffixe()}`;
+    termesCrees.push(terme);
     await prisma.toumaSearchQuery.createMany({
       data: Array.from({ length: 12 }, () => ({ term: terme, rawTerm: terme, resultCount: 0 })),
     });

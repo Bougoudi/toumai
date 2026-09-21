@@ -520,3 +520,78 @@ describe('Un adaptateur de simulation ne rend pas un corridor opérationnel', ()
     assert.equal(capacite.operational, false);
   });
 });
+
+describe('Analytique — un échantillon trop petit ne produit pas de taux', () => {
+  it('sous le seuil, les taux sont nuls plutôt que trompeurs', async () => {
+    const { tradeAnalytics, ECHANTILLON_MINIMAL: seuil } = await import('../../src/touma/trade/analytics.service.js');
+    const s = suffixe();
+    const cat = await prisma.toumaCategory.findFirstOrThrow();
+    const vendeur = await registerUser(api, { name: 'Vendeur Stat', email: uniqueEmail(`tst-${s}`), role: 'SELLER' });
+    const store = await prisma.toumaStore.create({ data: { ownerId: vendeur.user.id, name: `B ${s}`, slug: `tst-${s}`, countryCode: 'TD', status: 'ACTIVE' } });
+    const produit = await prisma.toumaProduct.create({
+      data: { storeId: store.id, categoryId: cat.id, title: 'Article', slug: `tst-p-${s}`, description: 'x', price: '10000', currency: 'XAF', countryCode: 'TD', status: 'ACTIVE' },
+    });
+    const acheteur = await registerUser(api, { name: 'Acheteur Stat', email: uniqueEmail(`tst-b-${s}`), role: 'BUYER' });
+
+    // Un pays de destination propre au test : « TD → ZW » est partagé, et une
+    // autre commande transfrontalière y ferait passer l'échantillon au-dessus
+    // du seuil — la mesure dépendrait alors de l'ordre d'exécution.
+    const { destination } = await paireDePays(s);
+    // Les codes pays sont réalloués d'une exécution à l'autre : les commandes
+    // de la fois précédente s'accumuleraient et feraient passer l'échantillon
+    // au-dessus du seuil. On repart de zéro pour cette destination.
+    await prisma.toumaOrderItem.deleteMany({ where: { order: { buyerCountry: destination } } });
+    await prisma.toumaOrder.deleteMany({ where: { buyerCountry: destination } });
+
+    // Deux commandes seulement, dont une annulée : 50 % d'annulation, un
+    // chiffre qui ne veut rien dire.
+    for (const [i, statut] of ['PENDING', 'CANCELLED'].entries()) {
+      await prisma.toumaOrder.create({
+        data: {
+          buyerId: acheteur.user.id, storeId: store.id, orderNumber: `TS-${s}-${i}`, status: statut as never,
+          subtotal: '10000', total: '10000', currency: 'XAF', crossBorder: true, buyerCountry: destination, sellerCountry: 'TD',
+          shippingSnapshot: { city: 'Ville d’essai' },
+          items: { create: { productId: produit.id, titleSnapshot: 'Article', unitPrice: '10000', quantity: 1, lineTotal: '10000', currency: 'XAF' } },
+        },
+      });
+    }
+
+    const vue = await tradeAnalytics.platform(30);
+    const mien = vue.byCorridor?.find((c) => c.corridor === `TD_${destination}`);
+    assert.ok(mien, 'corridor absent de l’analytique');
+    assert.ok(mien.sampleSize < seuil);
+    assert.equal(mien.insufficientSample, true);
+    // Les taux sont nuls, pas calculés.
+    assert.equal(mien.cancellationRate, null);
+    assert.equal(mien.deliverySuccessRate, null);
+    assert.match(vue.disclaimer ?? '', /ils ne le diagnostiquent pas/);
+  });
+
+  it('les devises ne sont jamais additionnées dans un bilan de corridor', async () => {
+    const { tradeAnalytics } = await import('../../src/touma/trade/analytics.service.js');
+    const s = suffixe();
+    const cat = await prisma.toumaCategory.findFirstOrThrow();
+    const vendeur = await registerUser(api, { name: 'Vendeur Devises', email: uniqueEmail(`tdv-${s}`), role: 'SELLER' });
+    const store = await prisma.toumaStore.create({ data: { ownerId: vendeur.user.id, name: `B ${s}`, slug: `tdv-${s}`, countryCode: 'TD', status: 'ACTIVE' } });
+    const produit = await prisma.toumaProduct.create({
+      data: { storeId: store.id, categoryId: cat.id, title: 'Article', slug: `tdv-p-${s}`, description: 'x', price: '10000', currency: 'XAF', countryCode: 'TD', status: 'ACTIVE' },
+    });
+    const acheteur = await registerUser(api, { name: 'Acheteur Devises', email: uniqueEmail(`tdv-b-${s}`), role: 'BUYER' });
+    for (const [devise, montant] of [['XAF', '15000'], ['EUR', '25']] as const) {
+      await prisma.toumaOrder.create({
+        data: {
+          buyerId: acheteur.user.id, storeId: store.id, orderNumber: `TD-${s}-${devise}`, status: 'DELIVERED',
+          subtotal: montant, total: montant, currency: devise, crossBorder: true, buyerCountry: 'CM', sellerCountry: 'TD',
+          shippingSnapshot: { city: 'Douala' },
+          items: { create: { productId: produit.id, titleSnapshot: 'Article', unitPrice: montant, quantity: 1, lineTotal: montant, currency: devise } },
+        },
+      });
+    }
+
+    const vue = await tradeAnalytics.seller(vendeur.user.id, 30);
+    assert.equal(vue.byCurrency.length, 2);
+    assert.deepEqual(vue.byCurrency.map((c) => c.currency).sort(), ['EUR', 'XAF']);
+    // 15 025 serait le total d'une addition que rien n'autorise.
+    assert.ok(!JSON.stringify(vue).includes('15025'));
+  });
+});

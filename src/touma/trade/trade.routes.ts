@@ -11,6 +11,7 @@ import { tradeDocumentService } from './document.service.js';
 import { eligibilityService } from './eligibility.service.js';
 import { fxService } from './fx.service.js';
 import { timelineService } from './timeline.service.js';
+import { tradeAnalytics } from './analytics.service.js';
 
 /**
  * API TOUMA TRADE (§71).
@@ -19,6 +20,8 @@ import { timelineService } from './timeline.service.js';
  * si Touma dessert son pays avant de créer un compte. Tout ce qui touche une
  * commande, un document ou une configuration est fermé.
  */
+
+const joursTrade = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) });
 
 function assertActif() {
   if (!env.touma.trade.enabled) throw serviceUnavailable('Le commerce transfrontalier n’est pas activé sur cette instance.');
@@ -308,6 +311,31 @@ sellerTradeRouter.get(
   }),
 );
 
+sellerTradeRouter.get(
+  '/analytics',
+  asyncHandler(async (req, res) => {
+    const { days } = parseQuery(joursTrade, req);
+    res.json(await tradeAnalytics.seller(currentUser(req).id, days));
+  }),
+);
+
+sellerTradeRouter.get(
+  '/orders',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const items = await prisma.toumaTradeOrder.findMany({
+      where: { order: { store: { ownerId: user.id } } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        corridor: { select: { code: true } },
+        order: { select: { id: true, orderNumber: true, status: true, total: true, currency: true, buyerCountry: true, createdAt: true } },
+      },
+    });
+    res.json({ items: items.map((t) => ({ id: t.id, corridor: t.corridor, order: { ...t.order, total: t.order.total.toString() } })) });
+  }),
+);
+
 // ── Espace professionnel : /api/v1/business/trade ────────────────────────────
 export const businessTradeRouter = Router();
 businessTradeRouter.use(authenticate);
@@ -322,6 +350,31 @@ businessTradeRouter.get(
       prisma.toumaTradeOrder.count({ where: { order: { buyerId: user.id } } }),
     ]);
     res.json({ rfqs, quotes: devis, tradeOrders: commandes, tradeEnabled: env.touma.trade.enabled });
+  }),
+);
+
+businessTradeRouter.get(
+  '/analytics',
+  asyncHandler(async (req, res) => {
+    const { days } = parseQuery(joursTrade, req);
+    res.json(await tradeAnalytics.business(currentUser(req).id, days));
+  }),
+);
+
+businessTradeRouter.get(
+  '/orders',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const items = await prisma.toumaTradeOrder.findMany({
+      where: { order: { buyerId: user.id } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      include: {
+        corridor: { select: { code: true } },
+        order: { select: { id: true, orderNumber: true, status: true, total: true, currency: true, sellerCountry: true, createdAt: true, store: { select: { name: true } } } },
+      },
+    });
+    res.json({ items: items.map((t) => ({ id: t.id, corridor: t.corridor, order: { ...t.order, total: t.order.total.toString() } })) });
   }),
 );
 
@@ -351,6 +404,14 @@ adminTradeRouter.get(
 );
 
 adminTradeRouter.get('/corridors', asyncHandler(async (_req, res) => res.json({ items: await corridorService.list() })));
+
+adminTradeRouter.get(
+  '/analytics',
+  asyncHandler(async (req, res) => {
+    const { days } = parseQuery(joursTrade, req);
+    res.json(await tradeAnalytics.platform(days));
+  }),
+);
 
 const creationCorridor = z.object({
   originCountry: z.string().length(2),
