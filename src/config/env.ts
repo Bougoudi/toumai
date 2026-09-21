@@ -334,6 +334,43 @@ export const env = {
       memoryTaskDays: Number(process.env.AI_MEMORY_TASK_DAYS ?? 30),
     },
 
+    /**
+     * TOUMA Trade (V24) — commerce transfrontalier.
+     *
+     * Tout est **fermé par défaut**, jusqu'au coupe-circuit général. Ce n'est
+     * pas de la prudence d'écriture : un corridor ouvert sans prestataire réel
+     * promet à un acheteur une livraison que personne ne peut faire, et cette
+     * promesse-là ne se rattrape pas par un message d'excuse.
+     */
+    trade: {
+      enabled: process.env.TOUMA_TRADE_ENABLED === 'true',
+      documentsEnabled: process.env.TOUMA_TRADE_DOCUMENTS_ENABLED === 'true',
+      fxEnabled: process.env.TOUMA_TRADE_FX_ENABLED === 'true',
+      complianceEnabled: process.env.TOUMA_TRADE_COMPLIANCE_ENABLED === 'true',
+      b2bEnabled: process.env.TOUMA_TRADE_B2B_ENABLED === 'true',
+      multivendorEnabled: process.env.TOUMA_TRADE_MULTIVENDOR_ENABLED === 'true',
+      aiEnabled: process.env.TOUMA_TRADE_AI_ENABLED === 'true',
+
+      /**
+       * Source de taux de change. `none` est l'état réel : aucune source n'est
+       * branchée, et aucune conversion ne doit donc être présentée comme
+       * réelle (§25).
+       */
+      fxProvider: process.env.TOUMA_TRADE_FX_PROVIDER ?? 'none',
+      /** Durée de validité d'un taux, en minutes. Au-delà, il n'engage plus. */
+      fxTtlMinutes: Number(process.env.TOUMA_TRADE_FX_TTL_MINUTES ?? 60),
+
+      /**
+       * Prestataire de conformité. `local` n'interroge personne : il applique
+       * les seules règles explicitement saisies, ce que §18 demande quand
+       * aucun prestataire externe n'existe.
+       */
+      complianceProvider: process.env.TOUMA_TRADE_COMPLIANCE_PROVIDER ?? 'local',
+
+      /** Durée de validité d'une URL signée de document, en secondes. */
+      documentUrlTtlSeconds: Number(process.env.TOUMA_TRADE_DOCUMENT_URL_TTL ?? 300),
+    },
+
     /** Adaptateurs actifs (mock tant qu'aucun prestataire réel n'est raccordé). */
     paymentProvider: process.env.TOUMA_PAYMENT_PROVIDER ?? 'mock',
     logisticsProvider: process.env.TOUMA_LOGISTICS_PROVIDER ?? 'mock',

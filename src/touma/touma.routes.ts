@@ -35,6 +35,7 @@ import { reputationRouter } from './reputation/reputation.routes.js';
 import { adminTrustRouter, trustRouter } from './trust/trust.routes.js';
 import { adminGrowthRouter, growthRouter, referralRouter, sellerGrowthRouter } from './growth/growth.routes.js';
 import { sourcingRouter } from './sourcing/sourcing.routes.js';
+import { adminTradeRouter, businessTradeRouter, sellerTradeRouter, tradeRouter } from './trade/trade.routes.js';
 
 /**
  * API TOUMA v1 — place de marché.
@@ -91,6 +92,7 @@ toumaV1Router.get('/', (_req, res) =>
       documents: '/api/v1/documents',
       reputation: '/api/v1/reputation',
       sourcing: '/api/v1/sourcing',
+      trade: '/api/v1/trade',
       admin: '/api/v1/admin',
       health: '/api/v1/health',
       ready: '/api/v1/ready',
@@ -178,6 +180,12 @@ toumaV1Router.use('/seller/marketing', sellerGrowthRouter);
 toumaV1Router.use('/admin/marketing', adminGrowthRouter);
 toumaV1Router.use('/referrals', referralRouter);
 toumaV1Router.use('/sourcing', sourcingRouter);
+// Touma Trade (V24). La lecture des corridors est publique : un acheteur doit
+// pouvoir savoir si Touma dessert son pays avant de créer un compte.
+toumaV1Router.use('/trade', tradeRouter);
+toumaV1Router.use('/seller/trade', sellerTradeRouter);
+toumaV1Router.use('/business/trade', businessTradeRouter);
+toumaV1Router.use('/admin/trade', adminTradeRouter);
 toumaV1Router.use('/admin', adminRouter);
 
 /** Recherche transverse (produits + boutiques) pour la barre de recherche. */

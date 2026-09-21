@@ -272,15 +272,17 @@ model User {
   supplierScore     ToumaSupplierScore?    @relation("SupplierScore")
 
   // V22 — croissance
-  promotionsCreated  ToumaPromotion[]             @relation("PromotionAuthor")
-  campaignsCreated   ToumaCampaign[]              @relation("CampaignAuthor")
-  promotionUsages    ToumaPromotionUsage[]
-  referralCode       ToumaReferralCode?           @relation("ReferralOwner")
-  referralsMade      ToumaReferral[]              @relation("Referrer")
-  referralReceived   ToumaReferral?               @relation("Referee")
-  segmentMemberships ToumaCustomerSegmentMember[]
-  flashSalesCreated  ToumaFlashSale[]             @relation("FlashSaleAuthor")
-  flashSaleClaims    ToumaFlashSaleClaim[]
+  promotionsCreated      ToumaPromotion[]             @relation("PromotionAuthor")
+  campaignsCreated       ToumaCampaign[]              @relation("CampaignAuthor")
+  promotionUsages        ToumaPromotionUsage[]
+  referralCode           ToumaReferralCode?           @relation("ReferralOwner")
+  referralsMade          ToumaReferral[]              @relation("Referrer")
+  referralReceived       ToumaReferral?               @relation("Referee")
+  segmentMemberships     ToumaCustomerSegmentMember[]
+  flashSalesCreated      ToumaFlashSale[]             @relation("FlashSaleAuthor")
+  flashSaleClaims        ToumaFlashSaleClaim[]
+  /// Vérifications d'éligibilité transfrontalière demandées par ce compte.
+  tradeEligibilityChecks ToumaTradeEligibilityCheck[]
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -1342,6 +1344,10 @@ model Country {
   products  ToumaProduct[]
   provinces ToumaProvince[]
 
+  /// Configuration **commerciale** du pays (V24). Distincte de son identité :
+  /// un pays peut exister sans commercer.
+  tradeConfig ToumaTradeCountryConfig?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1682,6 +1688,8 @@ model ToumaCategory {
   codRules        ToumaCodRule[]
   commissionRules ToumaCommissionRule[]
 
+  crossBorderRules ToumaCrossBorderProductRule[]
+
   @@index([parentId])
   @@map("touma_categories")
 }
@@ -1711,7 +1719,8 @@ model ToumaProduct {
   /// agrégation par produit à chaque affichage du catalogue.
   ratingAverage  Decimal       @default(0) @db.Decimal(3, 2)
   ratingCount    Int           @default(0)
-  /// Pays d'origine / d'expédition de la marchandise.
+  /// Pays **d'expédition** : d'où part le colis. L'origine de la marchandise
+  /// est portée par `countryOfOrigin` — ce sont deux faits distincts.
   countryCode    String
   country        Country       @relation(fields: [countryCode], references: [code])
   /// Poids unitaire en grammes (devis de transport).
@@ -1732,6 +1741,26 @@ model ToumaProduct {
   updatedAt      DateTime         @updatedAt
   publishedAt    DateTime?
   ToumaFlashSale ToumaFlashSale[]
+
+  /// ── Origine de la marchandise (V24, §10 et §11) ────────────────────────
+  ///
+  /// `countryCode` ci-dessus est le pays **d'expédition** : d'où part le colis.
+  /// Il n'a jamais dit d'où vient la marchandise, et son ancien commentaire
+  /// laissait croire le contraire. Un savon fabriqué au Nigeria peut être
+  /// expédié de N'Djamena par un revendeur tchadien : ce sont trois pays
+  /// différents, et les confondre fausse tout document d'origine.
+  ///
+  /// Déclaré par le vendeur, donc `DECLARED` — jamais `VERIFIED` tant qu'aucune
+  /// autorité ne l'a confirmé (§11).
+  countryOfOrigin     String?
+  manufacturerCountry String?
+  originStatus        TradeOriginStatus @default(UNKNOWN)
+  /// Ce sur quoi repose la déclaration : référence de document, mention du
+  /// fabricant. Jamais une affirmation de Touma.
+  originEvidence      String?
+  originDeclaredAt    DateTime?
+
+  crossBorderRules ToumaCrossBorderProductRule[]
 
   @@index([storeId])
   @@index([categoryId])
@@ -1960,6 +1989,9 @@ model ToumaOrder {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /// Volet commercial (V24). Ne duplique ni montants, ni articles, ni statut.
+  tradeOrder ToumaTradeOrder?
 
   @@unique([buyerId, storeId, checkoutKey])
   @@index([groupId])
@@ -4919,4 +4951,509 @@ model ToumaAiJobRun {
   @@unique([job, windowEnd])
   @@index([job, createdAt])
   @@map("touma_ai_job_runs")
+}
+
+// ── TOUMA TRADE (V24) ────────────────────────────────────────────────────────
+//
+// Le transfrontalier n'est pas une seconde application : c'est une couche de
+// **configuration et de vérification** au-dessus des commandes, paiements et
+// expéditions existants. Ces modèles disent ce qui est possible ; ils ne
+// pilotent ni le paiement, ni l'expédition, ni le grand livre, qui restent
+// seuls maîtres de leur domaine.
+
+/// État d'un corridor. `ACTIVE` ne se décrète pas : il se constate.
+enum TradeCorridorStatus {
+  ACTIVE
+  LIMITED
+  SUSPENDED
+  COMING_SOON
+}
+
+enum TradeEligibilityVerdict {
+  ELIGIBLE
+  NOT_ELIGIBLE
+  REQUIRES_REVIEW
+  REQUIRES_DOCUMENT
+}
+
+enum TradeDocumentKind {
+  COMMERCIAL_INVOICE
+  PACKING_LIST
+  PROFORMA_INVOICE
+  PURCHASE_ORDER
+  CERTIFICATE_OF_ORIGIN
+  SHIPPING_DOCUMENT
+  OTHER
+}
+
+enum TradeDocumentStatus {
+  DRAFT
+  ISSUED
+  UPLOADED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+/// Origine déclarée par le vendeur, ou vérifiée par une autorité.
+///
+/// `DECLARED` est l'état par défaut et le restera tant qu'aucun prestataire de
+/// vérification n'est branché (§11). Afficher `VERIFIED` sans vérification
+/// serait exactement le faux certificat que §69 interdit.
+enum TradeOriginStatus {
+  UNKNOWN
+  DECLARED
+  VERIFIED
+  DISPUTED
+}
+
+/// Fiabilité d'une ligne de coût. Le mélange des trois est interdit : un total
+/// qui additionne du confirmé et de l'estimé n'est plus ni l'un ni l'autre.
+enum TradeCostConfidence {
+  CONFIRMED
+  ESTIMATED
+  UNKNOWN
+}
+
+enum TradeRuleStatus {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+  WITHDRAWN
+}
+
+enum TradeExceptionKind {
+  CUSTOMS_DELAY
+  DOCUMENT_MISSING
+  ADDRESS_ISSUE
+  CARRIER_DELAY
+  WEATHER
+  SECURITY
+  UNKNOWN
+}
+
+/// Étapes réelles d'une opération transfrontalière (§40).
+enum TradeEventKind {
+  RFQ_CREATED
+  QUOTE_RECEIVED
+  QUOTE_ACCEPTED
+  PROFORMA_CREATED
+  ORDER_CREATED
+  PAYMENT_INITIATED
+  PAYMENT_CONFIRMED
+  DOCUMENTS_READY
+  SHIPMENT_CREATED
+  IN_TRANSIT
+  CUSTOMS_REVIEW
+  OUT_FOR_DELIVERY
+  DELIVERED
+  SETTLED
+  EXCEPTION_RAISED
+  CANCELLED
+}
+
+/// Source d'un taux de change. `NONE` est l'état réel aujourd'hui.
+enum FxRateSource {
+  EXTERNAL_PROVIDER
+  CENTRAL_BANK
+  MANUAL_ADMIN
+  NONE
+}
+
+/// Configuration commerciale d'un pays (§6).
+///
+/// Distincte de `Country`, qui porte l'identité du pays (nom, devise,
+/// indicatif, fuseau). Ici vit ce qui relève du **commerce** : ce pays
+/// échange-t-il, avec quels moyens de paiement, quels transporteurs, quels
+/// documents. Fondre les deux ferait dépendre l'existence d'un pays de sa
+/// capacité commerciale, alors qu'un pays peut exister sans commercer.
+model ToumaTradeCountryConfig {
+  id          String  @id @default(cuid())
+  countryCode String  @unique
+  country     Country @relation(fields: [countryCode], references: [code], onDelete: Cascade)
+
+  /// Le pays participe-t-il au commerce transfrontalier ?
+  tradeEnabled      Boolean             @default(false)
+  /// Langues d'échange, codes ISO-639-1 (`fr`, `ar`, `en`).
+  languages         String[]            @default([])
+  /// Devises acceptées **en plus** de la devise du pays.
+  currencies        String[]            @default([])
+  /// Codes de moyens de paiement réellement disponibles dans ce pays.
+  paymentMethods    String[]            @default([])
+  /// Codes de transporteurs desservant ce pays.
+  shippingProviders String[]            @default([])
+  /// Types de documents que ce pays exige ou accepte.
+  documentKinds     TradeDocumentKind[] @default([])
+  notes             String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("touma_trade_country_configs")
+}
+
+/// Corridor commercial entre deux pays (§4, §7).
+///
+/// **Orienté** : TD → CM et CM → TD sont deux lignes distinctes. Ce n'est pas
+/// une redondance — les moyens de paiement, les transporteurs et les documents
+/// exigés diffèrent selon le sens, et un corridor symétrique forcerait à
+/// mentir dans un des deux sens.
+model ToumaTradeCorridor {
+  id                 String              @id @default(cuid())
+  /// Code lisible : `TD_CM`.
+  code               String              @unique
+  originCountry      String
+  destinationCountry String
+  status             TradeCorridorStatus @default(COMING_SOON)
+
+  supportedCurrencies      String[]            @default([])
+  supportedPaymentMethods  String[]            @default([])
+  supportedShippingMethods String[]            @default([])
+  requiredDocuments        TradeDocumentKind[] @default([])
+
+  /// Transit annoncé par les transporteurs, en jours. Jamais une garantie.
+  estimatedTransitMinDays Int?
+  estimatedTransitMaxDays Int?
+
+  /// Réglages libres, propres au corridor.
+  configuration Json    @default("{}")
+  notes         String?
+
+  rules       ToumaTradeRuleVersion[]
+  checks      ToumaTradeEligibilityCheck[]
+  tradeOrders ToumaTradeOrder[]
+  routes      ToumaTradeRoute[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([originCountry, destinationCountry])
+  @@index([status])
+  @@map("touma_trade_corridors")
+}
+
+/// Règle commerciale, **versionnée et sourcée** (§19, §20).
+///
+/// Une règle sans source est une réglementation inventée. Le champ `source`
+/// est obligatoire : il oblige celui qui saisit à dire d'où elle vient, et
+/// permet à celui qui la lit de la contester.
+///
+/// Une version n'est jamais modifiée : elle est remplacée, et l'ancienne passe
+/// à `SUPERSEDED`. Une commande passée sous une règle garde la règle qui
+/// s'appliquait ce jour-là.
+model ToumaTradeRuleVersion {
+  id          String              @id @default(cuid())
+  corridorId  String?
+  corridor    ToumaTradeCorridor? @relation(fields: [corridorId], references: [id], onDelete: Cascade)
+  /// Règle propre à un pays plutôt qu'à un corridor.
+  countryCode String?
+
+  /// `DOCUMENT_REQUIREMENT`, `PRODUCT_RESTRICTION`, `PAYMENT_RESTRICTION`…
+  ruleType String
+  version  Int
+  status   TradeRuleStatus @default(DRAFT)
+  /// Contenu de la règle, interprété selon `ruleType`.
+  body     Json            @default("{}")
+
+  /// D'où vient la règle. Sans cela, elle n'est pas opposable.
+  sourceName    String
+  sourceUrl     String?
+  /// Date d'entrée en vigueur telle que l'annonce la source.
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  /// Dernière relecture humaine. Une règle jamais relue vieillit en silence.
+  reviewedAt    DateTime?
+  reviewedById  String?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([corridorId, countryCode, ruleType, version])
+  @@index([ruleType, status])
+  @@index([effectiveFrom])
+  @@map("touma_trade_rule_versions")
+}
+
+/// Restriction produit pour le transfrontalier (§9).
+///
+/// Aucune liste universelle de produits interdits n'est livrée avec Touma :
+/// elle serait une réglementation inventée. Chaque restriction est saisie,
+/// sourcée par une `ToumaTradeRuleVersion`, et s'applique à ce qui est
+/// explicitement désigné.
+model ToumaCrossBorderProductRule {
+  id         String         @id @default(cuid())
+  productId  String?
+  product    ToumaProduct?  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// Restriction par catégorie plutôt que par produit.
+  categoryId String?
+  category   ToumaCategory? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  allowedCountries  String[]            @default([])
+  blockedCountries  String[]            @default([])
+  allowedCorridors  String[]            @default([])
+  requiresReview    Boolean             @default(false)
+  requiredDocuments TradeDocumentKind[] @default([])
+
+  /// Version de règle qui fonde cette restriction. Obligatoire en pratique :
+  /// une restriction sans fondement est un refus arbitraire.
+  ruleVersionId String?
+  active        Boolean @default(true)
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([categoryId])
+  @@map("touma_cross_border_product_rules")
+}
+
+/// Volet commercial d'une commande (§3).
+///
+/// N'duplique **rien** de `ToumaOrder` : ni montants, ni articles, ni statut.
+/// Ne porte que ce que la commande ne sait pas — le corridor emprunté, la
+/// devise de règlement, l'itinéraire, la chronologie.
+model ToumaTradeOrder {
+  id      String     @id @default(cuid())
+  orderId String     @unique
+  order   ToumaOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  corridorId String?
+  corridor   ToumaTradeCorridor? @relation(fields: [corridorId], references: [id], onDelete: SetNull)
+  routeId    String?
+  route      ToumaTradeRoute?    @relation(fields: [routeId], references: [id], onDelete: SetNull)
+
+  /// Devise dans laquelle le vendeur sera réglé, quand elle diffère de celle
+  /// payée par l'acheteur. Égale à la devise de commande le plus souvent.
+  settlementCurrency String?
+  /// Instantané du taux employé, s'il y en a eu un. Jamais recalculé après.
+  fxSnapshotId       String?
+
+  documents  ToumaTradeDocument[]
+  events     ToumaTradeEvent[]
+  exceptions ToumaTradeShipmentException[]
+  costs      ToumaTradeCostEstimate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([corridorId])
+  @@map("touma_trade_orders")
+}
+
+/// Itinéraire configuré (§32).
+///
+/// N'Djamena → Kousseri → Douala est un exemple, pas une donnée livrée : un
+/// itinéraire n'est officiel que si un transporteur ou une source le dit.
+/// Touma porte la structure ; le contenu est saisi.
+model ToumaTradeRoute {
+  id         String             @id @default(cuid())
+  corridorId String
+  corridor   ToumaTradeCorridor @relation(fields: [corridorId], references: [id], onDelete: Cascade)
+
+  name       String
+  /// Étapes : [{ name, countryCode, kind }]. `kind` : `ORIGIN`, `BORDER`, `HUB`, `DESTINATION`.
+  legs       Json    @default("[]")
+  /// Qui affirme cet itinéraire. Vide = personne, et l'écran le dira.
+  sourceName String?
+  sourceUrl  String?
+  active     Boolean @default(true)
+
+  tradeOrders ToumaTradeOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([corridorId, active])
+  @@map("touma_trade_routes")
+}
+
+/// Résultat d'une vérification d'éligibilité (§8).
+///
+/// Conservé : un refus doit pouvoir être expliqué plus tard à celui qui l'a
+/// reçu, et une commande acceptée doit garder la trace de ce qui l'autorisait.
+model ToumaTradeEligibilityCheck {
+  id         String              @id @default(cuid())
+  corridorId String?
+  corridor   ToumaTradeCorridor? @relation(fields: [corridorId], references: [id], onDelete: SetNull)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  buyerCountry  String
+  sellerCountry String
+  productId     String?
+  currency      String?
+  paymentMethod String?
+
+  verdict           TradeEligibilityVerdict
+  /// [{ code, ok, detail }] — chaque critère nommé, réussi ou non.
+  criteria          Json                    @default("[]")
+  /// Documents exigés par ce verdict, quand il y en a.
+  requiredDocuments TradeDocumentKind[]     @default([])
+  reason            String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([verdict, createdAt])
+  @@map("touma_trade_eligibility_checks")
+}
+
+/// Document commercial (§12).
+///
+/// Touma **émet** ce qu'elle peut légitimement émettre — facture commerciale,
+/// proforma, liste de colisage — à partir de ses propres données. Elle
+/// n'émet jamais un certificat d'origine : celui-là vient d'une autorité, et
+/// ne peut être que **téléversé** puis vérifié.
+model ToumaTradeDocument {
+  id           String           @id @default(cuid())
+  tradeOrderId String?
+  tradeOrder   ToumaTradeOrder? @relation(fields: [tradeOrderId], references: [id], onDelete: Cascade)
+  /// Un document peut précéder la commande (proforma sur devis accepté).
+  quoteId      String?
+  rfqId        String?
+
+  kind   TradeDocumentKind
+  status TradeDocumentStatus @default(DRAFT)
+  /// Numéro propre au document (facture, proforma). Unique quand il existe.
+  number String?
+
+  /// Contenu structuré des documents que Touma émet elle-même.
+  payload Json @default("{}")
+
+  /// Clé de stockage privé. Jamais une URL publique permanente (§13).
+  storageKey  String?
+  fileName    String?
+  contentType String?
+  sizeBytes   Int?
+
+  /// Émetteur revendiqué, pour un document téléversé.
+  issuerName String?
+  issuedAt   DateTime?
+  expiresAt  DateTime?
+
+  /// Vérification : par qui, quand, et par quel moyen.
+  verifiedById       String?
+  verifiedAt         DateTime?
+  verificationMethod String?
+  rejectionReason    String?
+
+  uploadedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([number])
+  @@index([tradeOrderId, kind])
+  @@index([status])
+  @@map("touma_trade_documents")
+}
+
+/// Estimation de coût rendu (§21, §22, §65).
+///
+/// Chaque ligne porte sa fiabilité. Un total additionnant du confirmé et de
+/// l'estimé n'est ni l'un ni l'autre : les sous-totaux sont donc séparés, et
+/// une ligne inconnue ne vaut pas zéro — elle rend le total incomplet, et le
+/// dit.
+model ToumaTradeCostEstimate {
+  id           String           @id @default(cuid())
+  tradeOrderId String?
+  tradeOrder   ToumaTradeOrder? @relation(fields: [tradeOrderId], references: [id], onDelete: Cascade)
+
+  currency String
+  /// [{ code, label, amount, confidence, source }]
+  lines    Json   @default("[]")
+
+  confirmedTotal    Decimal             @default(0) @db.Decimal(18, 4)
+  estimatedTotal    Decimal             @default(0) @db.Decimal(18, 4)
+  /// Composants dont le montant est inconnu. Leur présence interdit d'annoncer
+  /// un coût rendu définitif.
+  unknownComponents String[]            @default([])
+  /// Fiabilité de l'ensemble : `CONFIRMED` si toutes les lignes le sont,
+  /// `ESTIMATED` s'il y a de l'estimé sans inconnu, `UNKNOWN` dès qu'une ligne
+  /// manque. Consignée, parce qu'une estimation relue dans six mois doit dire
+  /// elle-même ce qu'elle valait.
+  overallConfidence TradeCostConfidence @default(UNKNOWN)
+
+  fxSnapshotId String?
+  createdAt    DateTime @default(now())
+
+  @@index([tradeOrderId, createdAt])
+  @@map("touma_trade_cost_estimates")
+}
+
+/// Instantané de taux de change (§24, §25).
+///
+/// Un taux sans source ni horodatage n'est pas un taux : c'est un chiffre.
+/// Les trois champs sont obligatoires, et `source = NONE` signifie qu'aucune
+/// conversion ne doit être présentée comme réelle.
+model ToumaFxRateSnapshot {
+  id            String       @id @default(cuid())
+  baseCurrency  String
+  quoteCurrency String
+  rate          Decimal      @db.Decimal(20, 10)
+  source        FxRateSource
+  sourceName    String?
+  sourceUrl     String?
+  /// Horodatage **du taux**, pas de son enregistrement.
+  rateAt        DateTime
+  /// Au-delà, le taux n'est plus employé pour une décision.
+  expiresAt     DateTime?
+
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([baseCurrency, quoteCurrency, rateAt])
+  @@map("touma_fx_rate_snapshots")
+}
+
+/// Événement de la chronologie commerciale (§40).
+///
+/// Tous proviennent des systèmes réels : le paiement écrit ses événements, la
+/// logistique les siens. Aucun n'est fabriqué pour remplir une frise.
+model ToumaTradeEvent {
+  id           String          @id @default(cuid())
+  tradeOrderId String
+  tradeOrder   ToumaTradeOrder @relation(fields: [tradeOrderId], references: [id], onDelete: Cascade)
+
+  kind        TradeEventKind
+  /// Quel système a produit l'événement : `ORDERS`, `PAYMENTS`, `LOGISTICS`…
+  origin      String
+  /// Faits rattachés. Jamais de donnée sensible.
+  detail      Json           @default("{}")
+  /// Référence dans le système d'origine (id de paiement, d'expédition).
+  referenceId String?
+
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([tradeOrderId, occurredAt])
+  @@index([kind, occurredAt])
+  @@map("touma_trade_events")
+}
+
+/// Incident d'acheminement (§34).
+///
+/// La cause n'est renseignée que si le transporteur ou une source fiable la
+/// donne. `UNKNOWN` est un état légitime, et de loin le plus fréquent : un
+/// colis en retard n'est pas un colis bloqué en douane.
+model ToumaTradeShipmentException {
+  id           String          @id @default(cuid())
+  tradeOrderId String
+  tradeOrder   ToumaTradeOrder @relation(fields: [tradeOrderId], references: [id], onDelete: Cascade)
+  shipmentId   String?
+
+  kind       TradeExceptionKind @default(UNKNOWN)
+  /// Qui affirme cette cause. Vide = personne, et l'écran ne l'affirme pas.
+  sourceName String?
+  detail     String?
+
+  raisedAt   DateTime  @default(now())
+  resolvedAt DateTime?
+  resolution String?
+
+  @@index([tradeOrderId, raisedAt])
+  @@index([kind])
+  @@map("touma_trade_shipment_exceptions")
 }
