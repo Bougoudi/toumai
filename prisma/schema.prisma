@@ -189,13 +189,34 @@ model User {
   // ── Place de marché Touma ────────────────────────────────────────────────
   /// Rôle sur la place de marché (indépendant du rôle historique du logiciel
   /// d'automatisation ci-dessus, conservé pour ne rien casser).
-  toumaRole   ToumaRole  @default(BUYER)
-  status      UserStatus @default(ACTIVE)
-  phone       String?    @unique
+  toumaRole ToumaRole  @default(BUYER)
+  status    UserStatus @default(ACTIVE)
+
+  /// Permissions d'administration effectivement accordées (V25 §25).
+  ///
+  /// N'a de sens que pour un compte `ADMIN`. Vide sur tous les autres.
+  adminPermissions String[] @default([])
+
+  /// Ce compte a-t-il été **cadré** ?
+  ///
+  /// Deux champs pour une notion, et c'est voulu. Un tableau vide est
+  /// ambigu : « aucun droit » ou « droits jamais définis » ? Les confondre
+  /// mène à l'un des deux accidents — soit tous les administrateurs existants
+  /// perdent l'accès au déploiement, soit un nouvel administrateur sans
+  /// permission les obtient toutes en silence.
+  ///
+  /// `false` : compte antérieur au cadrage, accès complet, signalé comme tel.
+  /// `true`  : seules les permissions listées s'appliquent.
+  ///
+  /// Accorder une permission bascule ce drapeau : un compte cadré ne
+  /// redevient jamais non cadré.
+  adminScoped Boolean @default(false)
+
+  phone       String?  @unique
   /// Pays de résidence (ISO-3166-1 alpha-2) — voir Country.
   countryCode String?
-  country     Country?   @relation(fields: [countryCode], references: [code], onDelete: SetNull)
-  locale      String     @default("fr")
+  country     Country? @relation(fields: [countryCode], references: [code], onDelete: SetNull)
+  locale      String   @default("fr")
 
   credentials WebAuthnCredential[]
   loginEvents LoginEvent[]

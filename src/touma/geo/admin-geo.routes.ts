@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requirePermission } from '../admin/permissions.js';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
@@ -25,7 +26,7 @@ import { nationalOverview } from './geo.service.js';
  */
 export const adminGeoRouter = Router();
 
-adminGeoRouter.use(authenticate, requireAdmin);
+adminGeoRouter.use(authenticate, requireAdmin, requirePermission('ADMIN_LOGISTICS'));
 
 // ── Activation / désactivation ──────────────────────────────────────────────
 

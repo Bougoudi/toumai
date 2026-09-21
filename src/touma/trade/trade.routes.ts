@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requirePermission } from '../admin/permissions.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { env } from '../../config/env.js';
@@ -389,7 +390,7 @@ businessTradeRouter.get(
 
 // ── Administration : /api/v1/admin/trade ─────────────────────────────────────
 export const adminTradeRouter = Router();
-adminTradeRouter.use(authenticate, requireAdmin);
+adminTradeRouter.use(authenticate, requireAdmin, requirePermission('ADMIN_TRADE'));
 
 adminTradeRouter.get(
   '/overview',

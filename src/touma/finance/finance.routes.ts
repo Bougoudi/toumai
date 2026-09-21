@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requirePermission } from '../admin/permissions.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
@@ -114,7 +115,7 @@ financeRouter.get(
 
 // ── Administration ──────────────────────────────────────────────────────────
 
-adminFinanceRouter.use(authenticate, requireAdmin);
+adminFinanceRouter.use(authenticate, requireAdmin, requirePermission('ADMIN_PAYOUTS'));
 
 const payoutCreateSchema = z.object({ storeId: z.string().cuid(), currency: z.string().trim().length(3) });
 const reasonSchema = z.object({ reason: z.string().trim().min(3).max(500) });

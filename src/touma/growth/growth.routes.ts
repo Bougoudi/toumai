@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requirePermission } from '../admin/permissions.js';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
@@ -347,7 +348,7 @@ sellerGrowthRouter.get(
 // ── Administration ─────────────────────────────────────────────────────────
 
 export const adminGrowthRouter = Router();
-adminGrowthRouter.use(authenticate, requireAdmin);
+adminGrowthRouter.use(authenticate, requireAdmin, requirePermission('ADMIN_MARKETING'));
 
 const campaignSchema = z.object({
   name: z.string().trim().min(3).max(120),

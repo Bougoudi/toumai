@@ -367,6 +367,8 @@ export function toumaOpenApiDocument() {
         get: op('Administration', 'TOUMA Intelligence : corridors, demande non servie, paiements, tensions', { role: 'ADMIN', query: ['days'] }),
       },
       '/admin/risk': { get: op('Administration', 'Scores de risque', { role: 'ADMIN' }) },
+      '/admin/permissions': { get: op('Administration', 'Permissions des administrateurs (ADMIN_SYSTEM)', { role: 'ADMIN' }) },
+      '/admin/permissions/{id}': { put: op('Administration', 'Définir les permissions d’un administrateur (ADMIN_SYSTEM)', { role: 'ADMIN', params: ['id'], body: true }) },
       '/admin/audit': { get: op('Administration', 'Journal d’audit', { role: 'ADMIN', query: ['action', 'page', 'limit'] }) },
 
       // ── Index et sondes ─────────────────────────────────────────────────

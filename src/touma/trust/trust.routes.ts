@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requirePermission } from '../admin/permissions.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { env } from '../../config/env.js';
@@ -293,7 +294,7 @@ trustRouter.get(
 // ── Administration ─────────────────────────────────────────────────────────
 
 export const adminTrustRouter = Router();
-adminTrustRouter.use(authenticate, requireAdmin);
+adminTrustRouter.use(authenticate, requireAdmin, requirePermission('ADMIN_TRUST'));
 
 /**
  * Tableau de bord. Des décomptes réels, et `null` là où le décompte n'a pas de

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requirePermission } from '../admin/permissions.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { asyncHandler, parseBody, parseQuery } from '../../middleware/validate.js';
@@ -165,7 +166,7 @@ businessAiRouter.get(
 
 // ── Espace administration : /api/v1/admin/ai ────────────────────────────────
 export const adminAiRouter = Router();
-adminAiRouter.use(authenticate, requireAdmin);
+adminAiRouter.use(authenticate, requireAdmin, requirePermission('ADMIN_AI'));
 adminAiRouter.post('/query', chatHandler('ADMIN'));
 
 const joursSchema = z.object({ days: z.coerce.number().int().min(1).max(365).default(30) });
