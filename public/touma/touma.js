@@ -223,6 +223,9 @@ function navLinks() {
     ['/touma/provinces', t('nav.provinces')],
   ];
   links.push(['/touma/business', t('nav.business')]);
+  // L'assistant est ouvert aux visiteurs : demander un compte pour chercher un
+  // produit ferait fuir celui qui n'en a pas encore.
+  links.push(['/touma/ia', t('ia.nav')]);
   if (user) {
     links.push(['/touma/commandes', t('nav.myOrders')]);
     if (session.isSeller) links.push(['/touma/vendeur', t('nav.seller')]);
@@ -270,6 +273,10 @@ function renderChrome() {
     drawerLinks.push(['/touma/retours', t('nav.returns')]);
     drawerLinks.push(['/touma/litiges', t('nav.disputes')]);
     drawerLinks.push(['/touma/documents', t('nav.documents')]);
+    drawerLinks.push(['/touma/ia/conversations', t('ia.conversations')]);
+    drawerLinks.push(['/touma/ia/confirmations', t('ia.confirmations')]);
+    if (session.isSeller) drawerLinks.push(['/touma/vendeur/ia', t('ia.sellerTitle')]);
+    if (session.isAdmin) drawerLinks.push(['/touma/admin/ia', t('ia.adminTitle')]);
     drawerLinks.push(['/touma/aide', t('nav.support')]);
     drawerLinks.push(['/touma/compte', t('nav.account')]);
   }
@@ -345,6 +352,9 @@ function drawerIcon(href) {
   if (href.includes('retours')) return svg('truck');
   if (href.includes('aide')) return svg('alert');
   if (href.includes('documents')) return svg('inbox');
+  // Avant `vendeur` et `admin` : `/touma/vendeur/ia` porte les deux, et le
+  // premier test gagnant l'emporterait sur l'icône de l'assistant.
+  if (href.includes('/ia')) return svg('spark');
   if (href.includes('vendeur')) return svg('chart');
   if (href.includes('admin')) return svg('shield');
   return svg('user');
