@@ -114,3 +114,35 @@ anomalie d'intégrité critique, ou PostgreSQL injoignable, rendent l'ensemble
 L'écran remonte aussi deux dettes plutôt que de les taire : le nombre
 d'administrateurs encore non cadrés, et l'absence de sauvegarde — nommée comme
 un bloqueur de mise en service, avec la mention que la perte serait définitive.
+
+## Dégradation gracieuse, mise à l'épreuve (V25 §51-52, §74)
+
+`tests/integration/chaos-degradation.test.ts` provoque de vraies pannes
+plutôt que de relire la documentation. La règle vérifiée est toujours la
+même : **ne jamais simuler une réussite**.
+
+| Panne provoquée | Comportement exigé |
+|---|---|
+| un transporteur lève à chaque appel | les autres répondent ; aucune ligne ne porte son code |
+| **tous** les transporteurs enregistrés lèvent | refus franc, sans montant ni délai dans le message |
+| Redis absent ou injoignable | l'instance reste prête ; Redis n'est jamais requis |
+| aucun modèle d'IA configuré | réponse rendue, et `source.realProviderConfigured: false` |
+
+Le deuxième test est le plus important, et le plus difficile à écrire
+honnêtement. Deux prémisses fausses de ma part ont dû être corrigées avant
+qu'il ne prouve quoi que ce soit :
+
+1. viser une destination inexistante ne prouve rien — le transporteur de
+   simulation accepte **toute** destination et produit un tarif par formule.
+   C'est sa nature, et c'est pourquoi `check:go-live` refuse une ouverture au
+   public tant qu'il est le seul enregistré ;
+2. un transporteur ajouté par un test précédent répondait encore. Le registre
+   n'offre pas de retrait ; on neutralise donc par écrasement, avec un
+   transporteur qui ne se déclare candidat nulle part.
+
+Le test est éprouvé dans les deux sens : en ajoutant un tarif de secours
+inventé dans le service, il échoue.
+
+Les transporteurs sont **rendus** après l'essai, et un test le vérifie : ce
+registre est partagé par le processus, et un essai qui casse la logistique
+pour les suivants transforme une panne simulée en panne réelle.
