@@ -450,3 +450,73 @@ describe('Chronologie — machine d’état', () => {
     assert.equal(transitionAutorisee('DELIVERED', 'SETTLED'), true);
   });
 });
+
+describe('Un adaptateur de simulation ne rend pas un corridor opérationnel', () => {
+  it('le transporteur « mock » ne compte pas comme couverture réelle', async () => {
+    const { origine, destination } = await paireDePays(suffixe());
+    await corridorService.createCorridor({
+      originCountry: origine,
+      destinationCountry: destination,
+      supportedCurrencies: ['XAF'],
+      supportedPaymentMethods: ['MOBILE_MONEY'],
+    });
+    await corridorService.upsertCountryConfig(origine, { tradeEnabled: true, paymentMethods: ['MOBILE_MONEY'] });
+    await corridorService.upsertCountryConfig(destination, { tradeEnabled: true, paymentMethods: ['MOBILE_MONEY'] });
+
+    // Le référentiel de développement enregistre un transporteur `mock` qui
+    // « dessert partout ». Un essai en navigateur a montré qu'il rendait le
+    // corridor opérationnel : une simulation n'achemine aucun colis.
+    await prisma.toumaShippingProvider.upsert({
+      where: { code: 'mock' },
+      update: { active: true, countries: '' },
+      create: { code: 'mock', name: 'Simulation', countries: '', active: true },
+    });
+
+    const capacite = await corridorService.capability(origine, destination);
+    assert.equal(capacite.operational, false, 'une simulation ne doit pas ouvrir un corridor');
+    assert.match(capacite.missing.join(' '), /simulation n’achemine aucun colis/);
+    assert.deepEqual(capacite.shippingProviders, []);
+  });
+
+  it('un transporteur réel couvrant les deux pays rend le corridor opérationnel', async () => {
+    const { origine, destination } = await paireDePays(suffixe());
+    await corridorService.createCorridor({
+      originCountry: origine,
+      destinationCountry: destination,
+      status: 'LIMITED',
+      supportedCurrencies: ['XAF'],
+      supportedPaymentMethods: ['MOBILE_MONEY'],
+    });
+    await corridorService.upsertCountryConfig(origine, { tradeEnabled: true, paymentMethods: ['MOBILE_MONEY'] });
+    await corridorService.upsertCountryConfig(destination, { tradeEnabled: true, paymentMethods: ['MOBILE_MONEY'] });
+
+    const code = `carrier-${suffixe()}`.slice(0, 40);
+    await prisma.toumaShippingProvider.create({
+      data: { code, name: 'Transporteur réel', countries: `${origine},${destination}`, active: true },
+    });
+
+    const capacite = await corridorService.capability(origine, destination);
+    assert.equal(capacite.operational, true, capacite.missing.join(' '));
+    assert.ok(capacite.shippingProviders.includes(code));
+  });
+
+  it('un transporteur qui ne dessert qu’un des deux pays ne suffit pas', async () => {
+    const { origine, destination } = await paireDePays(suffixe());
+    await corridorService.createCorridor({
+      originCountry: origine,
+      destinationCountry: destination,
+      status: 'LIMITED',
+      supportedCurrencies: ['XAF'],
+      supportedPaymentMethods: ['MOBILE_MONEY'],
+    });
+    await corridorService.upsertCountryConfig(origine, { tradeEnabled: true, paymentMethods: ['MOBILE_MONEY'] });
+    await corridorService.upsertCountryConfig(destination, { tradeEnabled: true, paymentMethods: ['MOBILE_MONEY'] });
+
+    const code = `partial-${suffixe()}`.slice(0, 40);
+    // « Dessert TD » ne dit pas « achemine de TD vers CM ».
+    await prisma.toumaShippingProvider.create({ data: { code, name: 'Partiel', countries: origine, active: true } });
+
+    const capacite = await corridorService.capability(origine, destination);
+    assert.equal(capacite.operational, false);
+  });
+});

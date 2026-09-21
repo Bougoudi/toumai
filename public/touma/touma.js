@@ -138,6 +138,14 @@ const ROUTES = [
   // rend que des données publiques, et demander un compte pour chercher un
   // produit ferait fuir celui qui n'en a pas encore.
   { path: '/touma/ia', module: 'ia', name: 'aiChat' },
+  // Commerce international. La consultation des corridors est ouverte : un
+  // acheteur doit pouvoir savoir si Touma dessert son pays avant de créer un
+  // compte.
+  { path: '/touma/commerce', module: 'trade', name: 'tradeHome' },
+  { path: '/touma/commerce/corridors/:code', module: 'trade', name: 'tradeCorridor' },
+  { path: '/touma/commerce/commandes', module: 'trade', name: 'tradeOrders', auth: true },
+  { path: '/touma/commerce/commandes/:id', module: 'trade', name: 'tradeOrder', auth: true },
+  { path: '/touma/admin/commerce', module: 'trade', name: 'adminTrade', auth: true, role: 'ADMIN' },
   { path: '/touma/ia/conversations', module: 'ia', name: 'aiConversations', auth: true },
   { path: '/touma/ia/conversations/:id', module: 'ia', name: 'aiConversation', auth: true },
   { path: '/touma/ia/confirmations', module: 'ia', name: 'aiConfirmations', auth: true },
@@ -185,6 +193,7 @@ const LOADERS = {
   trust: () => import('./views-trust.js'),
   marketing: () => import('./views-marketing.js'),
   ia: () => import('./views-ai.js'),
+  trade: () => import('./views-trade.js'),
 };
 
 async function loadModule(name) {
@@ -226,6 +235,7 @@ function navLinks() {
   // L'assistant est ouvert aux visiteurs : demander un compte pour chercher un
   // produit ferait fuir celui qui n'en a pas encore.
   links.push(['/touma/ia', t('ia.nav')]);
+  links.push(['/touma/commerce', t('trade.nav')]);
   if (user) {
     links.push(['/touma/commandes', t('nav.myOrders')]);
     if (session.isSeller) links.push(['/touma/vendeur', t('nav.seller')]);
@@ -277,6 +287,8 @@ function renderChrome() {
     drawerLinks.push(['/touma/ia/confirmations', t('ia.confirmations')]);
     if (session.isSeller) drawerLinks.push(['/touma/vendeur/ia', t('ia.sellerTitle')]);
     if (session.isAdmin) drawerLinks.push(['/touma/admin/ia', t('ia.adminTitle')]);
+    drawerLinks.push(['/touma/commerce/commandes', t('trade.myOrders')]);
+    if (session.isAdmin) drawerLinks.push(['/touma/admin/commerce', t('trade.adminTitle')]);
     drawerLinks.push(['/touma/aide', t('nav.support')]);
     drawerLinks.push(['/touma/compte', t('nav.account')]);
   }
@@ -355,6 +367,7 @@ function drawerIcon(href) {
   // Avant `vendeur` et `admin` : `/touma/vendeur/ia` porte les deux, et le
   // premier test gagnant l'emporterait sur l'icône de l'assistant.
   if (href.includes('/ia')) return svg('spark');
+  if (href.includes('commerce')) return svg('map');
   if (href.includes('vendeur')) return svg('chart');
   if (href.includes('admin')) return svg('shield');
   return svg('user');
@@ -1276,6 +1289,31 @@ document.addEventListener('click', (event) => {
 document.addEventListener('submit', (event) => {
   const form = event.target;
   const submit = form.querySelector('[type="submit"]');
+
+  if (form.id === 'trade-eligibility-form') {
+    event.preventDefault();
+    const donnees = new FormData(form);
+    const cible = document.getElementById('trade-eligibility-result');
+    cible.innerHTML = `<p class="muted small">${t('trade.check')}…</p>`;
+    if (submit) submit.disabled = true;
+    return (async () => {
+      try {
+        const r = await api('/trade/eligibility/check', {
+          method: 'POST',
+          body: {
+            sellerCountry: String(donnees.get('sellerCountry')).trim().toUpperCase(),
+            buyerCountry: String(donnees.get('buyerCountry')).trim().toUpperCase(),
+          },
+        });
+        const { renderEligibility } = await loadModule('trade');
+        cible.innerHTML = renderEligibility(r);
+      } catch (error) {
+        cible.innerHTML = `<p class="small" style="color:var(--danger)">${esc(error instanceof ApiError ? error.message : t('ia.failed'))}</p>`;
+      } finally {
+        if (submit) submit.disabled = false;
+      }
+    })();
+  }
 
   if (form.id === 'ai-chat-form') {
     event.preventDefault();

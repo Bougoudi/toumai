@@ -132,8 +132,15 @@ export const corridorService = {
      * CM ». La liste `countries` de V18 répond à la première question ; la
      * seconde exige les deux pays chez le même transporteur, ce qui est le
      * minimum vérifiable sans interroger le prestataire.
+     *
+     * **Un adaptateur de simulation ne compte pas.** Il répond à tout, y
+     * compris à des corridors que personne ne dessert, et le laisser compter
+     * rendait un corridor « opérationnel » sur la foi d'un prestataire qui
+     * n'existe pas. C'est exactement ce que §72 interdit — et c'est un essai
+     * en navigateur qui l'a montré, pas une relecture du code.
      */
     const desservants = transporteurs
+      .filter((t) => !estSimulation(t.code))
       .filter((t) => {
         const pays = t.countries
           .split(',')
@@ -146,7 +153,14 @@ export const corridorService = {
       .map((t) => t.code);
 
     const expedition = corridor.supportedShippingMethods.length > 0 ? intersection(corridor.supportedShippingMethods, desservants) : desservants;
-    if (expedition.length === 0) manquants.push('Aucun transporteur enregistré ne couvre les deux pays de ce corridor.');
+    if (expedition.length === 0) {
+      const simules = transporteurs.filter((t) => estSimulation(t.code)).map((t) => t.code);
+      manquants.push(
+        simules.length > 0
+          ? `Aucun transporteur **réel** ne couvre les deux pays de ce corridor. Seul un adaptateur de simulation est enregistré (${simules.join(', ')}), et une simulation n’achemine aucun colis.`
+          : 'Aucun transporteur enregistré ne couvre les deux pays de ce corridor.',
+      );
+    }
 
     const devises = corridor.supportedCurrencies.length > 0 ? corridor.supportedCurrencies : [];
     if (devises.length === 0) manquants.push('Aucune devise n’est déclarée pour ce corridor.');
@@ -281,6 +295,20 @@ export const corridorService = {
     });
   },
 };
+
+/**
+ * Codes d'adaptateurs de simulation.
+ *
+ * Ils existent pour faire tourner l'application en développement et ne
+ * transportent rien. Les compter comme couverture ferait promettre une
+ * livraison à un acheteur réel sur la foi d'un prestataire fictif — la
+ * promesse que V20 §52 et V24 §72 interdisent l'une comme l'autre.
+ */
+const SIMULATIONS = new Set(['mock', 'test', 'sandbox', 'fake', 'dummy']);
+
+export function estSimulation(code: string): boolean {
+  return SIMULATIONS.has(code.trim().toLowerCase());
+}
 
 function intersection(a: string[], b: string[]): string[] {
   if (a.length === 0) return b;
