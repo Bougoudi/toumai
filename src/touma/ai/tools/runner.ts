@@ -12,6 +12,7 @@ import './seller.tools.js';
 import './b2b.tools.js';
 import './admin.tools.js';
 import './insights.tools.js';
+import './trade.tools.js';
 
 /**
  * EXÉCUTEUR D'OUTILS (§7, §42, §43, §45).

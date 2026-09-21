@@ -295,3 +295,158 @@ describe('Non-régression : le commerce national tchadien (§73)', () => {
     assert.ok(Array.isArray(res.body.items));
   });
 });
+
+describe('Risque commercial — explicable, jamais opaque', () => {
+  it('publie ses poids et ses seuils', async () => {
+    const { tradeRiskService } = await import('../../src/touma/trade/risk.service.js');
+    const modele = tradeRiskService.explainModel();
+    assert.ok(modele.signals.length >= 6);
+    for (const s of modele.signals) {
+      assert.ok(s.weight > 0);
+      assert.ok(s.label.length > 0, `signal ${s.code} sans libellé lisible`);
+    }
+    assert.ok(modele.thresholds.some((t) => t.action === 'HOLD'));
+    // Un score opaque n'est pas contestable.
+    assert.match(modele.note, /se discutent/i);
+  });
+
+  it('chaque signal porte le fait qui l’a produit, et la sortie reste une recommandation', async () => {
+    const { tradeRiskService } = await import('../../src/touma/trade/risk.service.js');
+    const s = suffixe();
+    const cat = await prisma.toumaCategory.findFirstOrThrow();
+    const vendeur = await registerUser(api, { name: 'Vendeur Risque', email: uniqueEmail(`trisk-${s}`), role: 'SELLER' });
+    const store = await prisma.toumaStore.create({
+      data: { ownerId: vendeur.user.id, name: `B ${s}`, slug: `trisk-${s}`, countryCode: 'TD', status: 'ACTIVE' },
+    });
+    const produit = await prisma.toumaProduct.create({
+      data: { storeId: store.id, categoryId: cat.id, title: 'Article', slug: `trisk-p-${s}`, description: 'x', price: '50000', currency: 'XAF', countryCode: 'TD', status: 'ACTIVE' },
+    });
+    const acheteur = await registerUser(api, { name: 'Acheteur Risque', email: uniqueEmail(`trisk-b-${s}`), role: 'BUYER' });
+    const commande = await prisma.toumaOrder.create({
+      data: {
+        buyerId: acheteur.user.id,
+        storeId: store.id,
+        orderNumber: `TR-${s}`,
+        status: 'PENDING',
+        subtotal: '50000',
+        total: '50000',
+        currency: 'XAF',
+        crossBorder: true,
+        buyerCountry: 'CM',
+        sellerCountry: 'TD',
+        shippingSnapshot: { city: 'Douala' },
+        items: { create: { productId: produit.id, titleSnapshot: 'Article', unitPrice: '50000', quantity: 1, lineTotal: '50000', currency: 'XAF' } },
+      },
+    });
+    const tradeOrder = await prisma.toumaTradeOrder.create({ data: { orderId: commande.id, settlementCurrency: 'XAF' } });
+
+    const r = await tradeRiskService.assess(tradeOrder.id);
+    // Vendeur non vérifié et origine non déclarée : deux signaux mesurables.
+    assert.ok(r.signals.some((x) => x.code === 'UNVERIFIED_SELLER'));
+    assert.ok(r.signals.some((x) => x.code === 'NO_ORIGIN_DECLARED'));
+    for (const signal of r.signals) assert.ok(signal.evidence.length > 0, `${signal.code} sans fait`);
+    // Un signal absent ne vaut pas zéro risque : il est dit non mesuré.
+    assert.ok(r.unmeasured.length > 0);
+    assert.match(r.disclaimer, /Recommandation, pas décision/i);
+    assert.match(r.explanation, /Seuil/);
+  });
+});
+
+describe('Expédition transfrontalière — aucun tarif inventé', () => {
+  it('distingue un corridor fermé d’un transporteur muet', async () => {
+    const { tradeShippingService } = await import('../../src/touma/trade/shipping.service.js');
+    const ferme = await tradeShippingService.quote({ originCountry: 'TD', destinationCountry: 'CM', weightGrams: 2000, currency: 'XAF' });
+    // Corridor non opérationnel : `unavailable`, avec le motif du corridor.
+    assert.equal(ferme.status, 'unavailable');
+    assert.ok((ferme.reason ?? '').length > 0);
+    assert.deepEqual(ferme.quotes, []);
+  });
+
+  it('un incident sans source ne se voit attribuer aucune cause', async () => {
+    const { tradeShippingService } = await import('../../src/touma/trade/shipping.service.js');
+    const s = suffixe();
+    const cat = await prisma.toumaCategory.findFirstOrThrow();
+    const vendeur = await registerUser(api, { name: 'Vendeur Incident', email: uniqueEmail(`tinc-${s}`), role: 'SELLER' });
+    const store = await prisma.toumaStore.create({ data: { ownerId: vendeur.user.id, name: `B ${s}`, slug: `tinc-${s}`, countryCode: 'TD', status: 'ACTIVE' } });
+    const produit = await prisma.toumaProduct.create({
+      data: { storeId: store.id, categoryId: cat.id, title: 'Article', slug: `tinc-p-${s}`, description: 'x', price: '10000', currency: 'XAF', countryCode: 'TD', status: 'ACTIVE' },
+    });
+    const acheteur = await registerUser(api, { name: 'Acheteur Incident', email: uniqueEmail(`tinc-b-${s}`), role: 'BUYER' });
+    const commande = await prisma.toumaOrder.create({
+      data: {
+        buyerId: acheteur.user.id, storeId: store.id, orderNumber: `TI-${s}`, status: 'PENDING',
+        subtotal: '10000', total: '10000', currency: 'XAF', crossBorder: true, buyerCountry: 'CM', sellerCountry: 'TD',
+        shippingSnapshot: { city: 'Douala' },
+        items: { create: { productId: produit.id, titleSnapshot: 'Article', unitPrice: '10000', quantity: 1, lineTotal: '10000', currency: 'XAF' } },
+      },
+    });
+    const tradeOrder = await prisma.toumaTradeOrder.create({ data: { orderId: commande.id } });
+
+    // On prétend une cause douanière sans dire qui l'affirme.
+    const incident = await tradeShippingService.raiseException({
+      tradeOrderId: tradeOrder.id,
+      kind: 'CUSTOMS_DELAY',
+      detail: 'Colis immobile depuis six jours.',
+    });
+    // Sans source, la cause retombe sur UNKNOWN : un colis en retard n'est pas
+    // un colis bloqué en douane.
+    assert.equal(incident.kind, 'UNKNOWN');
+    // Le fait observé est conservé, lui.
+    assert.match(incident.detail ?? '', /six jours/);
+
+    const avecSource = await tradeShippingService.raiseException({
+      tradeOrderId: tradeOrder.id,
+      kind: 'CUSTOMS_DELAY',
+      sourceName: 'Transporteur Essai',
+      detail: 'Retenue douanière signalée par le transporteur.',
+    });
+    assert.equal(avecSource.kind, 'CUSTOMS_DELAY');
+    assert.equal(avecSource.sourceName, 'Transporteur Essai');
+  });
+});
+
+describe('Chronologie — machine d’état', () => {
+  it('refuse une transition incohérente', async () => {
+    const { timelineService } = await import('../../src/touma/trade/timeline.service.js');
+    const s = suffixe();
+    const cat = await prisma.toumaCategory.findFirstOrThrow();
+    const vendeur = await registerUser(api, { name: 'Vendeur Chrono', email: uniqueEmail(`tchr-${s}`), role: 'SELLER' });
+    const store = await prisma.toumaStore.create({ data: { ownerId: vendeur.user.id, name: `B ${s}`, slug: `tchr-${s}`, countryCode: 'TD', status: 'ACTIVE' } });
+    const produit = await prisma.toumaProduct.create({
+      data: { storeId: store.id, categoryId: cat.id, title: 'Article', slug: `tchr-p-${s}`, description: 'x', price: '10000', currency: 'XAF', countryCode: 'TD', status: 'ACTIVE' },
+    });
+    const acheteur = await registerUser(api, { name: 'Acheteur Chrono', email: uniqueEmail(`tchr-b-${s}`), role: 'BUYER' });
+    const commande = await prisma.toumaOrder.create({
+      data: {
+        buyerId: acheteur.user.id, storeId: store.id, orderNumber: `TC-${s}`, status: 'PENDING',
+        subtotal: '10000', total: '10000', currency: 'XAF', buyerCountry: 'CM', sellerCountry: 'TD',
+        shippingSnapshot: { city: 'Douala' },
+        items: { create: { productId: produit.id, titleSnapshot: 'Article', unitPrice: '10000', quantity: 1, lineTotal: '10000', currency: 'XAF' } },
+      },
+    });
+    const tradeOrder = await prisma.toumaTradeOrder.create({ data: { orderId: commande.id } });
+
+    await timelineService.record({ tradeOrderId: tradeOrder.id, kind: 'ORDER_CREATED', origin: 'ORDERS' });
+    await timelineService.record({ tradeOrderId: tradeOrder.id, kind: 'PAYMENT_INITIATED', origin: 'PAYMENTS' });
+    await timelineService.record({ tradeOrderId: tradeOrder.id, kind: 'PAYMENT_CONFIRMED', origin: 'PAYMENTS' });
+    await timelineService.record({ tradeOrderId: tradeOrder.id, kind: 'SHIPMENT_CREATED', origin: 'LOGISTICS' });
+    await timelineService.record({ tradeOrderId: tradeOrder.id, kind: 'IN_TRANSIT', origin: 'LOGISTICS' });
+    await timelineService.record({ tradeOrderId: tradeOrder.id, kind: 'DELIVERED', origin: 'LOGISTICS' });
+
+    // « Livré » puis « paiement initié » écrirait une histoire fausse.
+    await assert.rejects(
+      () => timelineService.record({ tradeOrderId: tradeOrder.id, kind: 'PAYMENT_INITIATED', origin: 'PAYMENTS' }),
+      /Transition impossible/i,
+    );
+    // Un webhook dans le désordre ne fait pas échouer le traitement.
+    assert.equal(await timelineService.tryRecord({ tradeOrderId: tradeOrder.id, kind: 'PAYMENT_INITIATED', origin: 'PAYMENTS' }), false);
+  });
+
+  it('une chronologie ne peut pas commencer par « livré »', async () => {
+    const { transitionAutorisee } = await import('../../src/touma/trade/timeline.service.js');
+    assert.equal(transitionAutorisee(null, 'DELIVERED'), false);
+    assert.equal(transitionAutorisee(null, 'ORDER_CREATED'), true);
+    assert.equal(transitionAutorisee('DELIVERED', 'PAYMENT_INITIATED'), false);
+    assert.equal(transitionAutorisee('DELIVERED', 'SETTLED'), true);
+  });
+});
