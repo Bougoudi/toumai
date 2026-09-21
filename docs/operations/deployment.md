@@ -68,3 +68,21 @@ fausseté qu'on découvre au pire moment.
 Les migrations étant additives (§32) et l'entrée s'arrêtant sur tout échec
 autre que P3005, un déploiement raté laisse la base intacte et l'ancienne
 version en place.
+
+## Versions et journal des changements (§76)
+
+`CHANGELOG.md`, à la racine.
+
+Avant `1.0.0`, **aucune stabilité d'API n'est promise**. La version mineure
+suit le palier de travail (V25 → `0.25.0`), le correctif compte les
+livraisons intermédiaires. `1.0.0` marquera la première mise en service
+réelle : elle suppose les prestataires raccordés et les sauvegardes en place.
+
+Chaque entrée sépare fonctionnalités, corrections, changements de base,
+ruptures et sécurité, comme §76 le demande.
+
+Le journal **commence à V25** — la première version dont le détail a été
+consigné au fil du travail. Les versions antérieures sont reconstituées à
+partir de ce que le dépôt prouve : migrations de schéma et documents d'audit
+versionnés. Écrire des notes de version autoritaires pour un travail qu'on n'a
+pas suivi produit un document qui a l'air fiable et ne l'est pas.

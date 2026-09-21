@@ -1,6 +1,6 @@
 {
   "name": "toumai",
-  "version": "0.1.0",
+  "version": "0.25.0",
   "description": "Toumai — logiciel d'automatisation e-commerce (analyse marché, génération produits, sourcing, achat & expédition).",
   "type": "module",
   "engines": {
