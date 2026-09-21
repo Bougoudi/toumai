@@ -12,7 +12,11 @@ La `description` est lue par le modèle : elle dit ce que l'outil fait **et ce
 qu'il ne fait pas**. « Ne calcule aucun délai de livraison » est aussi utile
 que le reste.
 
-## Les dix-huit outils
+## Les vingt-huit outils
+
+*(Le message du commit qui les a introduits en annonce dix-huit : c'était un
+mauvais décompte de ma part, pas une liste amputée. Le tableau ci-dessous est
+le bon, et un test vérifie qu'il en existe au moins quinze.)*
 
 | Outil | Risque | Service appelé |
 |---|---|---|
