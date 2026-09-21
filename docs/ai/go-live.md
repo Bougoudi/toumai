@@ -41,6 +41,21 @@ Embeddings et automatisation sont fermés par défaut : les premiers coûtent à
 chaque écriture de produit et n'ont d'intérêt qu'avec un fournisseur réel ; la
 seconde laisserait l'IA déclencher des actions sans qu'on la regarde.
 
+## Ce qui a été ajouté après la première livraison
+
+**Intelligence de prix (§20)**, **de demande (§21)** et **bilans d'activité
+(§52)** sont écrits et sous test. Tous calculés en base, sans modèle. Trois
+règles les tiennent :
+
+- une fourchette de prix n'est publiée qu'au-delà de cinq produits
+  comparables, et jamais entre deux devises ;
+- une hausse de recherches n'est annoncée qu'au-delà d'un plancher de volume —
+  passer de 1 à 3 est une hausse de 200 % qui ne veut rien dire ;
+- un bilan sépare l'observé, les variations, les anomalies et **les questions
+  à vérifier**. Pas « les explications possibles » : une explication écrite par
+  une machine qui ne connaît que la base se lit comme une explication, alors
+  qu'une question se lit comme une question.
+
 ## Ce qui n'est pas fait, et qui reste à décider
 
 **Recherche sémantique.** §32 et §55 demandent des embeddings et un index
@@ -55,13 +70,6 @@ taire. Traduire suppose un modèle réel : une traduction par règles locales
 serait pire que pas de traduction.
 
 **Intelligence d'image (§15).** `ImageAIProvider` n'est pas écrit.
-
-**Prix, demande, anomalies (§20, §21).** `PriceIntelligenceService` et
-`DemandSignal` ne sont pas écrits comme services dédiés. Ce qui existe :
-`growth/price-history.ts` (V22) porte déjà l'historique de prix et le prix de
-référence vérifié, et `admin/intelligence.service.ts` (antérieur) porte la
-demande non satisfaite et la tension de stock. Les outils IA s'y adossent.
-Un service d'anomalie de prix reste à écrire.
 
 **Tests A/B, automatisation marketing, lots (V22).** Toujours ouverts.
 

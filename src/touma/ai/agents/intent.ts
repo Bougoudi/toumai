@@ -30,6 +30,9 @@ export type Intent =
   | 'SELLER_SALES'
   | 'SELLER_INVENTORY'
   | 'SELLER_LISTING'
+  | 'SELLER_BRIEF'
+  | 'PRICE_INTELLIGENCE'
+  | 'DEMAND_INTELLIGENCE'
   | 'RFQ_DRAFT'
   | 'SUPPLIER_SEARCH'
   | 'QUOTE_COMPARE'
@@ -39,6 +42,7 @@ export type Intent =
   | 'ADMIN_STOCK'
   | 'ADMIN_DELIVERY_ISSUES'
   | 'ADMIN_UNMET_DEMAND'
+  | 'ADMIN_BRIEF'
   | 'HELP'
   | 'UNKNOWN';
 
@@ -78,6 +82,9 @@ const MOTS: Record<string, RegExp> = {
   ventes: /\b(ventes|chiffre d affaires|ca|mes ventes|revenus|pourquoi mes ventes|baisse)\b/,
   stock: /\b(stock|inventaire|rupture|reappro|invendu|dormant)\b/,
   fiche: /\b(description|fiche|annonce|redige|titre du produit|rediger)\b/,
+  prix: /\b(prix|tarif|cher|chere|coute|coûte|marge|positionn|concurrent)\b/,
+  demande: /\b(demande|recherche[nst]?|tendance|cherche[nt]|populaire|ce que les gens)\b/,
+  bilan: /\b(bilan|resume|rapport|point|synthese|ce qui s est passe|comment ca va)\b/,
   devis: /\b(devis|rfq|demande de prix|appel d offre)\b/,
   fournisseur: /\b(fournisseur|fournisseurs|grossiste|en gros|sourcing)\b/,
   aide: /\b(aide|probleme|reclamation|remboursement|litige|parler a quelqu un|humain|conseiller)\b/,
@@ -147,6 +154,14 @@ export function planFromMessage(message: string, ctx: ToolContext, memoire: Reco
     };
   }
 
+  if (MOTS.prix.test(texte) && ids.length >= 1) {
+    return {
+      intent: 'PRICE_INTELLIGENCE',
+      calls: [{ tool: 'getPriceIntelligence', args: { productId: ids[0] } }],
+      understood: 'Situer ce prix par rapport aux autres produits de sa catégorie.',
+    };
+  }
+
   if (ids.length === 1 && !MOTS.recherche.test(texte)) {
     return { intent: 'PRODUCT_DETAIL', calls: [{ tool: 'getProduct', args: { productId: ids[0] } }], understood: 'Afficher la fiche de ce produit.' };
   }
@@ -186,6 +201,24 @@ function planVendeur(texte: string, brut: string, memoire: Record<string, string
   const ids = identifiants(brut);
   const storeId = ids[0] ?? boutique;
 
+  if (MOTS.bilan.test(texte)) {
+    if (!storeId) return { intent: 'SELLER_BRIEF', calls: [], understood: 'Faire le bilan — il me faut savoir de quelle boutique il s’agit.' };
+    const jours = /\b(30|mois)\b/.test(texte) ? 30 : /\b(aujourd hui|jour)\b/.test(texte) ? 1 : 7;
+    return { intent: 'SELLER_BRIEF', calls: [{ tool: 'getSellerBrief', args: { storeId, days: jours } }], understood: `Faire le bilan de votre boutique sur ${jours} jour(s).` };
+  }
+  if (MOTS.prix.test(texte) && ids.length >= 1) {
+    // Un identifiant sur une question de prix côté vendeur désigne un produit,
+    // pas une boutique : c'est le prix d'un article qu'on situe, pas celui
+    // d'un magasin.
+    return { intent: 'PRICE_INTELLIGENCE', calls: [{ tool: 'getPriceIntelligence', args: { productId: ids[0] } }], understood: 'Situer ce prix dans sa catégorie.' };
+  }
+  if (MOTS.demande.test(texte)) {
+    return {
+      intent: 'DEMAND_INTELLIGENCE',
+      calls: [{ tool: 'getDemandIntelligence', args: ids.length >= 1 ? { productId: ids[0] } : {} }],
+      understood: ids.length >= 1 ? 'Mesurer la demande sur ce produit.' : 'Regarder ce que les acheteurs cherchent.',
+    };
+  }
   if (MOTS.stock.test(texte)) {
     if (!storeId) return { intent: 'SELLER_INVENTORY', calls: [], understood: 'Analyser votre stock — il me faut savoir de quelle boutique il s’agit.' };
     return { intent: 'SELLER_INVENTORY', calls: [{ tool: 'getInventory', args: { storeId } }], understood: 'Analyser le stock de votre boutique.' };
@@ -243,6 +276,9 @@ function planBusiness(texte: string, brut: string, ids: string[]): Plan {
 
 function planAdmin(texte: string): Plan {
   const jours = /\b(90|trimestre)\b/.test(texte) ? 90 : /\b(7|semaine)\b/.test(texte) ? 7 : /\b(aujourd hui|today)\b/.test(texte) ? 1 : 30;
+  if (/\bbilan|resume|rapport|synthese|point du jour|que s est il passe/.test(texte)) {
+    return { intent: 'ADMIN_BRIEF', calls: [{ tool: 'getPlatformBrief', args: { days: jours <= 7 ? jours : 7 } }], understood: `Bilan de la plateforme sur ${jours <= 7 ? jours : 7} jour(s).` };
+  }
   if (/\bprovince|region|corridor|ou sont|geographi/.test(texte)) {
     return { intent: 'ADMIN_PROVINCES', calls: [{ tool: 'getOrdersByProvince', args: { days: jours } }], understood: `Répartition des commandes par province sur ${jours} jours.` };
   }

@@ -83,6 +83,13 @@ function redigerSelonIntention(intent: Intent, r: ToolCallOutcome[]): Reponse {
       return stock(r);
     case 'SELLER_LISTING':
       return brouillonFiche(r);
+    case 'PRICE_INTELLIGENCE':
+      return prix(r);
+    case 'DEMAND_INTELLIGENCE':
+      return demande(r);
+    case 'SELLER_BRIEF':
+    case 'ADMIN_BRIEF':
+      return bilan(r);
     case 'RFQ_DRAFT':
       return brouillonDevis(r);
     case 'SUPPLIER_SEARCH':
@@ -448,6 +455,117 @@ function administration(r: ToolCallOutcome[]): Reponse {
     cards: reussis.map((x) => ({ type: 'DATA', tool: x.tool, summary: x.summary, data: x.data })),
     unavailable: [],
     suggestions: ['Voir la répartition par province', 'Voir la fiabilité des paiements'],
+  };
+}
+
+/**
+ * Prix.
+ *
+ * Aucun qualificatif. « Ce produit est cher » suppose un budget qu'on ne
+ * connaît pas, et « c'est une bonne affaire » suppose une qualité qu'on ne
+ * mesure pas. L'écart à la médiane est un fait ; le reste appartient à celui
+ * qui achète ou qui vend.
+ */
+function prix(r: ToolCallOutcome[]): Reponse {
+  const d = donnees<Record<string, any>>(r, 'getPriceIntelligence');
+  if (!d) return vide('Je n’ai pas pu situer ce prix.');
+  if (!d.position) {
+    return {
+      text: `${INDISPONIBLE} ${d.note ?? 'Pas assez de produits comparables pour situer ce prix.'}`,
+      cards: [],
+      unavailable: ['la fourchette de la catégorie (échantillon insuffisant)'],
+      suggestions: ['Voir l’historique de prix de ce produit'],
+    };
+  }
+
+  const lignes = [
+    `${d.product.title} : ${d.product.price} ${d.product.currency}.`,
+    d.position.statement,
+    `Fourchette des ${d.range.sampleSize} produits comparables : ${d.range.min} – ${d.range.max} ${d.range.currency}, médiane ${d.range.median}.`,
+  ];
+  if (d.ownVariation?.changed) {
+    lignes.push(
+      d.ownVariation.deltaPercent !== null
+        ? `Ce prix a changé ${d.ownVariation.changes} fois : ${d.ownVariation.from.price} → ${d.ownVariation.to.price} ${d.ownVariation.to.currency} (${d.ownVariation.deltaPercent > 0 ? '+' : ''}${d.ownVariation.deltaPercent} %).`
+        : `Ce prix a changé ${d.ownVariation.changes} fois, mais la devise a changé aussi : aucune variation en pourcentage n’est calculable.`,
+    );
+  } else {
+    lignes.push(d.ownVariation?.note ?? 'Aucun changement de prix enregistré.');
+  }
+  if (d.anomaly) lignes.push(`Écart notable : ${d.anomaly.caution}`);
+  lignes.push(d.disclaimer);
+
+  return {
+    text: lignes.join('\n'),
+    cards: [],
+    unavailable: ['ce que le produit vaut réellement — Touma ne mesure que des prix affichés'],
+    suggestions: ['Comparer avec un autre produit'],
+  };
+}
+
+function demande(r: ToolCallOutcome[]): Reponse {
+  const d = donnees<Record<string, any>>(r, 'getDemandIntelligence');
+  if (!d) return vide('Je n’ai pas pu mesurer la demande.');
+
+  const lignes: string[] = [];
+  if (d.searches) {
+    lignes.push(d.searches.statement);
+    if (d.withoutResults > 0) {
+      lignes.push(`${d.withoutResults} de ces recherches n’ont rien trouvé dans le catalogue (${d.unmetShare} %).`);
+    }
+  } else if (d.unitsOrdered) {
+    lignes.push(d.unitsOrdered.statement);
+  } else if (Array.isArray(d.items)) {
+    if (d.items.length === 0) return vide(d.note ?? 'Aucune recherche enregistrée sur la période.');
+    lignes.push(`Termes les plus cherchés sur ${d.days} jours :`);
+    lignes.push(
+      d.items
+        .map((t: Record<string, any>) => `• ${t.term} — ${t.searches} recherche(s)${t.neverMatched ? ' — n’a jamais rien trouvé' : ''}`)
+        .join('\n'),
+    );
+  }
+
+  return {
+    text: lignes.join('\n\n'),
+    cards: [],
+    unavailable: (d.unavailable as string[]) ?? [],
+    suggestions: ['Voir les produits en rupture', 'Analyser mes ventes'],
+  };
+}
+
+/** Bilan : observé, variations, anomalies, questions — dans cet ordre. */
+function bilan(r: ToolCallOutcome[]): Reponse {
+  const d = donnees<Record<string, any>>(r, 'getSellerBrief') ?? donnees<Record<string, any>>(r, 'getPlatformBrief');
+  if (!d) return vide('Je n’ai pas pu établir ce bilan.');
+
+  const o = d.observed as Record<string, any>;
+  const devises = (o.byCurrency as Array<Record<string, any>>) ?? [];
+  const sections = [
+    'OBSERVÉ',
+    `• ${o.orders} commande(s) sur ${d.periodDays} jour(s), dont ${o.cancelled} annulée(s).`,
+    ...devises.map((c) => `• ${c.revenue} ${c.currency} sur ${c.orders} commande(s), panier moyen ${c.averageOrderValue ?? '—'}.`),
+    ...(o.outOfStock !== undefined ? [`• ${o.outOfStock} produit(s) actif(s) en rupture sur ${o.activeProducts}.`] : []),
+    ...(o.newAccounts !== undefined ? [`• ${o.newAccounts} nouveau(x) compte(s), ${o.newStores} nouvelle(s) boutique(s).`] : []),
+    ...(o.disputesOpened !== undefined ? [`• ${o.disputesOpened} litige(s) ouvert(s).`] : []),
+    '',
+    'VARIATIONS',
+    ...(d.changes as string[]).map((c) => `• ${c}`),
+  ];
+
+  if ((d.anomalies as string[]).length > 0) {
+    sections.push('', 'ANOMALIES', ...(d.anomalies as string[]).map((a) => `• ${a}`));
+  }
+  if ((d.questions as string[]).length > 0) {
+    // Des questions, pas des explications. Une explication écrite par une
+    // machine qui ne connaît que la base se lit comme une explication.
+    sections.push('', 'À VÉRIFIER', ...(d.questions as string[]).map((q) => `• ${q}`));
+  }
+
+  return {
+    text: sections.join('\n'),
+    cards: [],
+    unavailable: (d.unavailable as string[]) ?? [],
+    suggestions: ['Analyser le stock', 'Voir la demande non satisfaite'],
   };
 }
 

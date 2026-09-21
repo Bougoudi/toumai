@@ -67,3 +67,32 @@ répondre. Classé `LOW_RISK` : ouvrir un ticket n'engage rien, et son absence
 engage beaucoup — un acheteur laissé sans réponse. Exiger une confirmation
 pour demander de l'aide serait une porte fermée au moment où elle doit
 s'ouvrir.
+
+## Prix, demande, bilans
+
+Trois lectures calculées en base, sans modèle, et trois refus qui les
+définissent.
+
+**Le prix** est situé, jamais jugé. « Ce prix se situe 18 % au-dessus de la
+médiane des 23 produits comparables » est un fait. « C'est trop cher » suppose
+un budget qu'on ne connaît pas ; « c'est une bonne affaire » suppose une
+qualité qu'on ne mesure pas. Et la fourchette rassemble des prix **affichés**,
+pas des prix payés — la réponse le rappelle à chaque fois, parce qu'un vendeur
+qui s'y positionne s'appuierait sinon sur un chiffre qu'il croit être une
+valeur de marché.
+
+Aucun outil ne recommande de changer un prix. Une machine qui conseille à
+chacun de s'aligner sur la médiane pousse tout un marché vers le même chiffre
+sans avoir vu un seul produit.
+
+**La demande** n'annonce une hausse que si le volume la rend lisible. En
+dessous du plancher, la réponse est « information non disponible », et non une
+hausse de 200 % entre une et trois recherches. Les vues produit et les ajouts
+au panier ne sont pas journalisés dans Touma : ils sont **nommés comme
+absents** plutôt que remplacés par un signal approchant.
+
+**Le bilan** a quatre rubriques : observé, variations, anomalies, et *à
+vérifier*. Le cahier des charges demandait « explications possibles » ; c'est
+devenu des questions, délibérément. « Les ventes ont baissé de 30 % — vérifier
+s'il y a eu une rupture » est utile. « Les ventes ont baissé parce qu'il y a eu
+une rupture » serait faux une fois sur deux, et se lirait comme un constat.

@@ -12,11 +12,10 @@ La `description` est lue par le modèle : elle dit ce que l'outil fait **et ce
 qu'il ne fait pas**. « Ne calcule aucun délai de livraison » est aussi utile
 que le reste.
 
-## Les vingt-huit outils
+## Les trente-deux outils
 
-*(Le message du commit qui les a introduits en annonce dix-huit : c'était un
-mauvais décompte de ma part, pas une liste amputée. Le tableau ci-dessous est
-le bon, et un test vérifie qu'il en existe au moins quinze.)*
+*(Le message du commit qui a introduit les premiers en annonce dix-huit :
+c'était un mauvais décompte de ma part, pas une liste amputée.)*
 
 | Outil | Risque | Service appelé |
 |---|---|---|
@@ -48,6 +47,10 @@ le bon, et un test vérifie qu'il en existe au moins quinze.)*
 | `getStockTension` | READ_ONLY | `intelligenceService` |
 | `getUnmetDemand` | READ_ONLY | `intelligenceService` |
 | `getSellersWithDeliveryIssues` | READ_ONLY | commandes agrégées |
+| `getPriceIntelligence` | READ_ONLY | historique de prix + catalogue de la catégorie |
+| `getDemandIntelligence` | READ_ONLY | recherches enregistrées + lignes de commande |
+| `getSellerBrief` | READ_ONLY | commandes, stock et litiges de la boutique |
+| `getPlatformBrief` | READ_ONLY | commandes, comptes, litiges, paiements, recherches |
 
 ## Ce que l'exécuteur applique
 
