@@ -46,7 +46,14 @@ describe('Authentification Touma', () => {
     const wrongPassword = await api.post('/api/v1/auth/login', { email: user.user.email, password: 'mauvais-mot-de-passe' });
     const unknownAccount = await api.post('/api/v1/auth/login', { email: uniqueEmail('inconnu'), password: 'mauvais-mot-de-passe' });
     assert.equal(wrongPassword.status, unknownAccount.status);
-    assert.deepEqual(wrongPassword.body, unknownAccount.body);
+    // `requestId` diffère par construction — c'est un numéro par requête, pas
+    // une information sur le compte. Tout le reste doit être identique au
+    // caractère près : c'est ce qui empêche de distinguer « mot de passe
+    // faux » de « compte inexistant », et donc de dresser la liste des
+    // comptes qui existent.
+    const sansTrace = ({ requestId, ...reste }: Record<string, unknown>) => reste;
+    assert.deepEqual(sansTrace(wrongPassword.body), sansTrace(unknownAccount.body));
+    assert.ok(wrongPassword.body.requestId !== unknownAccount.body.requestId, 'chaque requête garde son propre numéro');
   });
 
   it('ne stocke jamais le mot de passe en clair', async () => {

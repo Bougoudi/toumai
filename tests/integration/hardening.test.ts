@@ -144,8 +144,17 @@ describe('Entrées invalides : erreurs client, jamais 500', () => {
   it('ne divulgue jamais de trace technique dans une réponse d’erreur', async () => {
     const res = await api.get('/api/v1/products/inexistant-xyz');
     assert.equal(res.status, 404);
-    assert.equal(Object.keys(res.body).join(','), 'error');
-    assert.ok(!JSON.stringify(res.body).includes('prisma'));
+    /**
+     * Liste blanche, et non simple absence de « prisma ».
+     *
+     * L'assertion portait sur une clé unique (`error`). Elle en accepte
+     * maintenant trois — `code` et `requestId` se sont ajoutés —, mais elle
+     * reste une liste blanche : toute clé imprévue la fait échouer. C'est ce
+     * qui compte ici, parce que la fuite qu'on redoute (`stack`, `sql`,
+     * `path`, `query`) arriverait précisément sous un nom qu'on n'a pas prévu.
+     */
+    assert.deepEqual(Object.keys(res.body).sort(), ['code', 'error', 'requestId']);
+    assert.ok(!/prisma|\/home\/|node_modules|at Object\./i.test(JSON.stringify(res.body)));
   });
 });
 

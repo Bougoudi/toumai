@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import { enrichirContexte } from '../../middleware/request-context.js';
 import { prisma } from '../../db/prisma.js';
 import { verifyAccessToken } from '../lib/tokens.js';
 import { forbidden, unauthorized } from '../lib/errors.js';
@@ -47,6 +48,10 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     const user = await resolveUser(token);
     if (!user) throw unauthorized('Session invalide ou expirée.');
     req.toumaUser = user;
+    // Le journal porte dès lors l'identifiant du compte : « quelle requête a
+    // échoué pour cette personne » devient répondable sans recoupement.
+    // L'identifiant seul, jamais le courriel ni le téléphone.
+    enrichirContexte({ userId: user.id });
     next();
   } catch (err) {
     next(err);
@@ -59,7 +64,10 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     const token = bearer(req);
     if (token) {
       const user = await resolveUser(token);
-      if (user) req.toumaUser = user;
+      if (user) {
+        req.toumaUser = user;
+        enrichirContexte({ userId: user.id });
+      }
     }
   } catch {
     // ignoré : route publique

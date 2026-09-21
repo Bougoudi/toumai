@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { apiLimiter, securityHeaders } from './middleware/security.js';
+import { accessLog, requestContext } from './middleware/request-context.js';
 import { requireAuth } from './middleware/requireAuth.js';
 import { asyncHandler } from './middleware/validate.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
@@ -61,6 +62,17 @@ export function createApp() {
   // Derrière un proxy (HTTPS, load balancer) : nécessaire pour un rate-limit correct par IP.
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
+
+  /**
+   * Contexte de requête : **en tout premier**.
+   *
+   * Tout ce qui journalise ensuite — y compris le rejet d'un webhook mal signé
+   * ou un dépassement de limite de débit — doit pouvoir être rattaché à la
+   * requête qui l'a provoqué. Un middleware placé plus bas laisserait
+   * précisément les incidents les plus intéressants hors trace.
+   */
+  app.use(requestContext);
+  app.use(accessLog);
 
   // En-têtes de sécurité + CSP (Helmet).
   app.use(securityHeaders);
