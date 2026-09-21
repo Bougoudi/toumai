@@ -218,3 +218,60 @@ supposerait déjà un accès en écriture au code source.
 Décision : ne pas forcer une montée majeure de Next.js pour cette raison. À
 réexaminer lors de la prochaine montée de la vitrine, qui doit être un geste
 délibéré et testé.
+
+## En-têtes HTTP (V25 §39, §64)
+
+Mesurés sur les réponses réelles, pas lus dans la configuration.
+
+### API (`src/middleware/security.ts`, Helmet)
+
+`Content-Security-Policy` (sans `unsafe-inline` pour les scripts),
+`Strict-Transport-Security: max-age=31536000; includeSubDomains`,
+`X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
+`frame-ancestors 'none'`, `Cross-Origin-Opener-Policy` et
+`Cross-Origin-Resource-Policy: same-origin`.
+
+### Vitrine — elle n'en émettait **aucun**
+
+C'est pourtant elle qui rend du contenu saisi par des vendeurs — titres,
+descriptions, noms de boutique — et des adresses posées par des
+administrateurs. Sans politique, un script qui parviendrait à s'y glisser
+s'exécuterait sans rien pour l'arrêter.
+
+La politique est désormais posée dans `next.config.mjs`. Elle est plus
+permissive que celle de l'API sur un point : Next.js injecte ses données
+d'hydratation dans des balises `<script>` en ligne, ce qui impose
+`'unsafe-inline'`. C'est une limite du cadre, écrite plutôt que masquée, et
+elle n'annule pas le reste.
+
+**`'unsafe-eval'` n'y figure pas**, et c'est délibéré. Le mode développement
+de Next.js en a besoin pour son rechargement à chaud, et l'essai en navigateur
+le signale bruyamment. Affaiblir la politique **de production** pour une
+commodité de développement aurait été le mauvais arbitrage : vérifié sur une
+compilation de production, les quatre pages se rendent avec **zéro violation**.
+
+`preload` est volontairement absent de HSTS : l'inscription sur la liste de
+préchargement des navigateurs se défait très difficilement, et c'est un
+engagement à prendre en connaissance de cause.
+
+### CORS (§38)
+
+**Aucun en-tête CORS n'est émis**, vérifié avec une origine tierce. C'est
+l'état le plus sûr, et il est volontaire : l'application web est servie par le
+même serveur que l'API, et la vitrine l'appelle depuis son serveur de rendu,
+jamais depuis le navigateur. Aucune origine tierce n'a besoin d'accéder à
+l'API.
+
+Ajouter une configuration CORS « au cas où » créerait la surface qu'elle
+prétend encadrer. Le jour où une application tierce en aura besoin, la liste
+blanche s'écrira alors — jamais `*` avec des identifiants.
+
+## Note d'outillage
+
+Playwright, qu'emploie `npm run test:browser`, n'était déclaré dans **aucun**
+`package.json` : il était simplement présent dans l'image de développement. Un
+`npm audit fix` l'a retiré, et le parcours navigateur a cessé de fonctionner.
+
+Il est désormais déclaré en dépendance de développement de l'espace de travail
+`@touma/web`, ce qui le rend reproductible depuis un dépôt neuf sans alourdir
+l'image de production — celle-ci installe avec `--workspaces=false`.

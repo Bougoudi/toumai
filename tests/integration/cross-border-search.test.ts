@@ -122,7 +122,31 @@ before(async () => {
     )
   ).body.id;
 });
-after(async () => api.stop());
+after(async () => {
+  /**
+   * Nettoyage des recherches laissées derrière soi.
+   *
+   * Chaque `GET /products?q=…` est journalisé pour mesurer la demande non
+   * servie. Ce fichier en produit cinq sans résultat par exécution, toutes
+   * sous le même terme — donc un terme de **volume 5**, là où une recherche
+   * d'acheteur en vaut 1.
+   *
+   * Le tableau de bord d'intelligence borne sa liste à vingt termes, classés
+   * par volume. Au bout de quelques dizaines d'exécutions, ces termes-ci
+   * occupaient les vingt places et évinçaient ceux que le test
+   * d'intelligence vérifie : il échouait sans que rien n'ait changé dans le
+   * code qu'il teste.
+   *
+   * C'est la deuxième fois que des tests à moi salissent cet état partagé.
+   * Le nettoyage ne coûte rien ; le diagnostic, lui, coûte cher.
+   */
+  // La journalisation est hors du chemin de réponse : une écriture lancée
+  // juste avant ce nettoyage arriverait après lui. Le test d'intelligence
+  // attend pour la même raison.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await prisma.toumaSearchQuery.deleteMany({ where: { term: { startsWith: marque } } });
+  await api.stop();
+});
 
 describe('Déclaration d’origine', () => {
   it('l’origine déclarée par le vendeur n’est jamais enregistrée comme vérifiée', async () => {
