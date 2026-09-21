@@ -62,3 +62,68 @@ sur une addition de pondérations arrêterait le commerce de quelqu'un.
 
 Un signal non mesurable — un vendeur sans historique de confiance — est rendu
 comme non mesuré. Il ne vaut pas « risque nul ».
+
+## Origine de la marchandise
+
+Trois pays étaient confondus derrière un seul champ, et ce sont trois faits
+distincts :
+
+| Champ | Ce qu'il dit |
+|---|---|
+| `ToumaProduct.countryCode` | d'où **part le colis** |
+| `ToumaStore.countryCode` | où le **vendeur** est établi |
+| `ToumaProduct.countryOfOrigin` | d'où vient la **marchandise** |
+
+Un colis parti de N'Djamena, vendu par une boutique camerounaise, peut contenir
+un article fabriqué ailleurs. C'est le troisième champ — et lui seul — qui
+fonde un certificat d'origine : établir le document sur le pays d'expédition
+produirait une pièce douanière fausse.
+
+Le vendeur déclare l'origine depuis sa fiche produit. Le statut enregistré est
+**toujours** `DECLARED`, jamais `VERIFIED` : Touma ne vérifie l'origine
+d'aucune marchandise, et §11 est explicite — si l'information n'est pas
+vérifiée, le statut est `DECLARED`. Un champ que le vendeur remplit lui-même ne
+peut pas valoir vérification.
+
+`originStatus` accompagne toujours `countryOfOrigin` dans les réponses de
+l'API, et les interfaces l'affichent : « Déclarée par le vendeur. Touma ne l'a
+pas vérifiée. » Un pays d'origine rendu seul se lirait comme un fait établi.
+
+Effacer la déclaration ramène le statut à `UNKNOWN` et supprime la
+justification : une preuve qui survivrait à l'affirmation qu'elle appuyait
+serait orpheline.
+
+### Ce que cela débloquait
+
+Ces champs existaient depuis V24 et **aucun chemin d'écriture ne les
+remplissait**. `eligibility.check` les lisait déjà : tout contrôle
+transfrontalier signalait donc « pays d'origine non déclaré » pour chaque
+produit, sans qu'aucun vendeur puisse y remédier. Le lecteur avait été écrit
+sans l'écrivain.
+
+## Recherche transfrontalière (§60)
+
+`GET /api/v1/products` accepte quatre axes en plus des filtres existants :
+
+| Paramètre | Effet |
+|---|---|
+| `country` | pays d'expédition (inchangé) |
+| `sellerCountry` | pays où la boutique est établie |
+| `originCountry` | origine **déclarée** ; les produits sans déclaration sont exclus |
+| `deliverTo` | ne garde que ce qui peut **réellement** atteindre ce pays |
+| `corridor` | code (`TD_CM`) ou adresse lisible (`tchad-cameroun`) |
+
+`deliverTo` est le seul qui engage quelque chose vis-à-vis d'un acheteur, et
+il est donc le plus contraint. Il retient le pays lui-même — le commerce
+national ne dépend d'aucun corridor, et §73 exige qu'il continue de
+fonctionner — puis les origines des corridors **opérationnels** vers ce pays.
+Pas ceux déclarés actifs : ceux qui le sont. Retirer le dernier transporteur
+réel d'un corridor fait disparaître ses produits de `deliverTo` à la lecture
+suivante, sans qu'aucune donnée produit soit touchée.
+
+Une adresse de corridor inconnue **vide** la recherche au lieu de l'élargir.
+Ignorer un filtre incompris rendrait des résultats que personne n'a demandés.
+
+Les compteurs de facettes portent les mêmes restrictions que la liste : des
+facettes calculées sans elles annonceraient « Tchad (42) » au-dessus d'une
+liste vide.

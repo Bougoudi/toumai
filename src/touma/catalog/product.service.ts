@@ -8,6 +8,7 @@ import { uniqueSlug } from '../lib/slug.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import type { CreateProductInput, ListProductsQuery, UpdateProductInput } from './product.schema.js';
+import { corridorService } from '../trade/corridor.service.js';
 
 /** Projection publique d'un produit (liste). */
 const listSelect = {
@@ -19,6 +20,8 @@ const listSelect = {
   currency: true,
   minOrderQty: true,
   countryCode: true,
+  countryOfOrigin: true,
+  originStatus: true,
   status: true,
   ratingAverage: true,
   ratingCount: true,
@@ -45,6 +48,13 @@ function serializeList(p: Prisma.ToumaProductGetPayload<{ select: typeof listSel
     currency: p.currency,
     minOrderQty: p.minOrderQty,
     countryCode: p.countryCode,
+    /**
+     * Origine **déclarée**, avec son statut. Les deux voyagent ensemble et
+     * jamais l'un sans l'autre : un pays d'origine rendu seul se lirait comme
+     * un fait établi, alors que personne ne l'a vérifié (§11).
+     */
+    countryOfOrigin: p.countryOfOrigin,
+    originStatus: p.originStatus,
     status: p.status,
     rating: Number(p.ratingAverage),
     ratingCount: p.ratingCount,
@@ -58,7 +68,7 @@ function serializeList(p: Prisma.ToumaProductGetPayload<{ select: typeof listSel
 }
 
 /** Dimensions filtrables, pour pouvoir en exclure une au calcul des facettes. */
-export type FilterDimension = 'category' | 'country' | 'store' | 'price' | 'availability' | 'verified';
+export type FilterDimension = 'category' | 'country' | 'sellerCountry' | 'originCountry' | 'store' | 'price' | 'availability' | 'verified';
 
 /**
  * Construit les filtres d'une recherche produit.
@@ -91,6 +101,17 @@ export function buildProductFilters(
     and.push({ category: { OR: [{ id: query.category }, { slug: query.category }] } });
   }
   if (query.country && options.exclude !== 'country') and.push({ countryCode: query.country });
+  // Trois pays distincts, trois filtres distincts (§60). Les confondre était
+  // possible tant qu'un seul existait ; ça ne l'est plus : un colis parti de
+  // N'Djamena, vendu par une boutique camerounaise, peut contenir un article
+  // fabriqué ailleurs.
+  if (query.sellerCountry && options.exclude !== 'sellerCountry') and.push({ store: { countryCode: query.sellerCountry } });
+  if (query.originCountry && options.exclude !== 'originCountry') {
+    // L'origine **déclarée**. `UNKNOWN` est exclu : un produit sans
+    // déclaration n'est pas un produit d'origine inconnue qu'on pourrait
+    // ranger quelque part, c'est un produit sur lequel on ne sait rien.
+    and.push({ countryOfOrigin: query.originCountry, originStatus: { not: 'UNKNOWN' } });
+  }
   if (query.store && options.exclude !== 'store') and.push({ store: { OR: [{ id: query.store }, { slug: query.store }] } });
   if (options.exclude !== 'price') {
     if (query.minPrice) and.push({ price: { gte: new Prisma.Decimal(query.minPrice) } });
@@ -106,11 +127,100 @@ export function buildProductFilters(
   return and;
 }
 
+/**
+ * Pays depuis lesquels une marchandise peut **réellement** atteindre
+ * `destination`.
+ *
+ * Toujours la destination elle-même — le commerce national ne dépend d'aucun
+ * corridor, et §73 exige qu'il continue de fonctionner normalement. Puis les
+ * origines des corridors **opérationnels** vers ce pays : pas ceux déclarés
+ * actifs, ceux qui le sont (§72).
+ *
+ * C'est ce qui sépare « montre-moi ce qui peut m'arriver » d'une promesse.
+ */
+export async function paysExpediteursVers(destination: string): Promise<string[]> {
+  const d = destination.toUpperCase();
+  const corridors = await corridorService.list();
+  const origines = corridors.filter((c) => c.destinationCountry === d && c.capability.operational).map((c) => c.originCountry);
+  return [...new Set([d, ...origines])];
+}
+
+/**
+ * Filtres qui exigent une lecture en base (corridors), et ne peuvent donc pas
+ * être construits de façon synchrone comme les autres.
+ */
+export async function filtresTransfrontaliers(query: ListProductsQuery): Promise<Prisma.ToumaProductWhereInput[]> {
+  const and: Prisma.ToumaProductWhereInput[] = [];
+
+  if (query.corridor) {
+    // Un corridor nomme les deux bouts : expédition **et** destination. Une
+    // adresse qui ne désigne aucun corridor ne doit pas élargir la recherche
+    // en silence — elle la vide, et le dit par l'absence de résultats.
+    const corridor = await corridorService.byReference(query.corridor).catch(() => null);
+    if (!corridor) return [{ id: { in: [] } }];
+    and.push({ countryCode: corridor.originCountry });
+    if (!corridor.capability.operational) return [...and, { id: { in: [] } }];
+  }
+
+  if (query.deliverTo) {
+    and.push({ countryCode: { in: await paysExpediteursVers(query.deliverTo) } });
+  }
+
+  return and;
+}
+
+/**
+ * Déclaration d'origine faite par un vendeur.
+ *
+ * Elle est **toujours** enregistrée en `DECLARED`, jamais en `VERIFIED` : Touma
+ * ne vérifie l'origine d'aucune marchandise, et §11 est explicite — « si
+ * l'information n'est pas vérifiée : status = DECLARED ». Un champ que le
+ * vendeur remplit lui-même ne peut pas, par construction, valoir vérification.
+ *
+ * `null` efface la déclaration : le statut retombe à `UNKNOWN` et la preuve
+ * avec, sinon une justification survivrait à l'affirmation qu'elle appuyait.
+ *
+ * Les champs absents de l'entrée ne sont pas touchés.
+ */
+async function declarationOrigine(input: {
+  countryOfOrigin?: string | null;
+  manufacturerCountry?: string | null;
+  originEvidence?: string | null;
+}): Promise<Prisma.ToumaProductUncheckedUpdateInput> {
+  const data: Prisma.ToumaProductUncheckedUpdateInput = {};
+
+  for (const code of [input.countryOfOrigin, input.manufacturerCountry]) {
+    if (!code) continue;
+    // Un code ISO inconnu du référentiel ne vaut rien : il ressortirait dans
+    // un certificat d'origine sans désigner de pays.
+    const pays = await prisma.country.findUnique({ where: { code } });
+    if (!pays) throw badRequest(`Pays « ${code} » inconnu du référentiel.`);
+  }
+
+  if (input.manufacturerCountry !== undefined) data.manufacturerCountry = input.manufacturerCountry;
+  if (input.originEvidence !== undefined) data.originEvidence = input.originEvidence;
+
+  if (input.countryOfOrigin !== undefined) {
+    data.countryOfOrigin = input.countryOfOrigin;
+    if (input.countryOfOrigin) {
+      data.originStatus = 'DECLARED';
+      data.originDeclaredAt = new Date();
+    } else {
+      data.originStatus = 'UNKNOWN';
+      data.originDeclaredAt = null;
+      data.originEvidence = null;
+    }
+  }
+  return data;
+}
+
 export const productService = {
   /** Recherche/filtrage du catalogue public (pagination côté serveur). */
   async list(query: ListProductsQuery) {
     const page: PageParams = { page: query.page, limit: query.limit, skip: (query.page - 1) * query.limit };
-    const where: Prisma.ToumaProductWhereInput = { AND: buildProductFilters(query) };
+    const where: Prisma.ToumaProductWhereInput = {
+      AND: [...buildProductFilters(query), ...(await filtresTransfrontaliers(query))],
+    };
     const orderBy: Prisma.ToumaProductOrderByWithRelationInput =
       query.sort === 'price_asc'
         ? { price: 'asc' }
@@ -190,6 +300,21 @@ export const productService = {
       minOrderQty: product.minOrderQty,
       weightGrams: product.weightGrams,
       countryCode: product.countryCode,
+      /**
+       * Origine de la marchandise, et ce que vaut cette information.
+       *
+       * `status` accompagne toujours le pays. Un `countryOfOrigin` rendu seul
+       * serait lu comme un fait vérifié, alors qu'il sort d'un champ que le
+       * vendeur remplit lui-même — et c'est sur cette donnée qu'un certificat
+       * d'origine s'établirait (§11, §12).
+       */
+      origin: {
+        countryCode: product.countryOfOrigin,
+        manufacturerCountry: product.manufacturerCountry,
+        status: product.originStatus,
+        evidence: product.originEvidence,
+        declaredAt: product.originDeclaredAt,
+      },
       status: product.status,
       rating: Number(product.ratingAverage),
       ratingCount: product.ratingCount,
@@ -291,6 +416,7 @@ export const productService = {
     const currency = input.currency ?? country.currency ?? env.touma.defaultCurrency;
 
     const slug = await uniqueSlug(input.title, async (s) => (await prisma.toumaProduct.count({ where: { slug: s } })) > 0);
+    const origine = await declarationOrigine(input);
 
     return prisma.$transaction(async (tx) => {
       const product = await tx.toumaProduct.create({
@@ -311,6 +437,12 @@ export const productService = {
           keywords: input.keywords,
           status: input.status,
           publishedAt: input.status === 'ACTIVE' ? new Date() : null,
+          // Origine déclarée par le vendeur, jamais vérifiée par Touma (§11).
+          countryOfOrigin: (origine.countryOfOrigin as string | null | undefined) ?? null,
+          manufacturerCountry: (origine.manufacturerCountry as string | null | undefined) ?? null,
+          originEvidence: (origine.originEvidence as string | null | undefined) ?? null,
+          originStatus: input.countryOfOrigin ? 'DECLARED' : 'UNKNOWN',
+          originDeclaredAt: input.countryOfOrigin ? new Date() : null,
           images: { create: input.images.map((img, i) => ({ url: img.url, alt: img.alt ?? null, position: img.position || i })) },
         },
       });
@@ -370,6 +502,7 @@ export const productService = {
       data.status = input.status;
       if (input.status === 'ACTIVE' && !existing.publishedAt) data.publishedAt = new Date();
     }
+    Object.assign(data, await declarationOrigine(input));
 
     return prisma.$transaction(async (tx) => {
       const product = await tx.toumaProduct.update({ where: { id: productId }, data });

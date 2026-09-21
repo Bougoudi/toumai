@@ -1519,6 +1519,12 @@ document.addEventListener('submit', (event) => {
           minOrderQty: Number(document.getElementById('p-min').value),
           weightGrams: Number(document.getElementById('p-weight').value),
           countryCode: document.getElementById('p-country').value,
+          // Chaîne vide = pas de déclaration. `null` l'efface côté serveur et
+          // ramène le statut à « inconnu » ; `undefined` ne toucherait à rien,
+          // et le vendeur ne pourrait jamais revenir sur sa déclaration.
+          countryOfOrigin: document.getElementById('p-origin').value || null,
+          manufacturerCountry: document.getElementById('p-manufacturer').value || null,
+          originEvidence: document.getElementById('p-origin-evidence').value.trim() || null,
           keywords: document.getElementById('p-keywords').value,
           status: document.getElementById('p-status').value,
           images: image ? [{ url: image }] : [],

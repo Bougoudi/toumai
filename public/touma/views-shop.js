@@ -272,6 +272,12 @@ export async function product(params) {
   const p = await api(`/products/${params.slug}`);
   const images = p.images.length ? p.images : [{ url: null, alt: p.title }];
   const verified = p.store.verificationStatus === 'APPROVED';
+  // Le référentiel était déjà lu plus bas pour le choix du pays de livraison ;
+  // il sert maintenant aussi à nommer le pays d'origine. Un code ISO affiché
+  // brut à un acheteur ne lui apprend rien, et une table de noms recopiée ici
+  // se périmerait sans bruit.
+  const pays = (await api('/countries')).items;
+  const nomPays = (code) => pays.find((c) => c.code === code)?.name ?? code;
 
   return `
     ${breadcrumb([
@@ -340,13 +346,24 @@ export async function product(params) {
           </p>
         </div>
 
+        ${p.origin?.countryCode
+          ? `<div class="card mt-6">
+              <h3>${esc(t('product.origin'))}</h3>
+              <p style="margin:0">${esc(nomPays(p.origin.countryCode))}</p>
+              <!-- Le statut accompagne toujours le pays : « origine : Tchad »
+                   rendu seul se lirait comme un fait vérifié. -->
+              <p class="small muted" style="margin:var(--space-2) 0 0">${esc(t(`product.originStatus.${p.origin.status}`))}</p>
+              ${p.origin.evidence ? `<p class="xs muted" style="margin:var(--space-2) 0 0">${esc(p.origin.evidence)}</p>` : ''}
+            </div>`
+          : ''}
+
         <div class="card mt-6">
           <h3>${esc(t('product.shipping'))}</h3>
           <p class="small muted">${esc(t('product.shippingHint'))}</p>
           <div class="row" style="gap:var(--space-2);align-items:flex-end">
             <div class="field" style="flex:1;margin-bottom:0">
               <label for="ship-country">${esc(t('product.shipTo'))}</label>
-              <select id="ship-country">${(await api('/countries')).items.map((c) => `<option value="${esc(c.code)}"${c.code === (session.user?.countryCode ?? '') ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
+              <select id="ship-country">${pays.map((c) => `<option value="${esc(c.code)}"${c.code === (session.user?.countryCode ?? '') ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
             </div>
             <button class="btn btn-secondary" data-estimate="${esc(p.id)}" data-weight="${p.weightGrams}" data-origin="${esc(p.countryCode)}" data-currency="${esc(p.currency)}">${esc(t('product.estimate'))}</button>
           </div>

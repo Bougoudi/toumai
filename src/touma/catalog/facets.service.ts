@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
-import { buildProductFilters, type FilterDimension } from './product.service.js';
+import { buildProductFilters, filtresTransfrontaliers, type FilterDimension } from './product.service.js';
 import type { ListProductsQuery } from './product.schema.js';
 
 /**
@@ -33,19 +33,30 @@ export const facetsService = {
    * prix, pour la recherche en cours.
    */
   async forQuery(query: ListProductsQuery) {
-    const whereFor = (exclude?: FilterDimension) => ({ AND: buildProductFilters(query, { exclude }) });
+    /**
+     * Les restrictions transfrontalières (`deliverTo`, `corridor`) ne sont pas
+     * une dimension de facette : aucun compteur ne les propose, et elles
+     * s'appliquent donc à **tous** les compteurs, sans exclusion possible.
+     *
+     * Les omettre ici donnerait des nombres qui ne correspondent pas à la
+     * liste affichée — « Cameroun (42) » suivi de douze résultats. C'est
+     * précisément ce que les facettes existent pour éviter.
+     */
+    const transfrontalier = await filtresTransfrontaliers(query);
+    const filtres = (exclude?: FilterDimension) => [...buildProductFilters(query, { exclude }), ...transfrontalier];
+    const whereFor = (exclude?: FilterDimension) => ({ AND: filtres(exclude) });
 
     const [byCategory, byCountry, inStock, outOfStock, verified, priceStats, currencies] = await Promise.all([
       prisma.toumaProduct.groupBy({ by: ['categoryId'], where: whereFor('category'), _count: { _all: true } }),
       prisma.toumaProduct.groupBy({ by: ['countryCode'], where: whereFor('country'), _count: { _all: true } }),
       prisma.toumaProduct.count({
-        where: { AND: [...buildProductFilters(query, { exclude: 'availability' }), { inventory: { some: { quantity: { gt: 0 } } } }] },
+        where: { AND: [...filtres('availability'), { inventory: { some: { quantity: { gt: 0 } } } }] },
       }),
       prisma.toumaProduct.count({
-        where: { AND: [...buildProductFilters(query, { exclude: 'availability' }), { inventory: { every: { quantity: { lte: 0 } } } }] },
+        where: { AND: [...filtres('availability'), { inventory: { every: { quantity: { lte: 0 } } } }] },
       }),
       prisma.toumaProduct.count({
-        where: { AND: [...buildProductFilters(query, { exclude: 'verified' }), { store: { verificationStatus: 'APPROVED' } }] },
+        where: { AND: [...filtres('verified'), { store: { verificationStatus: 'APPROVED' } }] },
       }),
       prisma.toumaProduct.aggregate({ where: whereFor('price'), _min: { price: true }, _max: { price: true }, _count: { _all: true } }),
       prisma.toumaProduct.groupBy({ by: ['currency'], where: whereFor('price'), _count: { _all: true } }),
@@ -96,7 +107,7 @@ export const facetsService = {
               .count({
                 where: {
                   AND: [
-                    ...buildProductFilters(query, { exclude: 'price' }),
+                    ...filtres('price'),
                     { price: { gte: new Prisma.Decimal(from), ...(to === null ? {} : { lt: new Prisma.Decimal(to) }) } },
                   ],
                 },

@@ -112,7 +112,12 @@ export interface ProductSummary {
   currency: CurrencyCode;
   /** Quantité minimale de commande : le B2B en vit. */
   minOrderQty: number;
+  /** Pays **d'expédition** : d'où part le colis. */
   countryCode: CountryCode;
+  /** Origine **déclarée** de la marchandise. `null` quand rien n'est déclaré. */
+  countryOfOrigin: CountryCode | null;
+  /** Ce que vaut `countryOfOrigin`. `UNKNOWN` tant que rien n'est déclaré. */
+  originStatus: ProductOrigin['status'];
   status: string;
   rating: number;
   /** Sans avis, `rating` vaut 0 : c'est `ratingCount` qui dit s'il veut dire quelque chose. */
@@ -125,12 +130,30 @@ export interface ProductSummary {
   createdAt: IsoDate;
 }
 
+/**
+ * Origine **déclarée** d'une marchandise.
+ *
+ * `status` voyage toujours avec le pays, et jamais l'un sans l'autre : un pays
+ * d'origine rendu seul se lit comme un fait établi, alors qu'il sort d'un champ
+ * que le vendeur remplit lui-même — et c'est sur cette donnée qu'un certificat
+ * d'origine s'établirait.
+ */
+export interface ProductOrigin {
+  countryCode: CountryCode | null;
+  manufacturerCountry: CountryCode | null;
+  status: 'UNKNOWN' | 'DECLARED' | 'VERIFIED' | 'DISPUTED';
+  evidence: string | null;
+  declaredAt: IsoDate | null;
+}
+
 /** Produit complet, sur sa fiche. */
 export interface Product extends Omit<ProductSummary, 'image' | 'store'> {
   description: string;
   brand: string | null;
   sku: string | null;
   weightGrams: number | null;
+  /** Origine de la marchandise, distincte du pays d'expédition (`countryCode`). */
+  origin: ProductOrigin;
   store: Store;
   images: ProductImage[];
   variants: ProductVariant[];

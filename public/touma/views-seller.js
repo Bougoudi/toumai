@@ -340,6 +340,34 @@ export async function productForm(params) {
 
       <div class="field"><label for="p-keywords">${esc(t('seller.field.keywords'))}</label><input id="p-keywords" placeholder="${esc(t('seller.field.keywordsPlaceholder'))}" value="${value(existing?.keywords)}" /></div>
 
+      <!-- Origine de la marchandise : distincte du pays d'expédition, et c'est
+           elle qui sert à établir un certificat d'origine. Le vendeur la
+           déclare, Touma ne la vérifie pas, et l'écran le dit. -->
+      <fieldset class="field" style="border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-4)">
+        <legend class="small">${esc(t('seller.origin.legend'))}</legend>
+        <p class="field-hint" style="margin-top:0">${esc(t('seller.origin.hint'))}</p>
+        <div class="grid grid-2">
+          <div class="field">
+            <label for="p-origin">${esc(t('seller.origin.country'))}</label>
+            <select id="p-origin">
+              <option value="">${esc(t('seller.origin.none'))}</option>
+              ${countries.items.map((c) => `<option value="${esc(c.code)}"${existing?.origin?.countryCode === c.code ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label for="p-manufacturer">${esc(t('seller.origin.manufacturer'))}</label>
+            <select id="p-manufacturer">
+              <option value="">${esc(t('seller.origin.none'))}</option>
+              ${countries.items.map((c) => `<option value="${esc(c.code)}"${existing?.origin?.manufacturerCountry === c.code ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="p-origin-evidence">${esc(t('seller.origin.evidence'))}</label>
+          <input id="p-origin-evidence" maxlength="300" placeholder="${esc(t('seller.origin.evidencePlaceholder'))}" value="${value(existing?.origin?.evidence)}" />
+        </div>
+      </fieldset>
+
       <div class="field">
         <label for="p-status">${esc(t('seller.field.publication'))}</label>
         <select id="p-status">

@@ -76,8 +76,28 @@ export default async function FicheProduit({ params }: { params: Promise<{ slug:
                 <dd>{produit.weightGrams} g</dd>
               </>
             )}
-            <dt>Origine</dt>
+            {/* « Origine » désignait ici le pays d'expédition. Les deux sont
+                distincts, et c'est l'origine qui fonde un certificat
+                d'origine : les confondre sur une fiche publique, c'est
+                publier une donnée douanière fausse. */}
+            <dt>Expédié depuis</dt>
             <dd>{produit.countryCode}</dd>
+            {produit.origin?.countryCode && (
+              <>
+                <dt>Origine de la marchandise</dt>
+                <dd>
+                  {produit.origin.countryCode}
+                  <br />
+                  <span className="meta">
+                    {produit.origin.status === 'VERIFIED'
+                      ? 'Vérifiée sur pièces par TOUMA.'
+                      : produit.origin.status === 'DISPUTED'
+                        ? 'Contestée : cette déclaration fait l’objet d’un examen.'
+                        : 'Déclarée par le vendeur. TOUMA ne l’a pas vérifiée.'}
+                  </span>
+                </dd>
+              </>
+            )}
           </dl>
         </div>
 

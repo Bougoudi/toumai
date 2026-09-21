@@ -35,6 +35,21 @@ export const createProductSchema = z.object({
   currency: z.string().trim().toUpperCase().length(3).optional(),
   categoryId: z.string().cuid().optional(),
   countryCode: z.string().trim().toUpperCase().length(2).optional(),
+  /**
+   * Origine **de la marchandise**, distincte du pays d'expédition.
+   *
+   * Un colis parti de N'Djamena peut contenir un article fabriqué ailleurs :
+   * confondre les deux fait établir un certificat d'origine sur une donnée
+   * fausse. Le vendeur la déclare ; Touma ne la vérifie pas, et le statut
+   * enregistré reste `DECLARED` (§11).
+   *
+   * `null` efface la déclaration et ramène le statut à `UNKNOWN`.
+   */
+  countryOfOrigin: z.string().trim().toUpperCase().length(2).nullable().optional(),
+  /** Pays de fabrication, quand il diffère de l'origine douanière. */
+  manufacturerCountry: z.string().trim().toUpperCase().length(2).nullable().optional(),
+  /** Ce sur quoi repose la déclaration : référence de document, mention du fabricant. */
+  originEvidence: z.string().trim().max(300).nullable().optional(),
   minOrderQty: z.number().int().min(1).max(100000).default(1),
   weightGrams: z.number().int().min(1).max(2_000_000).default(500),
   keywords: z.string().trim().max(500).default(''),
@@ -54,7 +69,22 @@ export const listProductsSchema = z.object({
   // (« cacao   brut » ne correspondrait à aucun titre).
   q: z.string().trim().max(200).transform((v) => v.replace(/\s+/g, ' ')).optional(),
   category: z.string().trim().max(120).optional(),
+  /** Pays **d'expédition** : d'où part le colis. Conservé tel quel (§60). */
   country: z.string().trim().toUpperCase().length(2).optional(),
+  /** Pays du vendeur : là où la boutique est établie. */
+  sellerCountry: z.string().trim().toUpperCase().length(2).optional(),
+  /** Pays d'origine **déclaré** de la marchandise. Jamais une origine vérifiée. */
+  originCountry: z.string().trim().toUpperCase().length(2).optional(),
+  /**
+   * « Ce qui peut réellement m'arriver ».
+   *
+   * Ne garde que les produits expédiables vers ce pays : ceux qui en partent
+   * déjà, et ceux dont le corridor vers ce pays est **réellement
+   * opérationnel** — pas seulement déclaré actif (§72).
+   */
+  deliverTo: z.string().trim().toUpperCase().length(2).optional(),
+  /** Corridor, par son code (`TD_CM`) ou son adresse lisible (`tchad-cameroun`). */
+  corridor: z.string().trim().max(120).optional(),
   store: z.string().trim().max(120).optional(),
   minPrice: amount.optional(),
   maxPrice: amount.optional(),
