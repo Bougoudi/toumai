@@ -134,6 +134,16 @@ const ROUTES = [
   { path: '/touma/admin/intelligence', module: 'admin', name: 'intelligence', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/moderation', module: 'admin', name: 'moderation', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/confiance', module: 'trust', name: 'adminTrust', auth: true, role: 'ADMIN' },
+  // Touma Intelligence. L'assistant acheteur est ouvert aux visiteurs : il ne
+  // rend que des données publiques, et demander un compte pour chercher un
+  // produit ferait fuir celui qui n'en a pas encore.
+  { path: '/touma/ia', module: 'ia', name: 'aiChat' },
+  { path: '/touma/ia/conversations', module: 'ia', name: 'aiConversations', auth: true },
+  { path: '/touma/ia/conversations/:id', module: 'ia', name: 'aiConversation', auth: true },
+  { path: '/touma/ia/confirmations', module: 'ia', name: 'aiConfirmations', auth: true },
+  { path: '/touma/vendeur/ia', module: 'ia', name: 'sellerAi', auth: true, role: 'SELLER' },
+  { path: '/touma/business/ia', module: 'ia', name: 'businessAi', auth: true },
+  { path: '/touma/admin/ia', module: 'ia', name: 'adminAi', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/marketing', module: 'marketing', name: 'adminMarketing', auth: true, role: 'ADMIN' },
   { path: '/touma/admin/:section', module: 'admin', name: 'list', auth: true, role: 'ADMIN' },
 ];
@@ -174,6 +184,7 @@ const LOADERS = {
   zones: () => import('./views-zones.js'),
   trust: () => import('./views-trust.js'),
   marketing: () => import('./views-marketing.js'),
+  ia: () => import('./views-ai.js'),
 };
 
 async function loadModule(name) {
@@ -1194,6 +1205,52 @@ document.addEventListener('click', (event) => {
       await render();
     });
   }
+  // ── Touma Intelligence ────────────────────────────────────────────────────
+  if (d.aiSuggest) {
+    // Une suggestion remplit le champ et envoie : elle n'agit jamais seule.
+    // Un bouton qui déclencherait un outil sans passer par le message ferait
+    // disparaître de la conversation ce qui a été demandé.
+    const champ = document.getElementById('ai-message');
+    if (!champ) return false;
+    champ.value = d.aiSuggest;
+    document.getElementById('ai-chat-form')?.requestSubmit();
+    return false;
+  }
+  if (d.aiFeedback) {
+    return run(async () => {
+      await api('/ai/feedback', { method: 'POST', body: { messageId: d.message, verdict: d.aiFeedback } });
+      toast(t('ia.reportSent'), 'success');
+    });
+  }
+  if (d.aiConfirm) {
+    return run(async () => {
+      await api(`/ai/confirmations/${d.aiConfirm}/confirm`, { method: 'POST' });
+      toast(t('ia.confirmed'), 'success');
+      await render();
+    });
+  }
+  if (d.aiReject) {
+    return run(async () => {
+      await api(`/ai/confirmations/${d.aiReject}/reject`, { method: 'POST' });
+      toast(t('ia.rejected'));
+      await render();
+    });
+  }
+  if (d.aiForget) {
+    return run(async () => {
+      await api('/ai/memory', { method: 'DELETE' });
+      toast(t('ia.memoryForgotten'), 'success');
+      await render();
+    });
+  }
+  if (d.aiDelete) {
+    return run(async () => {
+      await api(`/ai/conversations/${d.aiDelete}`, { method: 'DELETE' });
+      toast(t('ia.conversationDeleted'));
+      navigate('/touma/ia/conversations');
+    });
+  }
+
   if (d.rejectVerification) {
     return run(async () => {
       const comment = prompt(t('sh.rejectReason'));
@@ -1209,6 +1266,42 @@ document.addEventListener('click', (event) => {
 document.addEventListener('submit', (event) => {
   const form = event.target;
   const submit = form.querySelector('[type="submit"]');
+
+  if (form.id === 'ai-chat-form') {
+    event.preventDefault();
+    const champ = document.getElementById('ai-message');
+    const question = champ.value.trim();
+    if (!question) return false;
+    const transcript = document.getElementById('ai-transcript');
+    const attente = document.createElement('div');
+    attente.className = 'card muted small';
+    attente.textContent = t('ia.thinking');
+    transcript.append(attente);
+    champ.value = '';
+    if (submit) submit.disabled = true;
+    return (async () => {
+      try {
+        const reponse = await api(form.dataset.endpoint, {
+          method: 'POST',
+          // La conversation se poursuit sur le même fil : l'identifiant est
+          // porté par le formulaire, pas par une variable de module, pour que
+          // deux onglets ne se mélangent pas.
+          body: { message: question, ...(form.dataset.conversation ? { conversationId: form.dataset.conversation } : {}) },
+        });
+        form.dataset.conversation = reponse.conversationId;
+        const { renderTurn } = await loadModule('ia');
+        attente.outerHTML = renderTurn(question, reponse);
+        transcript.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (error) {
+        attente.className = 'card small';
+        attente.style.borderInlineStart = '3px solid var(--danger)';
+        attente.textContent = error instanceof ApiError ? error.message : t('ia.failed');
+      } finally {
+        if (submit) submit.disabled = false;
+        champ.focus();
+      }
+    })();
+  }
 
   if (form.id === 'search-form') {
     event.preventDefault();

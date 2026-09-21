@@ -16,7 +16,7 @@ after(async () => api.stop());
 async function boutiqueAvecTelephones(suffixe: string) {
   const vendeur = await registerUser(api, { name: `Vendeur ${suffixe}`, email: uniqueEmail(`chat-${suffixe}`), role: 'SELLER' });
   const store = await prisma.toumaStore.create({
-    data: { ownerId: vendeur.user.id, name: `Boutique ${suffixe}`, slug: `chat-${suffixe}-${Date.now()}`, countryCode: 'TD', status: 'ACTIVE' },
+    data: { ownerId: vendeur.user.id, name: `Boutique ${suffixe}`, slug: `chat-${suffixe}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, countryCode: 'TD', status: 'ACTIVE' },
   });
   const categorie = await prisma.toumaCategory.findFirstOrThrow();
   const produits = [];
@@ -27,7 +27,7 @@ async function boutiqueAvecTelephones(suffixe: string) {
           storeId: store.id,
           categoryId: categorie.id,
           title: `Téléphone ${suffixe} ${i}`,
-          slug: `chat-tel-${suffixe}-${i}-${Date.now()}`,
+          slug: `chat-tel-${suffixe}-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           description: 'Téléphone reconditionné, batterie changée.',
           keywords: 'telephone smartphone',
           price: prix,
@@ -107,7 +107,7 @@ describe('Assistant acheteur — commandes', () => {
       data: {
         buyerId: b.user.id,
         storeId: store.id,
-        orderNumber: `CHAT-${Date.now()}`,
+        orderNumber: `CHAT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         status: 'PENDING',
         subtotal: '45000',
         total: '45000',
@@ -134,7 +134,7 @@ describe('Assistant acheteur — commandes', () => {
       data: {
         buyerId: acheteur.user.id,
         storeId: store.id,
-        orderNumber: `SUIVI-${Date.now()}`,
+        orderNumber: `SUIVI-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         status: 'CONFIRMED',
         subtotal: '45000',
         total: '45000',
@@ -278,7 +278,7 @@ describe('Invites de production', () => {
   it('une nouvelle version d’invite n’est jamais active d’office', async () => {
     const admin = await registerUser(api, { name: 'Administrateur Quatre', email: uniqueEmail('chat-adm4'), role: 'BUYER' });
     await promoteToAdmin(admin.user.id);
-    const creee = await api.request('POST', '/api/v1/admin/ai/prompts', { token: admin.accessToken, body: { feature: `test_${Date.now()}`, body: 'Consigne de test pour la fonctionnalité.' } });
+    const creee = await api.request('POST', '/api/v1/admin/ai/prompts', { token: admin.accessToken, body: { feature: `test_${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, body: 'Consigne de test pour la fonctionnalité.' } });
     assert.equal(creee.status, 201);
     assert.equal(creee.body.active, false);
 
@@ -311,7 +311,7 @@ describe('Travaux périodiques d’intelligence', () => {
         storeId: store.id,
         categoryId: categorie.id,
         title: 'Article en rupture',
-        slug: `rupture-${Date.now()}`,
+        slug: `rupture-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         description: 'Test',
         price: '10000',
         currency: 'XAF',

@@ -119,7 +119,7 @@ function recherche(r: ToolCallOutcome[]): Reponse {
   const indisponibles: string[] = [];
 
   if (!resultat || resultat.items.length === 0) {
-    if (lieu && !lieu.found) indisponibles.push('la destination demandée ne correspond à aucune province connue');
+    if (lieu && !lieu.found) indisponibles.push('la destination demandée ne correspond à aucune province ni localité connue en base');
     return {
       text: `${INDISPONIBLE} Aucun produit du catalogue ne correspond à votre demande.`,
       cards: [],
@@ -135,8 +135,22 @@ function recherche(r: ToolCallOutcome[]): Reponse {
   });
 
   // Le délai de livraison n'est jamais annoncé ici : il vient du transporteur.
-  if (lieu?.found && lieu.province) indisponibles.push(`le délai de livraison vers ${lieu.province.name} (à demander au transporteur)`);
-  else if (lieu && !lieu.found) indisponibles.push('la destination demandée ne correspond à aucune province connue');
+  //
+  // Il est dit **dès qu'une destination a été mentionnée**, reconnue ou non.
+  // La première écriture ne le disait que pour une province reconnue : sur une
+  // base sans référentiel géographique, un acheteur qui demandait une livraison
+  // vers une ville inconnue ne voyait plus du tout la mise en garde sur le
+  // délai — alors que le délai est inconnu dans les deux cas, et d'autant plus
+  // dans celui-là. L'intégration continue l'a relevé ; le défaut était dans le
+  // code, pas dans le test.
+  if (lieu) {
+    indisponibles.push(
+      lieu.found && lieu.province
+        ? `le délai de livraison vers ${lieu.province.name} (à demander au transporteur)`
+        : 'le délai de livraison vers la destination demandée (à demander au transporteur)',
+    );
+    if (!lieu.found) indisponibles.push('la destination demandée ne correspond à aucune province ni localité connue en base');
+  }
 
   return {
     text: [`${resultat.total} produit(s) correspondent. Voici les ${resultat.items.length} premiers :`, lignes.join('\n')].join('\n'),

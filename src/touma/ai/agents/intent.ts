@@ -1,4 +1,4 @@
-import { parseShoppingIntent } from '../providers/rule-based.provider.js';
+import { elaguerMotsVides, parseShoppingIntent } from '../providers/rule-based.provider.js';
 import type { ToolCallRequest } from '../tools/runner.js';
 import type { ToolContext } from '../tools/registry.js';
 
@@ -198,7 +198,9 @@ function planVendeur(texte: string, brut: string, memoire: Record<string, string
   if (MOTS.fiche.test(texte)) {
     // Le titre proposé est ce que le vendeur a écrit, débarrassé des verbes de
     // commande. Rien n'est ajouté : c'est lui qui connaît son produit.
-    const titre = brut.replace(/\b(rédige|redige|écris|ecris|prépare|prepare|crée|cree|une|la|le|description|fiche|annonce|pour|de|du)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+    const titre = elaguerMotsVides(
+      brut.replace(/\b(rédige|redige|écris|ecris|prépare|prepare|crée|cree|description|fiche|annonce)\b/gi, ' ').replace(/\s+/g, ' ').trim(),
+    );
     return {
       intent: 'SELLER_LISTING',
       calls: titre.length >= 2 ? [{ tool: 'createDraftListing', args: { title: titre.slice(0, 200) } }] : [],

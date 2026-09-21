@@ -46,7 +46,16 @@ registerTool({
     details: z.string().trim().max(2000).optional(),
   }),
   async handler(input): Promise<ToolResult> {
-    const manquants = ['category', 'destinationCountry', 'deadlineDays', 'details'].filter((c) => !input[c as keyof typeof input]);
+    // En français : cette liste s'affiche à l'acheteur professionnel.
+    const LIBELLES: Record<string, string> = {
+      category: 'la catégorie',
+      destinationCountry: 'le pays de livraison',
+      deadlineDays: 'la date limite de réponse',
+      details: 'le cahier des charges',
+    };
+    const manquants = Object.keys(LIBELLES)
+      .filter((c) => !input[c as keyof typeof input])
+      .map((c) => LIBELLES[c]);
     return {
       data: {
         draft: {

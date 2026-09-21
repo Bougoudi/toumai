@@ -16,7 +16,7 @@ after(async () => api.stop());
 async function catalogue(suffixe: string) {
   const vendeur = await registerUser(api, { name: `Vendeur ${suffixe}`, email: uniqueEmail(`ai-${suffixe}`), role: 'SELLER' });
   const store = await prisma.toumaStore.create({
-    data: { ownerId: vendeur.user.id, name: `Boutique ${suffixe}`, slug: `ai-${suffixe}-${Date.now()}`, countryCode: 'TD', status: 'ACTIVE' },
+    data: { ownerId: vendeur.user.id, name: `Boutique ${suffixe}`, slug: `ai-${suffixe}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, countryCode: 'TD', status: 'ACTIVE' },
   });
   const categorie = await prisma.toumaCategory.findFirstOrThrow();
   const produits = [];
@@ -27,7 +27,7 @@ async function catalogue(suffixe: string) {
           storeId: store.id,
           categoryId: categorie.id,
           title: `Téléphone ${suffixe} ${i}`,
-          slug: `tel-${suffixe}-${i}-${Date.now()}`,
+          slug: `tel-${suffixe}-${i}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           description: 'Téléphone reconditionné.',
           price: prix,
           currency: 'XAF',

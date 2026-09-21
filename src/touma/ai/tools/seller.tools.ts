@@ -209,7 +209,18 @@ registerTool({
   }),
   async handler(input): Promise<ToolResult> {
     const fournis = Object.entries(input).filter(([, v]) => v !== undefined && v !== '');
-    const manquants = ['category', 'brand', 'price', 'details'].filter((c) => !(c in input) || !input[c as keyof typeof input]);
+    // Les champs manquants sont nommés **en français** : cette liste est lue
+    // par un vendeur, pas par un développeur. « category, brand, details »
+    // s'affichait tel quel à l'écran.
+    const LIBELLES: Record<string, string> = {
+      category: 'la catégorie',
+      brand: 'la marque',
+      price: 'le prix',
+      details: 'la description',
+    };
+    const manquants = Object.keys(LIBELLES)
+      .filter((c) => !input[c as keyof typeof input])
+      .map((c) => LIBELLES[c]);
     return {
       data: {
         draft: {
