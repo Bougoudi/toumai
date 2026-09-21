@@ -21,3 +21,10 @@ coverage/
 
 # Pièces jointes de la messagerie (stockage privé local)
 var/touma-attachments/
+
+# Sortie de compilation de la vitrine Next.js. Elle était suivie par accident :
+# 156 fichiers régénérés à chaque build, que rien ne lit — ni le Dockerfile
+# (qui installe `--workspaces=false` et ne contient pas la vitrine), ni
+# l'intégration continue (qui recompile), ni `render.yaml`.
+apps/web/.next/
+*.tsbuildinfo
