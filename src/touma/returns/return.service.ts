@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { libererReservation } from '../orders/reservation-counter.js';
 import { Prisma, type ReturnReason, type ReturnStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { env } from '../../config/env.js';
@@ -430,9 +431,11 @@ export const returnService = {
           if (!item.orderItem.productId) continue;
           // La réservation posée au checkout est libérée en même temps que le
           // stock revient : sans cela `reserved` ne redescendrait jamais.
-          await tx.toumaInventory.updateMany({
-            where: { productId: item.orderItem.productId, variantId: item.orderItem.variantId ?? null },
-            data: { quantity: { increment: item.quantity }, reserved: { decrement: item.quantity } },
+          await libererReservation(tx, {
+            productId: item.orderItem.productId,
+            variantId: item.orderItem.variantId ?? null,
+            quantity: item.quantity,
+            restock: true,
           });
         }
       }

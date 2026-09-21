@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { estPermission, LIBELLES_PERMISSION, PERMISSIONS_ADMIN, requirePermission } from './permissions.js';
+import { integrityService } from './integrity.service.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
@@ -448,6 +449,26 @@ adminRouter.put(
     });
     res.json({ id: apres.id, permissions: apres.adminPermissions, scoped: apres.adminScoped });
   }),
+);
+
+/**
+ * Intégrité des données (V25 §83).
+ *
+ * Aucun contrôle ne répare : constater et réparer sont deux gestes, et le
+ * second demande une décision humaine. L'écran dit aussi **ce qu'il a
+ * vérifié** — « rien à signaler » ne vaut que rapporté à la liste des
+ * invariants contrôlés.
+ */
+adminRouter.get(
+  '/data-integrity',
+  requirePermission('ADMIN_SYSTEM'),
+  asyncHandler(async (_req, res) => res.json(await integrityService.run())),
+);
+
+adminRouter.get(
+  '/data-integrity/catalogue',
+  requirePermission('ADMIN_SYSTEM'),
+  asyncHandler(async (_req, res) => res.json({ items: integrityService.catalogue() })),
 );
 
 adminRouter.get(

@@ -1,4 +1,5 @@
 import { Prisma, type ToumaOrderStatus } from '@prisma/client';
+import { libererReservation } from './reservation-counter.js';
 import { prisma } from '../../db/prisma.js';
 import { refreshGroupStatus } from './group-status.js';
 import { conflict, forbidden, notFound } from '../lib/errors.js';
@@ -276,9 +277,12 @@ export const orderService = {
       if (status === 'CANCELLED') {
         // Restitution du stock réservé.
         for (const item of order.items) {
-          await tx.toumaInventory.updateMany({
-            where: { productId: item.productId ?? '', variantId: item.variantId ?? null },
-            data: { quantity: { increment: item.quantity }, reserved: { decrement: item.quantity } },
+          if (!item.productId) continue;
+          await libererReservation(tx, {
+            productId: item.productId,
+            variantId: item.variantId ?? null,
+            quantity: item.quantity,
+            restock: true,
           });
         }
       }

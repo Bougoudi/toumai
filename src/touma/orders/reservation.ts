@@ -1,4 +1,5 @@
 import { prisma } from '../../db/prisma.js';
+import { libererReservation } from './reservation-counter.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -101,9 +102,11 @@ export async function expireStaleReservations(now = new Date()): Promise<ExpiryR
         let lines = 0;
         for (const item of order.items) {
           if (!item.productId) continue;
-          await tx.toumaInventory.updateMany({
-            where: { productId: item.productId, variantId: item.variantId ?? null },
-            data: { quantity: { increment: item.quantity }, reserved: { decrement: item.quantity } },
+          await libererReservation(tx, {
+            productId: item.productId,
+            variantId: item.variantId ?? null,
+            quantity: item.quantity,
+            restock: true,
           });
           lines += item.quantity;
         }
