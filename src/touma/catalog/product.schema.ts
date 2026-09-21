@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { urlWeb } from '../lib/url.js';
 
 /**
  * Les montants transitent en **chaîne** (« 25000.00 ») : un JSON `number`
@@ -10,7 +11,7 @@ const amount = z
   .refine((v) => /^\d+(\.\d{1,4})?$/.test(v), 'Montant invalide (format attendu : 12345.67).');
 
 export const imageSchema = z.object({
-  url: z.string().trim().url().max(500),
+  url: urlWeb(500),
   alt: z.string().trim().max(200).optional(),
   position: z.number().int().min(0).default(0),
 });

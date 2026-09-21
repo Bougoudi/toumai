@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { urlWeb } from '../lib/url.js';
 import { z } from 'zod';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
 import { auditRequest } from '../lib/audit.js';
@@ -8,7 +9,7 @@ import { serviceZoneService } from '../logistics/service-zones.js';
 
 export const storeRouter = Router();
 
-const url = z.string().trim().url().max(500);
+const url = urlWeb(500);
 
 /**
  * Zones de service déclarées par un vendeur.

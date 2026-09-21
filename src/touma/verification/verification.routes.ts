@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { urlWeb } from '../lib/url.js';
 import { z } from 'zod';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
 import { authenticate, currentUser, requireRole } from '../middleware/toumaAuth.js';
@@ -15,7 +16,7 @@ const submitSchema = z.object({
   contactPhone: z.string().trim().min(6).max(30),
   contactEmail: z.string().trim().toLowerCase().email(),
   documents: z
-    .array(z.object({ kind: z.string().trim().min(2).max(60), url: z.string().trim().url().max(500) }))
+    .array(z.object({ kind: z.string().trim().min(2).max(60), url: urlWeb(500) }))
     .min(1, 'Au moins un document est requis.')
     .max(10),
 });

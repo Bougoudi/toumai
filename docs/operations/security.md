@@ -124,3 +124,97 @@ elles ne le sont plus.
 La limitation est neutralisée dans la suite de tests, sauf pour le fichier qui
 l'exerce (`TOUMA_RATE_LIMIT_IN_TESTS=true`). Une protection qu'aucun test ne
 peut exercer est une protection dont personne ne sait si elle marche.
+
+## Validation des adresses (V25 §40)
+
+`z.string().url()` s'appuie sur `new URL()`, qui valide la **forme** et ne dit
+rien du schéma. Vérifié :
+
+```
+javascript:alert(1)                → ACCEPTÉ
+data:text/html;base64,PHNjcmlwdD4= → ACCEPTÉ
+file:///etc/passwd                 → ACCEPTÉ
+vbscript:msgbox(1)                 → ACCEPTÉ
+```
+
+Dix champs du domaine l'employaient : image de produit, logo de boutique,
+pièce de vérification, preuve de litige, site d'entreprise, source d'une règle
+commerciale, retour de paiement.
+
+**Deux finissent dans un `<a href>`.** La source d'un itinéraire de corridor
+est rendue ainsi sur la vitrine publique, qui n'a pas de politique de sécurité
+de contenu : un `javascript:` s'y serait exécuté dans le navigateur de chaque
+visiteur, planté par un administrateur ne disposant que de `ADMIN_TRADE`. Le
+découpage des permissions rend ce scénario concret plutôt que théorique.
+
+`urlWeb()` n'accepte que `http:` et `https:`, et refuse les identifiants dans
+l'adresse (`https://banque-connue.test@attaquant.test`), qui servent surtout à
+déguiser un domaine hostile.
+
+### Retour de paiement
+
+`returnUrl` n'est consommé par aucun prestataire aujourd'hui, mais c'est le
+champ qui **deviendra** la cible d'une redirection le jour où un vrai
+prestataire sera raccordé — et une redirection ouverte est le moyen le plus
+commode de faire atterrir un acheteur sur une fausse page de confirmation.
+
+`TOUMA_PAYMENT_RETURN_ORIGINS` (liste séparée par des virgules) restreint les
+origines acceptées. Non configurée, rien n'est bloqué : rien n'est encore
+branché. **Elle se configure avant le raccordement, pas après.**
+
+## Pièces jointes (V25 §40-41)
+
+Déjà en place avant V25, vérifié à l'audit : le type est déduit du **contenu**
+(signatures de fichiers), jamais de l'en-tête envoyé par le client ; les
+contenus exécutables sont refusés ; les URL de téléchargement sont signées
+avec comparaison à temps constant ; la taille est bornée.
+
+Les images de produit sont des **adresses externes**, pas des téléversements :
+le serveur ne les récupère jamais (vérifié — les deux seuls appels sortants du
+domaine visent des points de terminaison configurés). Il n'y a donc pas de
+surface SSRF de ce côté.
+
+Aucune analyse antivirale n'existe, et aucune abstraction n'en simule une :
+une abstraction qui ne scanne rien mais dont le nom laisse croire le contraire
+est pire que son absence.
+
+## Analyse de sécurité en intégration continue (V25 §34)
+
+Un travail `Sécurité des dépendances` exécute :
+
+1. `npm audit --audit-level=low` **informatif** — tout s'affiche ;
+2. `npm audit --audit-level=critical` **bloquant** ;
+3. recherche de secrets versionnés (clés AWS, clés privées, jetons) — motifs
+   étroits à dessein, un détecteur trop large finit ignoré ;
+4. vérification qu'aucun `.env` n'est versionné.
+
+Le seuil bloquant est « critique » et non « élevé », et c'est motivé : §34
+demande de ne pas bloquer artificiellement sans comprendre la gravité. Une
+alerte « élevée » sur un paquet de compilation qui ne traite aucune donnée
+d'inconnu arrêterait la chaîne sans rendre personne plus sûr — et devant une
+chaîne qui crie pour rien, la première chose qu'on fait est de cesser de
+l'écouter.
+
+### Ce que le premier passage a trouvé
+
+| Paquet | Gravité | Traitement |
+|---|---|---|
+| `next` | **critique**, CVSS 10.0, exécution de code à distance | corrigé : 15.5.4 → 15.5.25 (montée mineure) |
+| `ip-address`, `sharp` | élevées | corrigées par `npm audit fix` |
+| `postcss` | élevée | **exception documentée** ci-dessous |
+
+Dix vulnérabilités au départ, six après, aucune critique.
+
+### Exception : `postcss`
+
+XSS par `</style>` non échappé lors de la sérialisation CSS. Le correctif
+exige Next.js 16, une montée **majeure**.
+
+Gravité réelle ici : PostCSS traite, au moment de la compilation, la feuille
+de style **de ce dépôt** — jamais une CSS fournie par un inconnu. Le vecteur
+suppose de faire passer du contenu hostile dans le compilateur, ce qui
+supposerait déjà un accès en écriture au code source.
+
+Décision : ne pas forcer une montée majeure de Next.js pour cette raison. À
+réexaminer lors de la prochaine montée de la vitrine, qui doit être un geste
+délibéré et testé.

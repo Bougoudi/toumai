@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { urlWeb } from '../lib/url.js';
 import { requirePermission } from '../admin/permissions.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
@@ -483,7 +484,7 @@ const regleSchema = z.object({
   ruleType: z.string().trim().min(2).max(60),
   body: z.record(z.unknown()).default({}),
   sourceName: z.string().trim().min(2).max(200),
-  sourceUrl: z.string().url().nullish(),
+  sourceUrl: urlWeb(2000).nullish(),
   effectiveFrom: z.coerce.date(),
   effectiveTo: z.coerce.date().nullish(),
 });
@@ -555,7 +556,7 @@ const fxEnregistrement = z.object({
   rate: z.string().regex(/^\d+(\.\d{1,10})?$/),
   source: z.enum(['EXTERNAL_PROVIDER', 'CENTRAL_BANK', 'MANUAL_ADMIN']),
   sourceName: z.string().trim().min(2).max(200),
-  sourceUrl: z.string().url().nullish(),
+  sourceUrl: urlWeb(2000).nullish(),
   rateAt: z.coerce.date().optional(),
 });
 

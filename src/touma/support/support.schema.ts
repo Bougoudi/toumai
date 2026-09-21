@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { urlWeb } from '../lib/url.js';
 
 /** Assistance Touma — schémas d'entrée. */
 
@@ -7,7 +8,7 @@ export const ticketStatuses = ['OPEN', 'IN_PROGRESS', 'PENDING_USER', 'RESOLVED'
 export const ticketPriorities = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
 
 export const attachmentSchema = z.object({
-  url: z.string().trim().url().max(2000),
+  url: urlWeb(2000),
   name: z.string().trim().max(200).default('pièce jointe'),
   mimeType: z.string().trim().max(100).default('application/pdf'),
   sizeBytes: z.number().int().min(0).max(5 * 1024 * 1024).default(0),

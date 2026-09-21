@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { urlWeb } from '../lib/url.js';
 
 /**
  * Retours et remboursements — schémas d'entrée.
@@ -24,7 +25,7 @@ export const returnReasons = [
 ] as const;
 
 export const evidenceSchema = z.object({
-  url: z.string().trim().url().max(2000),
+  url: urlWeb(2000),
   name: z.string().trim().max(200).default('preuve'),
   mimeType: z.string().trim().max(100).default('image/jpeg'),
 });

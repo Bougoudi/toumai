@@ -101,6 +101,57 @@ jobs:
       - name: Build
         run: npm run build
 
+  securite:
+    name: Sécurité des dépendances
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Installation
+        run: npm ci
+
+      # Audit des dépendances (V25 §34).
+      #
+      # Le seuil est « critical » et non « high », et c'est un choix motivé.
+      # §34 demande de ne pas bloquer artificiellement sans comprendre la
+      # gravité : une alerte « high » sur un paquet de compilation, qui ne
+      # traite jamais de donnée d'un inconnu, arrêterait la chaîne sans rendre
+      # personne plus sûr — et la première chose qu'on fait devant une chaîne
+      # qui crie pour rien, c'est cesser de l'écouter.
+      #
+      # Les alertes non bloquantes restent **affichées** dans le résumé : on
+      # les voit, on les décide, on les consigne dans
+      # docs/operations/security.md. Ce qui est critique, lui, arrête tout.
+      - name: Audit des dépendances (informatif)
+        run: npm audit --audit-level=low || true
+
+      - name: Audit des dépendances (bloquant au niveau critique)
+        run: npm audit --audit-level=critical
+
+      # Recherche de secrets committés par mégarde. Motifs volontairement
+      # étroits : un détecteur trop large finit ignoré.
+      - name: Recherche de secrets
+        run: |
+          set -o pipefail
+          motifs='(AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----|sk-[A-Za-z0-9]{32,}|ghp_[A-Za-z0-9]{36})'
+          if git grep -nIE "$motifs" -- . ':(exclude).github/workflows/*' ; then
+            echo "✗ Secret potentiel trouvé dans le dépôt." >&2
+            exit 1
+          fi
+          echo "→ Aucun secret évident dans les fichiers versionnés."
+
+      # Le fichier d'environnement ne doit jamais être versionné.
+      - name: Aucun fichier .env versionné
+        run: |
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo "✗ .env est versionné." >&2
+            exit 1
+          fi
+          echo "→ Aucun .env versionné."
+
   vitrine:
     name: Vitrine Next.js
     runs-on: ubuntu-latest

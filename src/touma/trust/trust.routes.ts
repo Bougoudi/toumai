@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { urlWeb } from '../lib/url.js';
 import { requirePermission } from '../admin/permissions.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
@@ -272,7 +273,7 @@ const appealSchema = z.object({
   subjectType: z.enum(['VERIFICATION', 'STANDING', 'REVIEW', 'TRUST_SCORE']),
   subjectId: z.string().max(64).optional(),
   message: z.string().trim().min(20).max(4000),
-  evidence: z.array(z.object({ kind: z.string().max(40), url: z.string().url() })).max(10).optional(),
+  evidence: z.array(z.object({ kind: z.string().max(40), url: urlWeb(2000) })).max(10).optional(),
 });
 
 trustRouter.post(

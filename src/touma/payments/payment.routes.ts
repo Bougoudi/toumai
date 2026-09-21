@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { urlRetourPaiement } from '../lib/url.js';
 import { paymentLimiter } from '../../middleware/security.js';
 import express from 'express';
 import { z } from 'zod';
@@ -20,7 +21,7 @@ const createSchema = z.object({
   orderGroupId: z.string().cuid().optional(),
   method: z.enum(['MOBILE_MONEY', 'CARD', 'BANK_TRANSFER', 'CASH_ON_DELIVERY', 'MOCK']).default('MOBILE_MONEY'),
   idempotencyKey: z.string().trim().min(8).max(120).optional(),
-  returnUrl: z.string().trim().url().max(500).optional(),
+  returnUrl: urlRetourPaiement(500).optional(),
 });
 
 const confirmSchema = z.object({

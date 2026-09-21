@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { urlWeb } from '../lib/url.js';
 
 /** Montants en chaîne décimale : un float perdrait des centimes. */
 const amount = z
@@ -14,7 +15,7 @@ export const businessProfileSchema = z.object({
   countryCode: z.string().trim().toUpperCase().length(2),
   city: z.string().trim().max(120).optional(),
   phone: z.string().trim().max(30).optional(),
-  website: z.string().trim().url().max(200).optional(),
+  website: urlWeb(200).optional(),
   annualVolume: z.string().trim().max(60).optional(),
 });
 
