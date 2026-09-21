@@ -76,8 +76,32 @@ L'application tourne sous l'utilisateur `node`, sans privilège. `var/` lui
 appartient : c'est là que vont les pièces jointes quand aucun stockage objet
 n'est configuré.
 
+## Vérifications avant et après
+
+| Commande | Question |
+|---|---|
+| `npm run check:production` | cette instance peut-elle servir ? |
+| `npm run check:go-live` | peut-on ouvrir au public sans mentir ? |
+| `npm run test:e2e` | les parcours fonctionnent-ils ? |
+
+Les deux premières ne prouvent pas la troisième, et le disent dans leur propre
+sortie.
+
+## Fiches d'incident
+
+`docs/operations/playbooks/` — une fiche par panne réellement possible ici.
+Les scénarios qui supposent un composant absent (Redis, OpenSearch) ne sont
+pas écrits : une fiche pour un composant inexistant fait perdre du temps au
+pire moment.
+
+## Reprise après sinistre
+
+`docs/operations/disaster-recovery.md`. Il commence par ce qu'il faut savoir :
+**aucune sauvegarde n'existe**, donc une perte de la base est irréversible, et
+le RPO réel est infini.
+
 ## Procédures encore à écrire
 
 Elles le seront au fur et à mesure, et ne sont pas listées comme disponibles :
-retour arrière de déploiement, restauration de sauvegarde, reprise de file,
-réindexation, purge de cache, coupure de fonctionnalité.
+restauration de sauvegarde (elle suppose une sauvegarde), reprise de file
+(elle suppose une file), réindexation, purge de cache.
