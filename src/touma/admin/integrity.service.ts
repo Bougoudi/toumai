@@ -67,28 +67,53 @@ const CONTROLES: Controle[] = [
   {
     code: 'ORDER_PAID_WITHOUT_PAYMENT',
     label: 'Commandes payées sans paiement réussi',
-    invariant: 'Une commande au-delà de PENDING s’appuie sur un paiement SUCCEEDED, sauf paiement à la livraison.',
+    invariant: 'Une commande au-delà de PENDING s’appuie sur un paiement SUCCEEDED, directement ou via son groupe de commandes.',
     severity: 'CRITIQUE',
+    /**
+     * Deux méprises corrigées ici, toutes deux de ma main, et toutes deux du
+     * même genre : avoir écrit l'invariant avant d'avoir lu le modèle.
+     *
+     * 1. Un paiement se rattache **soit** à une commande, **soit** au groupe
+     *    issu d'un même panier — un panier multi-vendeurs produit plusieurs
+     *    commandes et un seul paiement. Ne regarder que `orderId` signalait
+     *    presque toutes les commandes payées comme impayées.
+     * 2. `PARTIALLY_REFUNDED` et `REFUNDED` sont des paiements qui ont
+     *    **réussi**, puis ont été remboursés. Les exclure signalait comme
+     *    impayée toute commande ayant donné lieu à un geste commercial.
+     */
     sql: () => prisma.$queryRaw`
       SELECT o."id" FROM "touma_orders" o
       WHERE o."status" IN ('PAID', 'PROCESSING', 'READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'COMPLETED')
         AND NOT EXISTS (
           SELECT 1 FROM "touma_payments" p
-           WHERE p."orderId" = o."id"
-             AND (p."status" = 'SUCCEEDED' OR p."method" = 'CASH_ON_DELIVERY')
+           WHERE (p."orderId" = o."id" OR (o."groupId" IS NOT NULL AND p."orderGroupId" = o."groupId"))
+             AND (p."status" IN ('SUCCEEDED', 'PARTIALLY_REFUNDED', 'REFUNDED') OR p."method" = 'CASH_ON_DELIVERY')
         )
       LIMIT 100`,
   },
   {
     code: 'PAYMENT_SUCCEEDED_ORPHAN',
     label: 'Paiements réussis rattachés à aucune commande',
-    invariant: 'Un paiement réussi désigne une commande existante.',
+    invariant: 'Un paiement réussi désigne une commande ou un groupe de commandes existant.',
     severity: 'CRITIQUE',
+    /**
+     * `orderId` nul n'est pas une anomalie : c'est le cas **normal** d'un
+     * panier multi-vendeurs, où le paiement porte sur le groupe. La première
+     * version de ce contrôle l'ignorait et signalait 9 104 paiements sur
+     * 9 117 comme orphelins — un contrôle qui crie au loup sur tout apprend à
+     * ne plus le lire.
+     *
+     * L'anomalie réelle : un paiement rattaché à **rien**, ou à une référence
+     * qui n'existe plus.
+     */
     sql: () => prisma.$queryRaw`
       SELECT p."id" FROM "touma_payments" p
       WHERE p."status" = 'SUCCEEDED'
-        AND (p."orderId" IS NULL
-             OR NOT EXISTS (SELECT 1 FROM "touma_orders" o WHERE o."id" = p."orderId"))
+        AND (
+          (p."orderId" IS NULL AND p."orderGroupId" IS NULL)
+          OR (p."orderId" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "touma_orders" o WHERE o."id" = p."orderId"))
+          OR (p."orderGroupId" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "touma_order_groups" g WHERE g."id" = p."orderGroupId"))
+        )
       LIMIT 100`,
   },
   {

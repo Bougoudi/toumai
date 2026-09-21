@@ -293,17 +293,19 @@ model User {
   supplierScore     ToumaSupplierScore?    @relation("SupplierScore")
 
   // V22 — croissance
-  promotionsCreated      ToumaPromotion[]             @relation("PromotionAuthor")
-  campaignsCreated       ToumaCampaign[]              @relation("CampaignAuthor")
+  promotionsCreated      ToumaPromotion[]              @relation("PromotionAuthor")
+  campaignsCreated       ToumaCampaign[]               @relation("CampaignAuthor")
   promotionUsages        ToumaPromotionUsage[]
-  referralCode           ToumaReferralCode?           @relation("ReferralOwner")
-  referralsMade          ToumaReferral[]              @relation("Referrer")
-  referralReceived       ToumaReferral?               @relation("Referee")
+  referralCode           ToumaReferralCode?            @relation("ReferralOwner")
+  referralsMade          ToumaReferral[]               @relation("Referrer")
+  referralReceived       ToumaReferral?                @relation("Referee")
   segmentMemberships     ToumaCustomerSegmentMember[]
-  flashSalesCreated      ToumaFlashSale[]             @relation("FlashSaleAuthor")
+  flashSalesCreated      ToumaFlashSale[]              @relation("FlashSaleAuthor")
   flashSaleClaims        ToumaFlashSaleClaim[]
   /// Vérifications d'éligibilité transfrontalière demandées par ce compte.
   tradeEligibilityChecks ToumaTradeEligibilityCheck[]
+  /// Demandes de suppression de compte (V25 §68).
+  deletionRequests       ToumaAccountDeletionRequest[]
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -2625,6 +2627,48 @@ model ToumaNotification {
 }
 
 /// Jeton de rafraîchissement (rotation + révocation). Seul le hash est stocké.
+/// Demande de suppression de compte (V25 §68).
+///
+/// Une suppression ne s'exécute pas au moment où on la demande. Un délai de
+/// réflexion sépare les deux, pour deux raisons : on se ravise, et surtout un
+/// compte pris en main par quelqu'un d'autre ne doit pas pouvoir s'effacer
+/// dans la foulée avec ce qu'il a fait.
+model ToumaAccountDeletionRequest {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status AccountDeletionStatus @default(PENDING)
+
+  /// Date à partir de laquelle l'anonymisation peut s'exécuter.
+  scheduledFor DateTime
+  requestedAt  DateTime  @default(now())
+  cancelledAt  DateTime?
+  completedAt  DateTime?
+
+  /// Motif donné par la personne. Facultatif, jamais exigé.
+  reason String?
+
+  /// Ce qui bloquait au moment de la demande, quand elle a été refusée.
+  blockers String[] @default([])
+
+  ip        String?
+  userAgent String?
+
+  @@index([userId])
+  @@index([status, scheduledFor])
+  @@map("touma_account_deletion_requests")
+}
+
+enum AccountDeletionStatus {
+  /// Demandée, délai de réflexion en cours.
+  PENDING
+  /// Annulée par la personne avant l'échéance.
+  CANCELLED
+  /// Anonymisation effectuée.
+  COMPLETED
+}
+
 model ToumaRefreshToken {
   id         String    @id @default(cuid())
   userId     String

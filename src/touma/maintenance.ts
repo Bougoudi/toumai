@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { privacyService } from './auth/privacy.service.js';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { expireStaleReservations } from './orders/reservation.js';
@@ -108,6 +109,15 @@ export const maintenanceJobs = {
     await runAiJobsOnce();
     return 0;
   },
+  /**
+   * Suppressions de compte arrivées à échéance (V25 §68).
+   *
+   * Les blocages sont revérifiés à l'exécution : une commande a pu naître
+   * pendant le délai de réflexion, et anonymiser l'acheteur rendrait sa
+   * livraison impossible. Une demande bloquée reste en attente avec son
+   * motif — elle n'est ni exécutée, ni silencieusement abandonnée.
+   */
+  accountDeletions: () => privacyService.runDueDeletions(),
 };
 
 /** Joue tous les travaux une fois. Employé au démarrage et par les tests. */

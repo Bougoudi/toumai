@@ -89,3 +89,13 @@ export const addressSchema = z.object({
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type AddressInput = z.infer<typeof addressSchema>;
+
+/**
+ * Demande de suppression de compte (V25 §68).
+ *
+ * Le motif est **facultatif**. Exiger de quelqu'un qu'il justifie son départ
+ * est une façon de le retenir, pas de le servir.
+ */
+export const deletionRequestSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+});

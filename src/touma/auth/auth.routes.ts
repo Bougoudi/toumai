@@ -27,6 +27,17 @@ toumaAuthRouter.patch('/me', authenticate, asyncHandler(authController.updateMe)
 toumaAuthRouter.get('/me/sessions', authenticate, asyncHandler(authController.listSessions));
 toumaAuthRouter.post('/me/sessions/:id/revoke', authenticate, asyncHandler(authController.revokeSession));
 
+/**
+ * Données personnelles (V25 §66-68).
+ *
+ * L'export est limité en débit : c'est une lecture large de tout ce qu'un
+ * compte détient, et elle n'a aucune raison d'être appelée en rafale.
+ */
+toumaAuthRouter.post('/me/export', authenticate, authLimiter, asyncHandler(authController.exportData));
+toumaAuthRouter.get('/me/delete-request', authenticate, asyncHandler(authController.deletionStatus));
+toumaAuthRouter.post('/me/delete-request', authenticate, authLimiter, asyncHandler(authController.requestDeletion));
+toumaAuthRouter.post('/me/delete-request/cancel', authenticate, asyncHandler(authController.cancelDeletion));
+
 toumaAuthRouter.get('/me/addresses', authenticate, asyncHandler(authController.listAddresses));
 toumaAuthRouter.post('/me/addresses', authenticate, asyncHandler(authController.createAddress));
 toumaAuthRouter.delete('/me/addresses/:id', authenticate, asyncHandler(authController.deleteAddress));

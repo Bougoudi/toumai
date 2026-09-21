@@ -5,7 +5,8 @@ import { badRequest, notFound } from '../lib/errors.js';
 import { normalizePhone, tryNormalizePhone } from '../lib/phone.js';
 import { currentUser } from '../middleware/toumaAuth.js';
 import { authService } from './auth.service.js';
-import { addressSchema, loginSchema, logoutSchema, refreshSchema, registerSchema, updateProfileSchema } from './auth.schema.js';
+import { addressSchema, deletionRequestSchema, loginSchema, logoutSchema, refreshSchema, registerSchema, updateProfileSchema } from './auth.schema.js';
+import { privacyService } from './privacy.service.js';
 
 function ctx(req: Request) {
   return { ip: req.ip ?? null, userAgent: req.header('user-agent') ?? null };
@@ -106,6 +107,26 @@ export const authController = {
   async listSessions(req: Request, res: Response) {
     const courant = typeof req.query.refreshToken === 'string' ? req.query.refreshToken : undefined;
     res.json(await authService.listSessions(currentUser(req).id, courant));
+  },
+
+  /** Export des données personnelles (V25 §67). */
+  async exportData(req: Request, res: Response) {
+    res.json(await privacyService.export(currentUser(req).id));
+  },
+
+  /** Demande de suppression de compte (V25 §68). */
+  async requestDeletion(req: Request, res: Response) {
+    const input = parseBody(deletionRequestSchema, req);
+    res.status(202).json(await privacyService.requestDeletion(currentUser(req).id, input, ctx(req)));
+  },
+
+  async cancelDeletion(req: Request, res: Response) {
+    res.json(await privacyService.cancelDeletion(currentUser(req).id));
+  },
+
+  async deletionStatus(req: Request, res: Response) {
+    const demande = await privacyService.pendingDeletion(currentUser(req).id);
+    res.json(demande ?? { pending: false });
   },
 
   async revokeSession(req: Request, res: Response) {
