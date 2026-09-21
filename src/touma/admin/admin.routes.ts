@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { estPermission, LIBELLES_PERMISSION, PERMISSIONS_ADMIN, requirePermission } from './permissions.js';
 import { integrityService } from './integrity.service.js';
+import { operationsService } from './operations.service.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
@@ -459,6 +460,19 @@ adminRouter.put(
  * vérifié** — « rien à signaler » ne vaut que rapporté à la liste des
  * invariants contrôlés.
  */
+/**
+ * Centre d'opérations (V25 §53, §86).
+ *
+ * L'écran qu'on regarde à trois heures du matin pour décider s'il faut
+ * réveiller quelqu'un. Tout y vient d'une sonde exécutée à l'instant ou d'un
+ * état lu en base, et ce qui n'est pas mesuré y est écrit comme tel.
+ */
+adminRouter.get(
+  '/operations',
+  requirePermission('ADMIN_SYSTEM'),
+  asyncHandler(async (_req, res) => res.json(await operationsService.overview())),
+);
+
 adminRouter.get(
   '/data-integrity',
   requirePermission('ADMIN_SYSTEM'),

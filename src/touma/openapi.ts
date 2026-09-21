@@ -373,6 +373,7 @@ export function toumaOpenApiDocument() {
         get: op('Administration', 'TOUMA Intelligence : corridors, demande non servie, paiements, tensions', { role: 'ADMIN', query: ['days'] }),
       },
       '/admin/risk': { get: op('Administration', 'Scores de risque', { role: 'ADMIN' }) },
+      '/admin/operations': { get: op('Administration', 'Centre d’opérations : santé réelle des services (ADMIN_SYSTEM)', { role: 'ADMIN' }) },
       '/admin/data-integrity': { get: op('Administration', 'Contrôles d’intégrité des données (ADMIN_SYSTEM)', { role: 'ADMIN' }) },
       '/admin/data-integrity/catalogue': { get: op('Administration', 'Invariants contrôlés (ADMIN_SYSTEM)', { role: 'ADMIN' }) },
       '/admin/permissions': { get: op('Administration', 'Permissions des administrateurs (ADMIN_SYSTEM)', { role: 'ADMIN' }) },

@@ -79,3 +79,38 @@ secret. Le détail va dans le journal avec l'identifiant de requête.
 - Un collecteur de métriques (§16-17) : rien n'est instrumenté aujourd'hui.
 - Des alertes (§50) : elles supposent un collecteur.
 - Un agrégateur de journaux : dépend de l'hébergement retenu.
+
+## Centre d'opérations (§53, §86)
+
+`GET /api/v1/admin/operations` (permission `ADMIN_SYSTEM`).
+
+C'est l'écran qu'on regarde à trois heures du matin pour décider s'il faut
+réveiller quelqu'un. Une case verte pour une chose que personne ne mesure y
+est plus dangereuse qu'une case rouge.
+
+Trois sections, et trois règles :
+
+| Section | Contenu |
+|---|---|
+| `infrastructure` | PostgreSQL, Redis, stockage objet, recherche, file d'attente |
+| `providers` | paiement, transporteurs, assistance IA, taux de change |
+| `notInstrumented` | sauvegardes, métriques, alertes, travaux périodiques |
+
+**Rien n'est déduit d'un fichier de configuration.** Chaque ligne vient d'une
+sonde exécutée à l'instant ou d'un état lu en base. Un adaptateur nommé dans
+la configuration n'est pas un service qui répond — c'est la distinction que
+§89 impose, et la première version de cet écran l'a manquée : elle affichait
+« Assistance IA : OK — prestataire "mock" configuré ». Un test l'attrape
+désormais, sur l'ensemble des prestataires.
+
+**Ce qui n'est pas mesuré est écrit comme tel** (`NON_INSTRUMENTE`), jamais
+rendu en vert. Confondre « rien de cassé » et « rien de surveillé » est ce qui
+fait rater un incident.
+
+**L'état global ne peut pas être meilleur que sa pire ligne critique.** Une
+anomalie d'intégrité critique, ou PostgreSQL injoignable, rendent l'ensemble
+`CRITICAL`.
+
+L'écran remonte aussi deux dettes plutôt que de les taire : le nombre
+d'administrateurs encore non cadrés, et l'absence de sauvegarde — nommée comme
+un bloqueur de mise en service, avec la mention que la perte serait définitive.
