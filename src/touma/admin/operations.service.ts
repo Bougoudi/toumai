@@ -79,10 +79,22 @@ export const operationsService = {
       {
         name: 'Redis',
         status: redis?.status === 'ok' ? 'OK' : redis?.status === 'skipped' ? 'NON_CONFIGURE' : 'INDISPONIBLE',
+        /**
+         * Le texte de l'état « joignable » disait « PING TCP effectué. » —
+         * exact, et sans intérêt pour qui lit cet écran à trois heures du
+         * matin. Ce qu'il faut savoir tient en une phrase : ce que sa
+         * disparition coûterait. Ici, rien de critique (§8).
+         *
+         * Mon poste n'avait pas de Redis, l'intégration continue en a un :
+         * ce texte-là ne s'affichait donc jamais localement, et c'est elle
+         * qui l'a montré.
+         */
         detail:
           redis?.status === 'skipped'
             ? 'Aucun Redis configuré. Aucune donnée critique n’en dépend : tout est récupérable depuis PostgreSQL.'
-            : (redis?.detail ?? 'PING TCP effectué.'),
+            : redis?.status === 'ok'
+              ? 'Joignable. Aucune donnée critique n’en dépend : une disparition de Redis ne perd rien, tout reste en base.'
+              : `Configuré mais injoignable : ${redis?.detail ?? 'cause inconnue'}. Sans conséquence sur les données, qui vivent dans PostgreSQL.`,
         latencyMs: redis?.latencyMs,
       },
       {

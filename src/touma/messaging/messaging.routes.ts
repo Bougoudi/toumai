@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { messagingLimiter } from '../../middleware/security.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { env } from '../../config/env.js';
@@ -91,6 +92,7 @@ conversationRouter.get(
 
 conversationRouter.post(
   '/:id/messages',
+  messagingLimiter,
   asyncHandler(async (req, res) => {
     const input = parseBody(sendMessageSchema, req);
     res.status(201).json(await messagingService.sendMessage(currentUser(req), req.params.id, input));
@@ -103,6 +105,7 @@ conversationRouter.post(
  */
 conversationRouter.post(
   '/:id/attachments',
+  messagingLimiter,
   asyncHandler(async (req, res) => {
     const content = req.body;
     if (!Buffer.isBuffer(content) || content.length === 0) {
@@ -131,6 +134,7 @@ messageRouter.get(
 /** Répondre à un message sans connaître l'identifiant de sa conversation. */
 messageRouter.post(
   '/:id/reply',
+  messagingLimiter,
   asyncHandler(async (req, res) => {
     const input = parseBody(editMessageSchema, req);
     const target = await messagingService.conversationOfMessage(currentUser(req), req.params.id);

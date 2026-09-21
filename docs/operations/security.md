@@ -61,3 +61,66 @@ Toute attribution est auditée avec l'acteur, la cible, l'état avant et après.
 Personne ne peut se retirer `ADMIN_SYSTEM` à soi-même : c'est la seule
 permission qui permet de réattribuer les permissions, et se la retirer en
 dernier détenteur fermerait la porte de l'intérieur sans clé.
+
+## Limites de débit (V25 §22-23)
+
+### La clé est le compte, pas l'adresse
+
+Les limites ne comptaient que par adresse IP. Deux défauts, tous deux du
+mauvais côté :
+
+- **une IP partagée punit tout le monde** — cybercafé de N'Djamena, connexion
+  partagée, opérateur mobile derrière une passerelle : un seul abuseur ferme
+  la porte aux autres, qui ne comprennent pas pourquoi ;
+- **un compte change d'IP quand il veut**, donc une limite par IP n'arrête pas
+  ce qu'elle vise.
+
+La clé est désormais le compte quand la requête est authentifiée, l'adresse
+sinon (via `ipKeyGenerator`, sans quoi un préfixe IPv6 donnerait des
+milliards de clés à un seul abonné, c'est-à-dire aucune limite).
+
+**Une exception, délibérée** : l'anti-force brute sur la connexion reste
+compté par adresse. Au moment où cette limite sert, l'attaquant n'est
+précisément pas authentifié ; une clé par compte ne compterait rien. Elle
+porte donc le défaut de l'IP partagée, et c'est le prix pour que deviner des
+mots de passe reste coûteux.
+
+### Compteurs séparés
+
+| Usage | Défaut | Variable |
+|---|---|---|
+| API globale | 300 / min | `TOUMA_API_RATE_LIMIT` |
+| Connexion, inscription | 10 / 15 min | `TOUMA_AUTH_RATE_LIMIT` |
+| Paiement, remboursement | 10 / min | `TOUMA_PAYMENT_RATE_LIMIT` |
+| Essai de code promotionnel | 20 / 10 min | `TOUMA_COUPON_RATE_LIMIT` |
+| Assistance IA | 20 / min | `TOUMA_AI_RATE_LIMIT` |
+| Messagerie | 30 / min | `TOUMA_MESSAGING_RATE_LIMIT` |
+
+Chaque usage a son seau : partager un compteur entre le paiement et la
+messagerie ferait qu'une conversation animée empêcherait de payer.
+
+Une valeur d'environnement illisible retombe sur le défaut. `limit: NaN`
+désactiverait la protection en silence — la pire issue pour une faute de
+frappe.
+
+Le dépassement rend le même format que toute autre erreur :
+`{ error, code: 'SYSTEM_RATE_LIMITED', requestId }`. Sans cela, c'était la
+seule erreur qu'un client ne pouvait pas traiter comme les autres, et la seule
+introuvable dans le journal.
+
+### Limite connue : les compteurs sont en mémoire
+
+`express-rate-limit` stocke ses compteurs **dans le processus**. Avec
+plusieurs instances derrière un répartiteur, la limite effective est
+multipliée par leur nombre. Un magasin partagé demanderait Redis, qui n'est
+pas installé.
+
+Ce n'est pas un détail à passer sous silence : sur une seule instance — la
+configuration actuelle — les valeurs ci-dessus sont exactes ; à plusieurs,
+elles ne le sont plus.
+
+### Éprouvé
+
+La limitation est neutralisée dans la suite de tests, sauf pour le fichier qui
+l'exerce (`TOUMA_RATE_LIMIT_IN_TESTS=true`). Une protection qu'aucun test ne
+peut exercer est une protection dont personne ne sait si elle marche.

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { couponLimiter } from '../../middleware/security.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { asyncHandler, parseBody, parseQuery } from '../../middleware/validate.js';
@@ -55,6 +56,7 @@ couponRouter.get(
  */
 couponRouter.post(
   '/preview',
+  couponLimiter,
   asyncHandler(async (req, res) => {
     const user = currentUser(req);
     const input = parseBody(previewSchema, req);

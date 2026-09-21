@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { aiLimiter } from '../../middleware/security.js';
 import { requirePermission } from '../admin/permissions.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
@@ -36,7 +37,7 @@ function chatHandler(surface: Surface) {
 // ── Espace acheteur : /api/v1/ai ────────────────────────────────────────────
 export const aiChatRouter = Router();
 
-aiChatRouter.post('/chat', optionalAuth, chatHandler('BUYER'));
+aiChatRouter.post('/chat', optionalAuth, aiLimiter, chatHandler('BUYER'));
 
 aiChatRouter.get(
   '/capabilities',
@@ -149,7 +150,7 @@ aiChatRouter.delete(
 // ── Espace vendeur : /api/v1/seller/ai ──────────────────────────────────────
 export const sellerAiRouter = Router();
 sellerAiRouter.use(authenticate, requireRole('SELLER', 'ADMIN'));
-sellerAiRouter.post('/', chatHandler('SELLER'));
+sellerAiRouter.post('/', aiLimiter, chatHandler('SELLER'));
 sellerAiRouter.get(
   '/capabilities',
   asyncHandler(async (req, res) => res.json(assistant.capabilities(currentUser(req), 'SELLER'))),

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { paymentLimiter } from '../../middleware/security.js';
 import express from 'express';
 import { z } from 'zod';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
@@ -122,6 +123,7 @@ paymentRouter.post(
 paymentRouter.post(
   '/create',
   authenticate,
+  paymentLimiter,
   idempotent('payments.create'),
   asyncHandler(async (req, res) => {
     const input = parseBody(createSchema, req);
@@ -152,6 +154,7 @@ paymentRouter.post(
 
 paymentRouter.post(
   '/refund',
+  paymentLimiter,
   authenticate,
   requireAdmin,
   idempotent('payments.refund'),
