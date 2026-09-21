@@ -96,6 +96,22 @@ export const authController = {
     res.json(await authService.me(currentUser(req).id));
   },
 
+  /**
+   * Sessions actives.
+   *
+   * Le jeton de rafraîchissement peut être joint pour que la session courante
+   * soit signalée comme telle — utile pour ne pas se déconnecter soi-même par
+   * mégarde. Il reste facultatif : la liste est lisible sans lui.
+   */
+  async listSessions(req: Request, res: Response) {
+    const courant = typeof req.query.refreshToken === 'string' ? req.query.refreshToken : undefined;
+    res.json(await authService.listSessions(currentUser(req).id, courant));
+  },
+
+  async revokeSession(req: Request, res: Response) {
+    res.json(await authService.revokeSession(currentUser(req).id, req.params.id, ctx(req)));
+  },
+
   async updateMe(req: Request, res: Response) {
     const input = parseBody(updateProfileSchema, req);
     res.json(await authService.updateProfile(currentUser(req).id, input));

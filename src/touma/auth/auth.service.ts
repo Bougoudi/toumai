@@ -6,9 +6,21 @@ import { hashPassword, verifyPassword } from '../../utils/auth.js';
 import { logger } from '../../utils/logger.js';
 import { audit } from '../lib/audit.js';
 import { referralService } from '../growth/referral.service.js';
-import { badRequest, conflict, unauthorized } from '../lib/errors.js';
+import { badRequest, conflict, notFound, unauthorized } from '../lib/errors.js';
 import { normalizePhone } from '../lib/phone.js';
 import { generateRefreshToken, hashRefreshToken, refreshTokenLooksValid, signAccessToken } from '../lib/tokens.js';
+
+/**
+ * Ce que révoquer produit réellement.
+ *
+ * Écrit une fois, rendu partout où la question se pose. Laisser croire à une
+ * coupure instantanée serait le pire endroit pour être approximatif : on
+ * révoque une session précisément quand on pense qu'elle est aux mains de
+ * quelqu'un d'autre.
+ */
+const NOTE_REVOCATION = () =>
+  `Révoquer une session empêche immédiatement d’en obtenir de nouveaux jetons. Le jeton d’accès déjà émis reste ` +
+  `valable au plus ${Math.round(env.touma.accessTtlSeconds / 60)} minutes. Pour une coupure immédiate partout, utilisez la déconnexion de tous les appareils.`;
 
 /** Représentation publique d'un utilisateur : aucune donnée sensible. */
 /**
@@ -218,6 +230,96 @@ export const authService = {
       });
     }
     return { revoked: 'session' as const };
+  },
+
+  /**
+   * Sessions actives d'un compte (V25 §24).
+   *
+   * Une session est une **famille** de jetons, pas une ligne de la table. Le
+   * jeton tourne à chaque rafraîchissement : la ligne vivante d'aujourd'hui
+   * n'est pas celle d'il y a dix minutes, et son identifiant non plus. Exposer
+   * l'identifiant de ligne donnerait un bouton « révoquer » qui désigne une
+   * ligne périmée quelques secondes plus tard. La famille, elle, ne bouge pas
+   * tant que l'appareil reste connecté.
+   *
+   * L'appareil est lu sur la **première** ligne de la famille, pas sur la
+   * dernière. La rotation enregistre le contexte de l'appel de
+   * rafraîchissement — souvent une requête d'arrière-plan sans en-tête
+   * `user-agent` —, si bien que la session perdait son nom dès le premier
+   * renouvellement : quelqu'un cherchant « mon téléphone » dans la liste n'y
+   * trouvait qu'une ligne anonyme, c'est-à-dire l'inverse de ce que cet écran
+   * sert à faire.
+   */
+  async listSessions(userId: string, refreshTokenCourant?: string) {
+    const maintenant = new Date();
+    const vivantes = await prisma.toumaRefreshToken.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: maintenant } },
+      orderBy: { createdAt: 'desc' },
+      select: { familyId: true, createdAt: true, expiresAt: true, tokenHash: true },
+    });
+    if (vivantes.length === 0) return { items: [], note: NOTE_REVOCATION() };
+
+    const familles = [...new Set(vivantes.map((v) => v.familyId))];
+    // Les lignes révoquées sont conservées : elles portent l'origine de la
+    // session, que la rotation a ensuite cessé de renseigner.
+    const origines = await prisma.toumaRefreshToken.findMany({
+      where: { userId, familyId: { in: familles } },
+      orderBy: { createdAt: 'asc' },
+      select: { familyId: true, createdAt: true, userAgent: true, ip: true },
+    });
+    const origineDe = new Map<string, (typeof origines)[number]>();
+    for (const o of origines) if (!origineDe.has(o.familyId)) origineDe.set(o.familyId, o);
+
+    const hashCourant = refreshTokenCourant ? hashRefreshToken(refreshTokenCourant) : null;
+    const familleCourante = hashCourant ? vivantes.find((v) => v.tokenHash === hashCourant)?.familyId ?? null : null;
+
+    const derniereDe = new Map<string, (typeof vivantes)[number]>();
+    for (const v of vivantes) if (!derniereDe.has(v.familyId)) derniereDe.set(v.familyId, v);
+
+    return {
+      items: familles.map((familyId) => {
+        const origine = origineDe.get(familyId);
+        const derniere = derniereDe.get(familyId)!;
+        return {
+          /** L'identifiant de **famille** : c'est lui qu'on révoque. */
+          id: familyId,
+          /** La session depuis laquelle la liste est demandée. */
+          current: familyId === familleCourante,
+          startedAt: origine?.createdAt ?? derniere.createdAt,
+          lastSeenAt: derniere.createdAt,
+          expiresAt: derniere.expiresAt,
+          /** Relevés à la **connexion**, seul moment où ils décrivent l'appareil. */
+          userAgent: origine?.userAgent ?? null,
+          ip: origine?.ip ?? null,
+        };
+      }),
+      note: NOTE_REVOCATION(),
+    };
+  },
+
+  /**
+   * Révoque une session entière.
+   *
+   * Par famille, et pas par ligne : la rotation a laissé une chaîne derrière
+   * elle, et ne révoquer que la dernière ligne laisserait un jeton antérieur
+   * utilisable. Révoquer la famille ferme la chaîne d'un bloc.
+   *
+   * Une famille qui n'appartient pas à l'appelant rend « introuvable », pas
+   * « interdit » : répondre 403 confirmerait son existence.
+   */
+  async revokeSession(userId: string, familyId: string, ctx: SessionContext) {
+    const { count } = await prisma.toumaRefreshToken.updateMany({
+      where: { userId, familyId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (count === 0) throw notFound('Session introuvable.');
+
+    await audit({ actorId: userId, action: 'auth.session_revoked', entity: 'User', entityId: userId, ip: ctx.ip, metadata: { familyId } });
+    return {
+      revoked: familyId,
+      accessTokenValidForSeconds: env.touma.accessTtlSeconds,
+      note: NOTE_REVOCATION(),
+    };
   },
 
   /** Profil complet de l'utilisateur courant. */

@@ -70,6 +70,8 @@ export function toumaOpenApiDocument() {
       '/auth/refresh': { post: op('Auth', 'Renouveler le jeton d’accès (rotation)', { auth: false, body: true }) },
       '/auth/logout': { post: op('Auth', 'Se déconnecter', { body: true }) },
       '/auth/me': { get: op('Auth', 'Profil courant'), patch: op('Auth', 'Mettre à jour le profil', { body: true }) },
+      '/auth/me/sessions': { get: op('Auth', 'Sessions actives de mon compte', { query: ['refreshToken'] }) },
+      '/auth/me/sessions/{id}/revoke': { post: op('Auth', 'Révoquer une session', { params: ['id'] }) },
       '/auth/me/addresses': { get: op('Auth', 'Carnet d’adresses'), post: op('Auth', 'Ajouter une adresse', { body: true }) },
       '/countries': { get: op('Catalogue', 'Pays desservis', { auth: false }) },
       '/categories': {
