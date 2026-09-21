@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { estPermission, LIBELLES_PERMISSION, PERMISSIONS_ADMIN, requirePermission } from './permissions.js';
 import { integrityService } from './integrity.service.js';
 import { operationsService } from './operations.service.js';
+import { featureFlagService } from './feature-flags.service.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
@@ -467,6 +468,55 @@ adminRouter.put(
  * réveiller quelqu'un. Tout y vient d'une sonde exécutée à l'instant ou d'un
  * état lu en base, et ce qui n'est pas mesuré y est écrit comme tel.
  */
+/**
+ * Drapeaux de fonctionnalité (V25 §28-29).
+ *
+ * Modifier un drapeau change ce que voient des milliers de personnes : cela
+ * demande `ADMIN_SYSTEM` et laisse une trace de l'avant et de l'après.
+ */
+adminRouter.get(
+  '/feature-flags',
+  requirePermission('ADMIN_SYSTEM'),
+  asyncHandler(async (_req, res) => res.json({ items: await featureFlagService.list() })),
+);
+
+const drapeauSchema = z.object({
+  label: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(500).optional(),
+  enabled: z.boolean().default(false),
+  rolloutPercent: z.number().int().min(0).max(100).default(0),
+  countries: z.array(z.string().trim().toUpperCase().length(2)).max(60).default([]),
+  provinces: z.array(z.string().trim().max(120)).max(60).default([]),
+  storeIds: z.array(z.string().cuid()).max(200).default([]),
+  userIds: z.array(z.string().cuid()).max(200).default([]),
+  environments: z.array(z.enum(['development', 'test', 'staging', 'production'])).max(4).default([]),
+  exposedToClient: z.boolean().default(false),
+});
+
+adminRouter.put(
+  '/feature-flags/:key',
+  requirePermission('ADMIN_SYSTEM'),
+  asyncHandler(async (req, res) => {
+    const input = parseBody(drapeauSchema, req);
+    const cle = req.params.key.trim().toLowerCase();
+    if (!/^[a-z0-9_]{2,60}$/.test(cle)) throw badRequest('Clé invalide : lettres minuscules, chiffres et tirets bas.');
+
+    const avant = await prisma.toumaFeatureFlag.findUnique({ where: { key: cle } });
+    const apres = await prisma.toumaFeatureFlag.upsert({
+      where: { key: cle },
+      create: { key: cle, ...input, updatedById: currentUser(req).id },
+      update: { ...input, updatedById: currentUser(req).id },
+    });
+
+    await auditRequest(req, 'admin.feature_flag.set', 'ToumaFeatureFlag', apres.id, {
+      key: cle,
+      before: avant ? { enabled: avant.enabled, rolloutPercent: avant.rolloutPercent } : null,
+      after: { enabled: apres.enabled, rolloutPercent: apres.rolloutPercent },
+    });
+    res.json(apres);
+  }),
+);
+
 adminRouter.get(
   '/operations',
   requirePermission('ADMIN_SYSTEM'),

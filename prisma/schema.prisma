@@ -306,6 +306,8 @@ model User {
   tradeEligibilityChecks ToumaTradeEligibilityCheck[]
   /// Demandes de suppression de compte (V25 §68).
   deletionRequests       ToumaAccountDeletionRequest[]
+  /// Drapeaux de fonctionnalité modifiés par ce compte (V25 §28).
+  featureFlagChanges     ToumaFeatureFlag[]
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -2633,6 +2635,48 @@ model ToumaNotification {
 /// réflexion sépare les deux, pour deux raisons : on se ravise, et surtout un
 /// compte pris en main par quelqu'un d'autre ne doit pas pouvoir s'effacer
 /// dans la foulée avec ce qu'il a fait.
+/// Drapeau de fonctionnalité (V25 §28-29).
+///
+/// À ne pas confondre avec les interrupteurs d'environnement (`TOUMA_*_ENABLED`),
+/// qui disent ce que **l'instance peut faire** : un paiement sans prestataire
+/// raccordé reste éteint quoi qu'il arrive. Un drapeau ne rallume jamais ce que
+/// l'environnement a éteint ; il décide, parmi ce qui est possible, **qui le
+/// voit**.
+model ToumaFeatureFlag {
+  id  String @id @default(cuid())
+  /// Identifiant stable employé dans le code : `ai_chat`, `trade_td_cm`.
+  key String @unique
+
+  label       String
+  description String?
+
+  /// Éteint, le drapeau ne s'applique à personne, quelles que soient les cibles.
+  enabled Boolean @default(false)
+
+  /// Part du public visé, de 0 à 100. L'attribution est **stable** par sujet.
+  rolloutPercent Int @default(0)
+
+  /// Ciblages. Vides = aucune restriction sur cette dimension.
+  countries    String[] @default([])
+  provinces    String[] @default([])
+  storeIds     String[] @default([])
+  userIds      String[] @default([])
+  environments String[] @default([])
+
+  /// Le drapeau peut-il être lu par le navigateur via `/features` ?
+  /// Faux par défaut : un drapeau dit ce qui se prépare, et tout ce qui se
+  /// prépare n'a pas à être public.
+  exposedToClient Boolean @default(false)
+
+  updatedById String?
+  updatedBy   User?    @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([enabled])
+  @@map("touma_feature_flags")
+}
+
 model ToumaAccountDeletionRequest {
   id     String @id @default(cuid())
   userId String

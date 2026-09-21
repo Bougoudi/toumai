@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import { featureFlagService } from './admin/feature-flags.service.js';
 import { prisma } from '../db/prisma.js';
 import { asyncHandler } from '../middleware/validate.js';
 import { env } from '../config/env.js';
 import { readiness } from './health.js';
+import { optionalAuth } from './middleware/toumaAuth.js';
 import { toumaAuthRouter } from './auth/auth.routes.js';
 import { categoryRouter } from './catalog/category.routes.js';
 import { countryRouter } from './catalog/country.routes.js';
@@ -121,6 +123,26 @@ toumaV1Router.get('/', (_req, res) =>
  * répond 503 tant qu'une dépendance requise manque — c'est la différence entre
  * « je réponds » et « je peux servir ».
  */
+/**
+ * Drapeaux lisibles par le navigateur (V25 §28).
+ *
+ * Seuls ceux marqués comme exposables : un drapeau dit ce qui se prépare, et
+ * tout ce qui se prépare n'a pas à être public. Le motif d'une décision n'est
+ * pas rendu non plus — il décrirait le ciblage à qui n'y a pas droit.
+ */
+toumaV1Router.get(
+  '/features',
+  optionalAuth,
+  asyncHandler(async (req, res) => {
+    res.json({
+      features: await featureFlagService.forClient({
+        userId: req.toumaUser?.id ?? null,
+        countryCode: typeof req.query.country === 'string' ? req.query.country.toUpperCase() : null,
+      }),
+    });
+  }),
+);
+
 toumaV1Router.get('/health', (_req, res) => res.json({ status: 'ok', service: 'touma', version: 'v1' }));
 
 toumaV1Router.get(
