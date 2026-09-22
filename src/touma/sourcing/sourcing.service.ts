@@ -3,6 +3,7 @@ import { prisma } from '../../db/prisma.js';
 import { notFound } from '../lib/errors.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import { reputationService } from '../reputation/reputation.service.js';
+import { AVERTISSEMENT, raisons, scorePertinence } from './matching.js';
 
 /**
  * SOURCING FOURNISSEURS.
@@ -194,10 +195,44 @@ export async function searchSuppliers(query: SourcingQuery) {
     });
     for (const r of rows) trustScores.set(r.entityId, r.score);
   }
-  const withTrust = items.map((i) => ({
-    ...i,
-    trustScore: trustScores.get(proprietaireParBoutique.get(i.store.id) ?? '') ?? null,
-  }));
+  const withTrust = items.map((i) => {
+    const trustScore = trustScores.get(proprietaireParBoutique.get(i.store.id) ?? '') ?? null;
+    const observe = {
+      countryCode: i.store.countryCode,
+      verified: i.store.verified,
+      matchingProducts: i.matchingProducts,
+      capacity: i.capacity,
+      servesDestination: i.servesDestination,
+      servesRequestedQuantity: i.servesRequestedQuantity,
+      servedCountries: i.servedCountries,
+      reputationScore: i.reputationScore,
+      trustScore,
+      minOrderQty: i.minOrderQty,
+    };
+    return {
+      ...i,
+      trustScore,
+      /**
+       * Pourquoi ce fournisseur est là, et ce qui a pesé (§4).
+       *
+       * Sans cela, l'acheteur recevait une liste ordonnée sans savoir ce qui
+       * décidait de l'ordre — une garantie implicite que rien ne permettait de
+       * contester.
+       */
+      matchReasons: raisons({
+        demande: {
+          q: query.q,
+          category: query.category,
+          country: query.country,
+          destination: query.destination,
+          minQuantity: query.minQuantity,
+          verifiedOnly: query.verifiedOnly,
+        },
+        observe,
+      }),
+      relevanceScore: Number(scorePertinence(observe).toFixed(3)),
+    };
+  });
 
   // Tri final sur les agrégats calculés ci-dessus.
   const sorted = [...withTrust].sort((a, b) => {
@@ -216,16 +251,14 @@ export async function searchSuppliers(query: SourcingQuery) {
     // La confiance y entre pour un point au plus. Volontairement peu : un
     // fournisseur qui livre réellement là où l'acheteur veut être livré lui est
     // plus utile qu'un fournisseur mieux noté qui ne dessert pas sa province.
-    const score = (x: (typeof withTrust)[number]) =>
-      (x.servesDestination === true ? 4 : 0) +
-      (x.servesRequestedQuantity === true ? 3 : 0) +
-      (x.store.verified ? 2 : 0) +
-      (x.reputationScore ?? 0) / 100 +
-      (x.trustScore ?? 0) / 100;
-    return score(b) - score(a);
+    //
+    // Le score est **celui qui a été publié avec chaque résultat**. Recalculer
+    // ici avec des poids écrits à la main les ferait diverger, et les raisons
+    // affichées finiraient par expliquer un classement qu'on n'applique plus.
+    return b.relevanceScore - a.relevanceScore;
   });
 
-  return paginated(sorted, total, page);
+  return { ...paginated(sorted, total, page), disclaimer: AVERTISSEMENT };
 }
 
 /** Fiche fournisseur : ce qu'il vend, ce qu'il a livré, comment il se comporte. */
