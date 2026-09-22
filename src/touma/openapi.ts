@@ -376,6 +376,13 @@ export function toumaOpenApiDocument() {
       '/features': { get: op('Catalogue', 'Drapeaux de fonctionnalité exposés au navigateur', { auth: false, query: ['country'] }) },
       '/admin/feature-flags': { get: op('Administration', 'Drapeaux de fonctionnalité (ADMIN_SYSTEM)', { role: 'ADMIN' }) },
       '/admin/feature-flags/{key}': { put: op('Administration', 'Définir un drapeau (ADMIN_SYSTEM)', { role: 'ADMIN', params: ['key'], body: true }) },
+      '/admin/incidents': {
+        get: op('Administration', 'Incidents d’exploitation (ADMIN_SYSTEM)', { role: 'ADMIN', query: ['status', 'severity'] }),
+        post: op('Administration', 'Ouvrir un incident (ADMIN_SYSTEM)', { role: 'ADMIN', body: true }),
+      },
+      '/admin/incidents/{id}': { get: op('Administration', 'Un incident et sa chronologie (ADMIN_SYSTEM)', { role: 'ADMIN', params: ['id'] }) },
+      '/admin/incidents/{id}/events': { post: op('Administration', 'Ajouter une ligne à la chronologie (ADMIN_SYSTEM)', { role: 'ADMIN', params: ['id'], body: true }) },
+      '/admin/incidents/{id}/status': { post: op('Administration', 'Changer l’état d’un incident (ADMIN_SYSTEM)', { role: 'ADMIN', params: ['id'], body: true }) },
       '/admin/operations': { get: op('Administration', 'Centre d’opérations : santé réelle des services (ADMIN_SYSTEM)', { role: 'ADMIN' }) },
       '/admin/data-integrity': { get: op('Administration', 'Contrôles d’intégrité des données (ADMIN_SYSTEM)', { role: 'ADMIN' }) },
       '/admin/data-integrity/catalogue': { get: op('Administration', 'Invariants contrôlés (ADMIN_SYSTEM)', { role: 'ADMIN' }) },

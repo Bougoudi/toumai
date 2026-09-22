@@ -5,6 +5,7 @@ import { estSimulation } from '../trade/corridor.service.js';
 import { fxService } from '../trade/fx.service.js';
 import { providerStatus as providerStatusIa } from '../ai/registry.js';
 import { integrityService } from './integrity.service.js';
+import { incidentService } from './incident.service.js';
 import { PERMISSIONS_ADMIN } from './permissions.js';
 
 /**
@@ -57,12 +58,13 @@ async function transporteurs(): Promise<LigneService> {
 
 export const operationsService = {
   async overview() {
-    const [sondes, integrite, transport, admins, demandesSuppression] = await Promise.all([
+    const [sondes, integrite, transport, admins, demandesSuppression, incidents] = await Promise.all([
       readiness(),
       integrityService.run(),
       transporteurs(),
       prisma.user.count({ where: { toumaRole: 'ADMIN', adminScoped: false, status: 'ACTIVE' } }),
       prisma.toumaAccountDeletionRequest.count({ where: { status: 'PENDING' } }),
+      incidentService.ouverts(),
     ]);
 
     const etatIa = providerStatusIa();
@@ -214,6 +216,12 @@ export const operationsService = {
       },
       security: securite,
       privacy: { pendingDeletions: demandesSuppression },
+      /**
+       * Incidents ouverts. Tenus à la main : ce compteur ne dit pas ce qui va
+       * mal, il dit ce que quelqu'un a écrit. Le confondre avec une détection
+       * ferait lire « zéro incident » comme « tout va bien ».
+       */
+      incidents: { ...incidents, note: 'Ouverts à la main : aucune alerte n’existe. Zéro incident ne veut pas dire zéro problème.' },
       note:
         'Chaque ligne vient d’une sonde exécutée à l’instant ou d’un état lu en base. ' +
         'Ce qui n’est pas mesuré est marqué NON_INSTRUMENTE plutôt que rendu en vert.',

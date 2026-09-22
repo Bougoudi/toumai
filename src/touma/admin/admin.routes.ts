@@ -3,6 +3,7 @@ import { estPermission, LIBELLES_PERMISSION, PERMISSIONS_ADMIN, requirePermissio
 import { integrityService } from './integrity.service.js';
 import { operationsService } from './operations.service.js';
 import { featureFlagService } from './feature-flags.service.js';
+import { incidentService } from './incident.service.js';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { asyncHandler, parseBody } from '../../middleware/validate.js';
@@ -514,6 +515,79 @@ adminRouter.put(
       after: { enabled: apres.enabled, rolloutPercent: apres.rolloutPercent },
     });
     res.json(apres);
+  }),
+);
+
+/**
+ * Incidents d'exploitation (V25 §48).
+ *
+ * Ouverts **à la main** : aucune alerte n'existe sur cette installation, et un
+ * incident ouvert par une machine que personne ne lit ne sert à rien.
+ */
+const incidentSchema = z.object({
+  title: z.string().trim().min(5).max(200),
+  severity: z.enum(['P0', 'P1', 'P2', 'P3']),
+  impact: z.string().trim().max(1000).optional(),
+  component: z.string().trim().max(60).optional(),
+  ownerId: z.string().cuid().optional(),
+});
+
+const evenementSchema = z.object({
+  kind: z.enum(['OBSERVATION', 'ACTION', 'COMMUNICATION']),
+  note: z.string().trim().min(3).max(2000),
+});
+
+const transitionSchema = z.object({
+  status: z.enum(['OPEN', 'INVESTIGATING', 'MITIGATED', 'RESOLVED', 'CLOSED']),
+  note: z.string().trim().min(3).max(2000),
+  rootCause: z.string().trim().max(2000).optional(),
+  resolution: z.string().trim().max(2000).optional(),
+});
+
+adminRouter.get(
+  '/incidents',
+  requirePermission('ADMIN_SYSTEM'),
+  asyncHandler(async (req, res) => {
+    const status = typeof req.query.status === 'string' ? (req.query.status as any) : undefined;
+    const severity = typeof req.query.severity === 'string' ? (req.query.severity as any) : undefined;
+    res.json(await incidentService.list({ status, severity }));
+  }),
+);
+
+adminRouter.post(
+  '/incidents',
+  requirePermission('ADMIN_SYSTEM'),
+  asyncHandler(async (req, res) => {
+    const input = parseBody(incidentSchema, req);
+    const incident = await incidentService.open(input, currentUser(req).id);
+    await auditRequest(req, 'admin.incident.opened', 'ToumaIncident', incident.id, { reference: incident.reference, severity: incident.severity });
+    res.status(201).json(incident);
+  }),
+);
+
+adminRouter.get(
+  '/incidents/:id',
+  requirePermission('ADMIN_SYSTEM'),
+  asyncHandler(async (req, res) => res.json(await incidentService.get(req.params.id))),
+);
+
+adminRouter.post(
+  '/incidents/:id/events',
+  requirePermission('ADMIN_SYSTEM'),
+  asyncHandler(async (req, res) => {
+    const input = parseBody(evenementSchema, req);
+    res.status(201).json(await incidentService.addEvent(req.params.id, input, currentUser(req).id));
+  }),
+);
+
+adminRouter.post(
+  '/incidents/:id/status',
+  requirePermission('ADMIN_SYSTEM'),
+  asyncHandler(async (req, res) => {
+    const input = parseBody(transitionSchema, req);
+    const incident = await incidentService.transition(req.params.id, input, currentUser(req).id);
+    await auditRequest(req, 'admin.incident.status', 'ToumaIncident', incident.id, { reference: incident.reference, status: incident.status });
+    res.json(incident);
   }),
 );
 

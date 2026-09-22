@@ -308,6 +308,11 @@ model User {
   deletionRequests       ToumaAccountDeletionRequest[]
   /// Drapeaux de fonctionnalité modifiés par ce compte (V25 §28).
   featureFlagChanges     ToumaFeatureFlag[]
+
+  /// Incidents d'exploitation (V25 §48).
+  incidentsOwned  ToumaIncident[]      @relation("IncidentOwner")
+  incidentsOpened ToumaIncident[]      @relation("IncidentOpener")
+  incidentEvents  ToumaIncidentEvent[]
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -2642,6 +2647,112 @@ model ToumaNotification {
 /// raccordé reste éteint quoi qu'il arrive. Un drapeau ne rallume jamais ce que
 /// l'environnement a éteint ; il décide, parmi ce qui est possible, **qui le
 /// voit**.
+/// Incident d'exploitation (V25 §48).
+///
+/// Un incident est **tenu à la main**. Rien ne l'ouvre automatiquement, et
+/// c'est délibéré : aucune alerte n'existe sur cette installation, et un
+/// incident ouvert par une machine que personne ne lit ne sert à rien. Ce
+/// modèle sert à ce qu'une astreinte écrive ce qu'elle constate pendant
+/// qu'elle le constate — l'exercice que personne ne refait après coup.
+model ToumaIncident {
+  id        String           @id @default(cuid())
+  /// Référence lisible : `INC-2026-0001`.
+  reference String           @unique
+  title     String
+  severity  IncidentSeverity
+  status    IncidentStatus   @default(OPEN)
+
+  /// Ce qui est cassé, du point de vue de ceux qui l'subissent.
+  impact String?
+
+  /// Composant touché : `postgres`, `paiement`, `transport`, `ia`…
+  component String?
+
+  /// Qui tient l'incident. Un incident sans responsable n'avance pas.
+  ownerId String?
+  owner   User?   @relation("IncidentOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  openedById String?
+  openedBy   User?   @relation("IncidentOpener", fields: [openedById], references: [id], onDelete: SetNull)
+
+  /// Cause établie. Nulle tant qu'elle ne l'est pas — « probablement » n'y a
+  /// pas sa place.
+  rootCause  String?
+  /// Ce qui a rétabli le service, qui n'est pas toujours la correction.
+  resolution String?
+
+  detectedAt  DateTime  @default(now())
+  mitigatedAt DateTime?
+  resolvedAt  DateTime?
+  closedAt    DateTime?
+
+  events ToumaIncidentEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, severity])
+  @@index([detectedAt])
+  @@map("touma_incidents")
+}
+
+/// Une ligne de chronologie. **Jamais modifiée ni supprimée.**
+///
+/// Un compte rendu d'incident ne vaut que si la chronologie n'a pas été
+/// réécrite après coup, quand on sait déjà comment l'histoire finit.
+model ToumaIncidentEvent {
+  id         String        @id @default(cuid())
+  incidentId String
+  incident   ToumaIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  kind IncidentEventKind
+
+  /// Ce qui a été constaté ou fait, écrit par quelqu'un.
+  note String
+
+  /// Changement d'état porté par cette ligne, le cas échéant.
+  fromStatus IncidentStatus?
+  toStatus   IncidentStatus?
+
+  actorId String?
+  actor   User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([incidentId, createdAt])
+  @@map("touma_incident_events")
+}
+
+enum IncidentSeverity {
+  /// Service inutilisable, ou argent en jeu.
+  P0
+  /// Fonction majeure cassée, contournement pénible.
+  P1
+  /// Gêne réelle, contournement acceptable.
+  P2
+  /// À traiter, sans urgence.
+  P3
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  MITIGATED
+  RESOLVED
+  CLOSED
+}
+
+enum IncidentEventKind {
+  /// Ce qu'on voit.
+  OBSERVATION
+  /// Ce qu'on fait.
+  ACTION
+  /// Changement d'état.
+  STATUS
+  /// Ce qu'on dit à l'extérieur.
+  COMMUNICATION
+}
+
 model ToumaFeatureFlag {
   id  String @id @default(cuid())
   /// Identifiant stable employé dans le code : `ai_chat`, `trade_td_cm`.
