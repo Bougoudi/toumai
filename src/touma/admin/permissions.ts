@@ -25,6 +25,9 @@ export const PERMISSIONS_ADMIN = [
   'ADMIN_AI',
   'ADMIN_MARKETING',
   'ADMIN_SYSTEM',
+  // V26 : ouvrir ou fermer un marché n'est pas une tâche d'exploitation
+  // ordinaire. C'est une décision commerciale, et elle a sa propre permission.
+  'ADMIN_COUNTRIES',
 ] as const;
 
 export type PermissionAdmin = (typeof PERMISSIONS_ADMIN)[number];
@@ -40,6 +43,7 @@ export const LIBELLES_PERMISSION: Record<PermissionAdmin, string> = {
   ADMIN_AI: 'Assistance IA : prestataires, invites, journaux',
   ADMIN_MARKETING: 'Croissance : promotions, fidélité, campagnes',
   ADMIN_SYSTEM: 'Exploitation : configuration, permissions, intégrité des données',
+  ADMIN_COUNTRIES: 'Marchés : configuration pays, contrôle de préparation, ouverture et suspension',
 };
 
 export function estPermission(valeur: string): valeur is PermissionAdmin {

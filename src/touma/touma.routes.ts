@@ -7,7 +7,6 @@ import { readiness } from './health.js';
 import { optionalAuth } from './middleware/toumaAuth.js';
 import { toumaAuthRouter } from './auth/auth.routes.js';
 import { categoryRouter } from './catalog/category.routes.js';
-import { countryRouter } from './catalog/country.routes.js';
 import { productRouter } from './catalog/product.routes.js';
 import { cartRouter } from './cart/cart.routes.js';
 import { checkoutRouter, orderRouter } from './orders/order.routes.js';
@@ -38,6 +37,7 @@ import { adminTrustRouter, trustRouter } from './trust/trust.routes.js';
 import { adminGrowthRouter, growthRouter, referralRouter, sellerGrowthRouter } from './growth/growth.routes.js';
 import { sourcingRouter } from './sourcing/sourcing.routes.js';
 import { adminTradeRouter, businessTradeRouter, sellerTradeRouter, tradeRouter } from './trade/trade.routes.js';
+import { adminCountriesRouter, countriesRouter, marketsRouter } from './platform/country.routes.js';
 
 /**
  * API TOUMA v1 — place de marché.
@@ -154,7 +154,6 @@ toumaV1Router.get(
 );
 
 toumaV1Router.use('/auth', toumaAuthRouter);
-toumaV1Router.use('/countries', countryRouter);
 toumaV1Router.use('/categories', categoryRouter);
 toumaV1Router.use('/geo', geoRouter);
 toumaV1Router.use('/admin/geo', adminGeoRouter);
@@ -205,9 +204,15 @@ toumaV1Router.use('/sourcing', sourcingRouter);
 // Touma Trade (V24). La lecture des corridors est publique : un acheteur doit
 // pouvoir savoir si Touma dessert son pays avant de créer un compte.
 toumaV1Router.use('/trade', tradeRouter);
+// Marchés : lecture publique, écriture réservée (V26 §75). Remplace l'ancien
+// routeur pays, qui rendait la table telle quelle sans dire ce qu'un marché
+// autorise réellement.
+toumaV1Router.use('/countries', countriesRouter);
+toumaV1Router.use('/markets', marketsRouter);
 toumaV1Router.use('/seller/trade', sellerTradeRouter);
 toumaV1Router.use('/business/trade', businessTradeRouter);
 toumaV1Router.use('/admin/trade', adminTradeRouter);
+toumaV1Router.use('/admin/countries', adminCountriesRouter);
 toumaV1Router.use('/admin', adminRouter);
 
 /** Recherche transverse (produits + boutiques) pour la barre de recherche. */

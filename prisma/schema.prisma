@@ -310,9 +310,10 @@ model User {
   featureFlagChanges     ToumaFeatureFlag[]
 
   /// Incidents d'exploitation (V25 §48).
-  incidentsOwned  ToumaIncident[]      @relation("IncidentOwner")
-  incidentsOpened ToumaIncident[]      @relation("IncidentOpener")
-  incidentEvents  ToumaIncidentEvent[]
+  incidentsOwned       ToumaIncident[]            @relation("IncidentOwner")
+  incidentsOpened      ToumaIncident[]            @relation("IncidentOpener")
+  incidentEvents       ToumaIncidentEvent[]
+  countryStatusChanges ToumaCountryStatusChange[] @relation("CountryStatusChangedBy")
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -1352,21 +1353,61 @@ enum DocumentIssuer {
 
 /// Pays desservi par Touma. Le corridor pilote (TD, CM) est une simple donnée :
 /// ouvrir un nouveau marché = insérer une ligne, sans toucher au code.
+/// Cycle de vie d'un marché (V26 §2, §3).
+///
+/// Trois booléens tenaient lieu d'état : `active`, `buyingEnabled`,
+/// `sellingEnabled`. Ils disent ce qui est *ouvert*, jamais où en est le
+/// marché — et surtout, rien n'empêchait de passer `active` à vrai sans la
+/// moindre dépendance configurée. Le Cameroun était dans ce cas : déclaré
+/// actif, aucune géographie, aucun transporteur réel. C'est précisément le
+/// « faux pays » que §79 interdit, et il était déjà dans le seed.
+///
+/// L'ordre compte : une activation ne saute pas d'étape.
+enum CountryStatus {
+  /// Le marché est envisagé. Rien n'est configuré.
+  PLANNED
+  /// Configuration en cours : devise, langues, géographie, prestataires.
+  CONFIGURING
+  /// Configuré, en cours de vérification technique.
+  TESTING
+  /// Ouvert à un volume limité, sous surveillance.
+  PILOT
+  /// Ouvert.
+  ACTIVE
+  /// Ouvert avec restrictions — un service au moins est indisponible.
+  LIMITED
+  /// Fermé aux nouvelles transactions. L'historique reste lisible et les
+  /// commandes en cours continuent d'être traitées (§45).
+  SUSPENDED
+  /// Marché abandonné. Conservé pour l'historique.
+  DEPRECATED
+}
+
 model Country {
   /// ISO-3166-1 alpha-2 (TD, CM, NG, CI…).
-  code           String  @id
+  code           String        @id
   name           String
+  /// Nom du pays dans sa langue principale. Nul quand on ne le sait pas :
+  /// une translittération inventée vaut moins qu'une absence.
+  nativeName     String?
   /// Devise par défaut du pays (ISO-4217, ex. XAF).
   currency       String
   /// Indicatif téléphonique international (ex. +235).
-  dialCode       String  @default("")
+  dialCode       String        @default("")
   /// Fuseau horaire IANA (ex. Africa/Ndjamena). Une date de livraison affichée
   /// dans le fuseau du serveur est fausse pour celui qui attend le colis.
-  timezone       String  @default("UTC")
+  timezone       String        @default("UTC")
+  /// Où en est ce marché. `PLANNED` par défaut : un pays n'est jamais ouvert
+  /// parce qu'on a inséré sa ligne.
+  status         CountryStatus @default(PLANNED)
   /// Le pays accepte-t-il les commandes / les vendeurs ?
-  buyingEnabled  Boolean @default(true)
-  sellingEnabled Boolean @default(true)
-  active         Boolean @default(true)
+  ///
+  /// Ces interrupteurs restent, et ne font pas double emploi avec `status` :
+  /// ils portent §46 — un marché ouvert dont un service est suspendu. Le
+  /// statut dit où en est le pays, ceux-ci ce qui est ouvert aujourd'hui.
+  buyingEnabled  Boolean       @default(true)
+  sellingEnabled Boolean       @default(true)
+  active         Boolean       @default(true)
 
   users     User[]
   stores    ToumaStore[]
@@ -1377,6 +1418,12 @@ model Country {
   /// Configuration **commerciale** du pays (V24). Distincte de son identité :
   /// un pays peut exister sans commercer.
   tradeConfig ToumaTradeCountryConfig?
+
+  /// Journal des changements de statut (V26 §44) : qui a activé quoi, quand,
+  /// et sur la foi de quel contrôle de préparation.
+  statusChanges  ToumaCountryStatusChange[]
+  /// Niveaux administratifs de ce pays (V26 §7).
+  divisionLevels ToumaCountryDivisionLevel[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -5676,4 +5723,71 @@ model ToumaTradeShipmentException {
   @@index([tradeOrderId, raisedAt])
   @@index([kind])
   @@map("touma_trade_shipment_exceptions")
+}
+
+// ── Plateforme multi-pays (V26) ──────────────────────────────────────────────
+
+/// Changement de statut d'un marché.
+///
+/// Une activation n'est pas un `UPDATE` : c'est une décision. Qui l'a prise,
+/// quand, depuis quel état, et ce que disait le contrôle de préparation à cet
+/// instant. Sans cette trace, « pourquoi le Cameroun est-il passé actif ? »
+/// n'a pas de réponse (§44, et V25 §84 : jamais de modification sans trace).
+model ToumaCountryStatusChange {
+  id          String        @id @default(cuid())
+  countryCode String
+  country     Country       @relation(fields: [countryCode], references: [code], onDelete: Cascade)
+  fromStatus  CountryStatus
+  toStatus    CountryStatus
+  /// Motif écrit par l'administrateur. Obligatoire : une activation sans
+  /// justification est une activation qu'on ne saura pas relire.
+  reason      String
+  /// Instantané du contrôle de préparation au moment de la décision. Recalculer
+  /// plus tard donnerait l'état du jour, pas celui sur lequel on a décidé.
+  readiness   Json?
+  changedById String?
+  changedBy   User?         @relation("CountryStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([countryCode, createdAt])
+  @@map("touma_country_status_changes")
+}
+
+/// Un niveau administratif, tel que ce pays le nomme (§7).
+///
+/// La hiérarchie stockée (province → département → sous-préfecture →
+/// localité) est celle des découpages ADM1/ADM2/ADM3 des Nations unies : elle
+/// convient à la quasi-totalité des pays africains. Ce qui ne convient pas,
+/// ce sont les **noms** : « province » se dit « région » au Cameroun, et
+/// « sous-préfecture » y est un « arrondissement ». Afficher un vocabulaire
+/// tchadien à un Camerounais, c'est lui dire que ce marché n'est pas le sien.
+///
+/// Cette table nomme donc les niveaux par pays au lieu de renommer les tables.
+/// Le choix est délibéré : remplacer la hiérarchie par un modèle générique
+/// `AdministrativeDivision` aurait touché dix tables et toutes les adresses du
+/// Tchad, pour un gain nul — les rattachements sont déjà tous facultatifs, un
+/// pays qui n'a que deux niveaux en laisse simplement deux vides.
+model ToumaCountryDivisionLevel {
+  id          String  @id @default(cuid())
+  countryCode String
+  country     Country @relation(fields: [countryCode], references: [code], onDelete: Cascade)
+  /// 1 = ADM1 (province/région), 2 = ADM2 (département), 3 = ADM3, 4 = localité.
+  level       Int
+  /// Nom du niveau au singulier, dans la langue par défaut du pays.
+  name        String
+  /// Nom au pluriel — « des régions », pas « des régions(s) ».
+  namePlural  String
+  /// Nom arabe, quand le pays a l'arabe parmi ses langues.
+  nameAr      String?
+  /// Ce pays utilise-t-il ce niveau ? Un pays à deux niveaux met les autres à
+  /// faux plutôt que d'inventer un découpage.
+  used        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([countryCode, level])
+  @@index([countryCode])
+  @@map("touma_country_division_levels")
 }

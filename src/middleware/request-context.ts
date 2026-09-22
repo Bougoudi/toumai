@@ -30,6 +30,18 @@ export interface RequestContext {
   userId?: string;
   /** Gabarit de route (`/api/v1/products/:id`), jamais l'URL réelle. */
   route?: string;
+  /**
+   * Marché du lecteur : son pays, son fuseau, sa langue (V26 §18, §19).
+   *
+   * Portés ici pour la même raison que l'identifiant de requête — les rendre
+   * disponibles au fond du code métier sans changer une seule signature. Une
+   * date affichée dans le fuseau du serveur est fausse pour celui qui attend
+   * le colis, et faire descendre le fuseau de main en main jusqu'au composeur
+   * de réponses aurait demandé de modifier des dizaines de fonctions pures.
+   */
+  countryCode?: string;
+  timezone?: string;
+  locale?: string;
 }
 
 const stockage = new AsyncLocalStorage<RequestContext>();
@@ -37,6 +49,22 @@ const stockage = new AsyncLocalStorage<RequestContext>();
 /** Contexte de la requête en cours, s'il y en a une. */
 export function contexteCourant(): RequestContext | undefined {
   return stockage.getStore();
+}
+
+/**
+ * Fuseau du lecteur, ou `UTC`.
+ *
+ * `UTC` n'est pas un défaut confortable : c'est l'aveu qu'on ne sait pas d'où
+ * lit la personne. Il vaut mieux que l'ancien comportement, qui rendait
+ * l'heure du serveur en la faisant passer pour l'heure locale.
+ */
+export function fuseauCourant(): string {
+  return stockage.getStore()?.timezone ?? 'UTC';
+}
+
+/** Étiquette de langue du lecteur, ou le français. */
+export function localeCourante(): string {
+  return stockage.getStore()?.locale ?? 'fr-FR';
 }
 
 /** Identifiant de la requête en cours, ou `null` hors requête. */

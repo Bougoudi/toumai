@@ -79,7 +79,6 @@ export function toumaOpenApiDocument() {
       '/auth/me/sessions': { get: op('Auth', 'Sessions actives de mon compte', { query: ['refreshToken'] }) },
       '/auth/me/sessions/{id}/revoke': { post: op('Auth', 'Révoquer une session', { params: ['id'] }) },
       '/auth/me/addresses': { get: op('Auth', 'Carnet d’adresses'), post: op('Auth', 'Ajouter une adresse', { body: true }) },
-      '/countries': { get: op('Catalogue', 'Pays desservis', { auth: false }) },
       '/categories': {
         get: op('Catalogue', 'Catégories', { auth: false }),
         post: op('Catalogue', 'Créer une catégorie', { body: true, role: 'ADMIN' }),
@@ -398,7 +397,6 @@ export function toumaOpenApiDocument() {
 
       // ── Catalogue ───────────────────────────────────────────────────────
       '/categories/{slug}': { get: op('Catalogue', 'Fiche catégorie', { auth: false, params: ['slug'] }) },
-      '/countries/{code}': { get: op('Catalogue', 'Fiche pays', { auth: false, params: ['code'] }) },
       '/stores/mine': { get: op('Vendeur', 'Mes boutiques', { role: 'SELLER' }) },
       '/products/{id}/paliers': {
         get: op('Catalogue', 'Grille de paliers B2B', { auth: false, params: ['id'] }),
@@ -454,6 +452,22 @@ export function toumaOpenApiDocument() {
       '/ai/provider': { get: op('Touma AI', 'Adaptateur d’IA actif', { auth: false }) },
 
       // ── Touma Trade (V24) ──────────────────────────────────────────────────
+      // ── Marchés (V26) ──────────────────────────────────────────────────
+      // Lecture publique : savoir que TOUMA ne livre pas encore dans un pays
+      // ne doit pas demander d'y créer un compte.
+      '/countries': { get: op('Marchés', 'Marchés ouverts à l’achat ou à la vente ; `?all=true` pour le référentiel complet : un pays n’accepte de transactions qu’en PILOT, ACTIVE ou LIMITED', { auth: false }) },
+      '/countries/{code}': { get: op('Marchés', 'Un marché : devise, fuseau, langues et noms de ses niveaux administratifs', { auth: false, params: ['code'] }) },
+      '/countries/{code}/readiness': { get: op('Marchés', 'Verdict de préparation d’un marché et domaines bloquants, sans le détail des prestataires', { auth: false, params: ['code'] }) },
+      '/markets': { get: op('Marchés', 'Marchés réellement ouverts à l’achat ou à la vente', { auth: false }) },
+      '/markets/{country}': { get: op('Marchés', 'Ce qu’un marché autorise aujourd’hui', { auth: false, params: ['country'] }) },
+      '/admin/countries': { get: op('Marchés', 'Tous les marchés, configuration comprise', { role: 'ADMIN' }) },
+      '/admin/countries/{code}': {
+        get: op('Marchés', 'Un marché, ses niveaux administratifs et l’historique de ses changements de statut', { role: 'ADMIN', params: ['code'] }),
+        patch: op('Marchés', 'Modifier la configuration d’un marché', { role: 'ADMIN', params: ['code'], body: true }),
+      },
+      '/admin/countries/{code}/readiness': { post: op('Marchés', 'Contrôle de préparation complet : chaque domaine, son état réel et son motif', { role: 'ADMIN', params: ['code'] }) },
+      '/admin/countries/{code}/status': { post: op('Marchés', 'Changer le statut d’un marché — refusé si une dépendance bloquante manque, toujours motivé et tracé', { role: 'ADMIN', params: ['code'], body: true }) },
+
       '/trade': { get: op('Touma Trade', 'État du commerce transfrontalier : corridors configurés et réellement opérationnels', { auth: false }) },
       '/trade/countries': { get: op('Touma Trade', 'Configuration commerciale des pays', { auth: false }) },
       '/trade/corridors': { get: op('Touma Trade', 'Corridors, avec statut déclaré **et** capacité réelle', { auth: false }) },

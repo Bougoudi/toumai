@@ -8,6 +8,7 @@
  * ⚠️ Comptes de démonstration : mots de passe volontairement explicites, à
  * n'utiliser qu'en développement. Aucun secret réel n'est présent ici.
  */
+import { PAYS, chargerPays } from './seeds/countries/index.js';
 import { existsSync } from 'node:fs';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../src/db/prisma.js';
@@ -19,17 +20,11 @@ const DEV_PASSWORD = 'touma-dev-1234';
 
 // Le fuseau compte : une date de livraison rendue dans le fuseau du serveur est
 // fausse pour celui qui attend le colis.
-const COUNTRIES = [
-  { code: 'TD', name: 'Tchad', currency: 'XAF', dialCode: '+235', timezone: 'Africa/Ndjamena', active: true },
-  { code: 'CM', name: 'Cameroun', currency: 'XAF', dialCode: '+237', timezone: 'Africa/Douala', active: true },
-  // Marchés suivants : présents dans le référentiel, désactivés tant que le
-  // corridor pilote n'est pas validé.
-  { code: 'NG', name: 'Nigeria', currency: 'NGN', dialCode: '+234', timezone: 'Africa/Lagos', active: false },
-  { code: 'CI', name: "Côte d'Ivoire", currency: 'XOF', dialCode: '+225', timezone: 'Africa/Abidjan', active: false },
-  { code: 'SN', name: 'Sénégal', currency: 'XOF', dialCode: '+221', timezone: 'Africa/Dakar', active: false },
-  { code: 'GH', name: 'Ghana', currency: 'GHS', dialCode: '+233', timezone: 'Africa/Accra', active: false },
-  { code: 'KE', name: 'Kenya', currency: 'KES', dialCode: '+254', timezone: 'Africa/Nairobi', active: false },
-];
+/**
+ * Le référentiel des pays vit dans `prisma/seeds/countries/` — un fichier par
+ * marché (V26 §9). Ajouter le Sénégal consiste à écrire un descripteur, pas à
+ * retrouver sept endroits de ce fichier où le Tchad est mentionné.
+ */
 
 const CATEGORIES = [
   { name: 'Matières premières & agroalimentaire', segment: 'B2B' },
@@ -234,13 +229,8 @@ async function seedProducts(storeId: string, countryCode: string, currency: stri
 
 async function main() {
   console.log('→ [Touma] Référentiel des pays (corridor pilote TD ↔ CM)…');
-  for (const c of COUNTRIES) {
-    await prisma.country.upsert({
-      where: { code: c.code },
-      update: { name: c.name, currency: c.currency, dialCode: c.dialCode, active: c.active, timezone: c.timezone },
-      create: { ...c, buyingEnabled: c.active, sellingEnabled: c.active },
-    });
-  }
+  for (const p of PAYS) await chargerPays(prisma, p);
+  console.log(`   ${PAYS.length} marchés — ${PAYS.filter((p) => p.status === 'ACTIVE').length} ouvert(s), le reste en configuration ou référencé.`);
 
   console.log('→ [Touma] Géographie administrative du Tchad (source GeoNames, CC BY 4.0)…');
   if (existsSync(geographyDatasetPath())) {
@@ -329,6 +319,39 @@ async function main() {
         contactPhone: '+237690000003',
         contactEmail: 'vendeur.cm@touma.dev',
         documents: [{ kind: 'registre_commerce', url: 'private://demo/rc.pdf', uploadedAt: new Date().toISOString() }] as object,
+      },
+    });
+  }
+
+  console.log('→ [Touma] Corridors du commerce transfrontalier…');
+  // Le corridor pilote n'était **dans aucun seed**. Il n'existait que dans les
+  // tests, et une installation neuve n'avait donc aucun corridor : la page
+  // publique /trade était vide, alors que l'en-tête de ce fichier annonce
+  // « corridor pilote TD ↔ CM » depuis le début.
+  //
+  // Il est créé en COMING_SOON, jamais en ACTIVE. Un corridor n'est opérationnel
+  // que si un moyen de paiement et un transporteur le couvrent réellement des
+  // deux côtés (V24 §72) — ce qui n'est le cas ni dans un sens ni dans l'autre
+  // tant qu'aucun transporteur réel n'est raccordé. Le déclarer ouvert ici
+  // ferait exactement ce que §79 interdit.
+  for (const [origine, destination] of [
+    ['TD', 'CM'],
+    ['CM', 'TD'],
+  ]) {
+    const code = `${origine}_${destination}`;
+    await prisma.toumaTradeCorridor.upsert({
+      where: { code },
+      update: {},
+      create: {
+        code,
+        originCountry: origine,
+        destinationCountry: destination,
+        status: 'COMING_SOON',
+        supportedCurrencies: ['XAF'],
+        supportedPaymentMethods: ['MOBILE_MONEY'],
+        supportedShippingMethods: [],
+        requiredDocuments: ['COMMERCIAL_INVOICE', 'PACKING_LIST'],
+        notes: 'Corridor pilote. Annoncé, non opérationnel : aucun transporteur réel ne couvre les deux pays.',
       },
     });
   }

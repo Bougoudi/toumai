@@ -1,6 +1,26 @@
+import { fuseauCourant, localeCourante } from '../../../middleware/request-context.js';
+import { formaterDate } from '../../platform/timezone.service.js';
 import { Prisma } from '@prisma/client';
 import type { ToolCallOutcome } from '../tools/runner.js';
 import type { Intent } from './intent.js';
+
+/**
+ * Rend une date dans le fuseau et la langue du lecteur (V26 §18).
+ *
+ * Auparavant : `new Date(x).toLocaleDateString('fr-FR')`. Sans fuseau, `Intl`
+ * prend celui du processus — UTC en production. Une commande passée à 00h30 à
+ * N'Djamena (UTC+1) est enregistrée à 23h30 UTC la veille : l'assistant
+ * répondait donc « commande du 22 » à quelqu'un qui l'avait passée le 23.
+ * Un jour d'écart sur une date de commande, c'est un litige de livraison qui
+ * commence sur un malentendu.
+ *
+ * Le contexte de requête porte le fuseau du marché du lecteur ; hors requête,
+ * on retombe sur UTC — faux, mais explicite, au lieu de l'heure du serveur
+ * déguisée en heure locale.
+ */
+function dateLecteur(valeur: unknown): string {
+  return formaterDate(String(valeur ?? ''), { timezone: fuseauCourant(), locale: localeCourante() });
+}
 
 /**
  * RÉDACTEUR DE RÉPONSE.
@@ -227,7 +247,7 @@ function confiance(r: ToolCallOutcome[]): Reponse {
     .map((c) => `• ${c.label ?? c.code} : ${c.value}`);
   return {
     text: [
-      `Niveau de confiance : ${d.trust.level} (${d.trust.score}/100), calculé par Touma le ${new Date(d.trust.computedAt).toLocaleDateString('fr-FR')}.`,
+      `Niveau de confiance : ${d.trust.level} (${d.trust.score}/100), calculé par Touma le ${dateLecteur(d.trust.computedAt)}.`,
       d.verified ? 'Cette boutique a passé une vérification Touma.' : 'Cette boutique n’a pas passé de vérification Touma.',
       composantes.length > 0 ? `Ce qui compose ce niveau :\n${composantes.join('\n')}` : '',
       'Ces éléments viennent du moteur de confiance. Je n’en ajoute aucun.',
@@ -254,7 +274,7 @@ function suiviCommande(r: ToolCallOutcome[]): Reponse {
     lignes.push('Aucun événement de suivi n’a encore été enregistré par le transporteur. C’est une absence d’information, pas un retard constaté.');
   } else {
     lignes.push(`Suivi (${evenements.length} événement(s)) :`);
-    lignes.push(evenements.slice(-5).map((e) => `• ${new Date(e.occurredAt ?? e.createdAt).toLocaleDateString('fr-FR')} — ${e.label ?? e.status}${e.location ? ` (${e.location})` : ''}`).join('\n'));
+    lignes.push(evenements.slice(-5).map((e) => `• ${dateLecteur(e.occurredAt ?? e.createdAt)} — ${e.label ?? e.status}${e.location ? ` (${e.location})` : ''}`).join('\n'));
   }
   return { text: lignes.join('\n'), cards: cartes(r), unavailable: evenements.length === 0 ? ['la date de livraison prévue'] : [], suggestions: ['Voir toutes mes commandes', 'Parler à une personne'] };
 }
@@ -263,7 +283,7 @@ function listeCommandes(r: ToolCallOutcome[]): Reponse {
   const d = donnees<{ total: number; items: Array<Record<string, any>> }>(r, 'listMyOrders');
   if (!d || d.items.length === 0) return vide('Vous n’avez aucune commande enregistrée.');
   return {
-    text: [`${d.total} commande(s) à votre compte. Les plus récentes :`, d.items.map((o) => `• ${o.orderNumber} — ${o.status}, ${o.total} ${o.currency}, ${new Date(o.createdAt).toLocaleDateString('fr-FR')}`).join('\n')].join('\n'),
+    text: [`${d.total} commande(s) à votre compte. Les plus récentes :`, d.items.map((o) => `• ${o.orderNumber} — ${o.status}, ${o.total} ${o.currency}, ${dateLecteur(o.createdAt)}`).join('\n')].join('\n'),
     cards: cartes(r),
     unavailable: [],
     suggestions: ['Suivre une commande', 'Racheter un produit habituel'],

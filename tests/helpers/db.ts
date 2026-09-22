@@ -31,17 +31,21 @@ async function ignoreDuplicate(run: () => Promise<unknown>): Promise<void> {
 
 /** Référentiel minimal requis par les tests (corridor pilote). */
 export async function ensureReferenceData(): Promise<void> {
+  // Le statut est posé explicitement (V26) : laisser la valeur par défaut
+  // mettrait ces pays en PLANNED, c'est-à-dire fermerait les marchés dont
+  // toute la suite a besoin. Les tests du cycle de vie travaillent, eux, sur
+  // des pays qu'ils créent pour eux seuls.
   const countries = [
-    { code: 'TD', name: 'Tchad', currency: 'XAF', dialCode: '+235', active: true },
-    { code: 'CM', name: 'Cameroun', currency: 'XAF', dialCode: '+237', active: true },
+    { code: 'TD', name: 'Tchad', currency: 'XAF', dialCode: '+235', timezone: 'Africa/Ndjamena', status: 'ACTIVE' as const, active: true },
+    { code: 'CM', name: 'Cameroun', currency: 'XAF', dialCode: '+237', timezone: 'Africa/Douala', status: 'ACTIVE' as const, active: true },
     // Un pays fermé, pour vérifier que Touma refuse bien d'y vendre ou d'y livrer.
-    { code: 'ZW', name: 'Zimbabwe', currency: 'USD', dialCode: '+263', active: false },
+    { code: 'ZW', name: 'Zimbabwe', currency: 'USD', dialCode: '+263', timezone: 'Africa/Harare', status: 'PLANNED' as const, active: false },
   ];
   for (const c of countries) {
     await ignoreDuplicate(() =>
       prisma.country.upsert({
         where: { code: c.code },
-        update: { active: c.active, buyingEnabled: c.active, sellingEnabled: c.active },
+        update: { status: c.status, timezone: c.timezone, active: c.active, buyingEnabled: c.active, sellingEnabled: c.active },
         create: { ...c, buyingEnabled: c.active, sellingEnabled: c.active },
       }),
     );
