@@ -92,6 +92,8 @@ tradeRouter.get(
         declaredStatus: c.status,
         /** Ce qui fonctionne réellement. Les deux sont rendus, jamais fondus. */
         operational: c.capability.operational,
+        /** Motifs sous forme de codes : traduisibles, et sûrs à interpréter. */
+        blockers: c.capability.blockers,
         missing: c.capability.missing,
         supportedCurrencies: c.supportedCurrencies,
         paymentMethods: c.capability.paymentMethods,
@@ -404,7 +406,13 @@ adminTradeRouter.get(
       prisma.toumaTradeEligibilityCheck.groupBy({ by: ['verdict'], _count: { _all: true } }),
     ]);
     res.json({
-      corridors: corridors.map((c) => ({ code: c.code, declaredStatus: c.status, operational: c.capability.operational, missing: c.capability.missing })),
+      corridors: corridors.map((c) => ({
+        code: c.code,
+        declaredStatus: c.status,
+        operational: c.capability.operational,
+        blockers: c.capability.blockers,
+        missing: c.capability.missing,
+      })),
       tradeOrders: commandes,
       documents,
       openExceptions: incidents,

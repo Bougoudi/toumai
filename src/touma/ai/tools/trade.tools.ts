@@ -63,6 +63,7 @@ registerTool({
           declaredStatus: c.status,
           operational: c.capability.operational,
           missing: c.capability.missing,
+          blockers: c.capability.blockers,
           paymentMethods: c.capability.paymentMethods,
           shippingProviders: c.capability.shippingProviders,
         })),

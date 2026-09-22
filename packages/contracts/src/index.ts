@@ -192,11 +192,40 @@ export interface CorridorCapability {
   declaredStatus: 'ACTIVE' | 'LIMITED' | 'COMING_SOON' | 'SUSPENDED' | 'CLOSED';
   /** Ce qui fonctionne réellement aujourd'hui. */
   operational: boolean;
-  /** Ce qui manque pour que le corridor fonctionne. Vide s'il fonctionne. */
+  /**
+   * Ce qui manque pour que le corridor fonctionne, sous forme de codes. Vide
+   * s'il fonctionne.
+   *
+   * C'est cette liste qu'une interface doit lire : elle est traduisible, et un
+   * client qui décide sur un code ne se casse pas quand une phrase est
+   * reformulée. `missing` reste le rendu français des mêmes motifs.
+   */
+  blockers: CorridorBlocker[];
+  /** Rendu français de `blockers`. À afficher, jamais à interpréter. */
   missing: string[];
   paymentMethods: string[];
   shippingProviders: string[];
   currencies: string[];
+}
+
+/**
+ * Motif pour lequel un corridor ne fonctionne pas.
+ *
+ * `params` porte les valeurs que la phrase intercale — un code pays, la liste
+ * des adaptateurs de simulation enregistrés — et n'est jamais traduit.
+ */
+export interface CorridorBlocker {
+  code:
+    | 'CORRIDOR_NOT_CONFIGURED'
+    | 'ORIGIN_TRADE_DISABLED'
+    | 'DESTINATION_TRADE_DISABLED'
+    | 'NO_SHARED_PAYMENT_METHOD'
+    | 'NO_CARRIER_COVERING_BOTH'
+    | 'ONLY_SIMULATED_CARRIER'
+    | 'NO_DECLARED_CURRENCY'
+    | 'CORRIDOR_SUSPENDED'
+    | 'CORRIDOR_NOT_YET_OPEN';
+  params?: Record<string, string>;
 }
 
 /** Un corridor tel que le rend la liste publique. */
@@ -212,6 +241,7 @@ export interface CorridorSummary {
   destinationCountryName: string | null;
   declaredStatus: CorridorCapability['declaredStatus'];
   operational: boolean;
+  blockers: CorridorBlocker[];
   missing: string[];
   supportedCurrencies: CurrencyCode[];
   paymentMethods: string[];

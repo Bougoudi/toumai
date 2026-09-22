@@ -17,6 +17,21 @@ import { breadcrumb } from './components.js';
 import { t } from './i18n.js';
 
 /** Pastille de corridor : le déclaré et le réel, séparés. */
+/**
+ * Motifs pour lesquels un corridor ne fonctionne pas, dans la langue de lecture.
+ *
+ * Le serveur envoie des codes (`blockers`) et, pour les clients qui ne les
+ * connaissent pas encore, leur rendu français (`missing`). On lit les codes en
+ * priorité : c'est ce qui permet à un écran arabe d'expliquer *pourquoi* un
+ * corridor est fermé, au lieu d'intercaler une phrase française au milieu.
+ */
+function motifsBlocage(c) {
+  if (Array.isArray(c.blockers) && c.blockers.length > 0) {
+    return c.blockers.map((b) => t(`trade.blocker.${b.code}`, b.params || {}) || b.code);
+  }
+  return Array.isArray(c.missing) ? c.missing : [];
+}
+
 function corridorCard(c) {
   const operationnel = c.operational;
   return `<article class="card">
@@ -28,9 +43,9 @@ function corridorCard(c) {
     </div>
     <div class="xs muted">${esc(t('trade.declaredStatus', { status: t(`trade.status.${c.declaredStatus}`) }))}</div>
     ${
-      c.missing && c.missing.length > 0
+      motifsBlocage(c).length > 0
         ? `<ul class="xs muted" style="margin:var(--space-2) 0 0;padding-inline-start:var(--space-4)">
-             ${c.missing.map((m) => `<li>${esc(m)}</li>`).join('')}
+             ${motifsBlocage(c).map((m) => `<li>${esc(m)}</li>`).join('')}
            </ul>`
         : `<div class="xs muted">${esc(t('trade.paymentMethods', { list: c.paymentMethods.join(', ') || '—' }))}</div>
            <div class="xs muted">${esc(t('trade.carriers', { list: c.shippingProviders.join(', ') || '—' }))}</div>`
@@ -342,9 +357,9 @@ export async function adminTrade() {
                    </div>
                    <div class="xs muted">${esc(t('trade.declaredStatus', { status: t(`trade.status.${c.declaredStatus}`) }))}</div>
                    ${
-                     c.missing.length > 0
+                     motifsBlocage(c).length > 0
                        ? `<ul class="xs muted" style="margin:var(--space-2) 0 0;padding-inline-start:var(--space-4)">
-                            ${c.missing.map((m) => `<li>${esc(m)}</li>`).join('')}
+                            ${motifsBlocage(c).map((m) => `<li>${esc(m)}</li>`).join('')}
                           </ul>`
                        : ''
                    }

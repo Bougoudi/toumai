@@ -2616,6 +2616,21 @@ const FR = {
   'trade.operational': 'opérationnel',
   'trade.notOperational': 'non opérationnel',
   'trade.declaredStatus': 'Statut déclaré : {status}',
+  // Motifs de blocage d'un corridor (§62). Le serveur envoie des codes ; les
+  // phrases vivent ici, dans les deux langues. Auparavant il envoyait des
+  // phrases françaises toutes faites, qui s'affichaient telles quelles au
+  // milieu d'un écran arabe — le lecteur voyait que le corridor ne marchait
+  // pas, sans pouvoir lire pourquoi.
+  'trade.blocker.CORRIDOR_NOT_CONFIGURED': 'Aucun corridor configuré de {origin} vers {destination}.',
+  'trade.blocker.ORIGIN_TRADE_DISABLED': 'Le pays {country} n’est pas ouvert au commerce transfrontalier.',
+  'trade.blocker.DESTINATION_TRADE_DISABLED': 'Le pays {country} n’est pas ouvert au commerce transfrontalier.',
+  'trade.blocker.NO_SHARED_PAYMENT_METHOD': 'Aucun moyen de paiement n’est disponible des deux côtés de ce corridor.',
+  'trade.blocker.NO_CARRIER_COVERING_BOTH': 'Aucun transporteur enregistré ne couvre les deux pays de ce corridor.',
+  'trade.blocker.ONLY_SIMULATED_CARRIER':
+    'Aucun transporteur réel ne couvre les deux pays de ce corridor : seul un adaptateur de simulation est enregistré ({providers}), et une simulation n’achemine aucun colis.',
+  'trade.blocker.NO_DECLARED_CURRENCY': 'Aucune devise n’est déclarée pour ce corridor.',
+  'trade.blocker.CORRIDOR_SUSPENDED': 'Le corridor est suspendu par l’exploitant.',
+  'trade.blocker.CORRIDOR_NOT_YET_OPEN': 'Le corridor n’est pas encore ouvert.',
   'trade.status.ACTIVE': 'actif',
   'trade.status.LIMITED': 'limité',
   'trade.status.SUSPENDED': 'suspendu',
@@ -5131,6 +5146,16 @@ const AR = {
   'trade.operational': 'عامل',
   'trade.notOperational': 'غير عامل',
   'trade.declaredStatus': 'الحالة المُعلَنة: {status}',
+  'trade.blocker.CORRIDOR_NOT_CONFIGURED': 'لا يوجد ممر مُهيّأ من {origin} إلى {destination}.',
+  'trade.blocker.ORIGIN_TRADE_DISABLED': 'بلد {country} غير مفتوح للتجارة العابرة للحدود.',
+  'trade.blocker.DESTINATION_TRADE_DISABLED': 'بلد {country} غير مفتوح للتجارة العابرة للحدود.',
+  'trade.blocker.NO_SHARED_PAYMENT_METHOD': 'لا تتوفر وسيلة دفع على طرفَي هذا الممر.',
+  'trade.blocker.NO_CARRIER_COVERING_BOTH': 'لا يوجد ناقل مسجَّل يغطي بلدَي هذا الممر.',
+  'trade.blocker.ONLY_SIMULATED_CARRIER':
+    'لا يوجد ناقل حقيقي يغطي بلدَي هذا الممر: المسجَّل هو محاكاة فقط ({providers})، والمحاكاة لا تنقل أي طرد.',
+  'trade.blocker.NO_DECLARED_CURRENCY': 'لم تُعلَن أي عملة لهذا الممر.',
+  'trade.blocker.CORRIDOR_SUSPENDED': 'الممر مُعلَّق من قِبل المُشغِّل.',
+  'trade.blocker.CORRIDOR_NOT_YET_OPEN': 'الممر لم يُفتَح بعد.',
   'trade.status.ACTIVE': 'نشط',
   'trade.status.LIMITED': 'محدود',
   'trade.status.SUSPENDED': 'موقوف',

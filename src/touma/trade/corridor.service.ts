@@ -1,6 +1,7 @@
 import { prisma } from '../../db/prisma.js';
 import { env } from '../../config/env.js';
 import { badRequest, notFound } from '../lib/errors.js';
+import { type Blocage, bloquantsALActivation, phraseFr } from './corridor-blocages.js';
 import type { TradeCorridorStatus } from '@prisma/client';
 
 /**
@@ -25,7 +26,13 @@ export interface CapaciteReelle {
   declaredStatus: TradeCorridorStatus;
   /** Ce que la configuration permet réellement, aujourd'hui. */
   operational: boolean;
-  /** Ce qui manque pour que le corridor fonctionne. Vide s'il fonctionne. */
+  /**
+   * Ce qui manque pour que le corridor fonctionne, sous forme de codes. Vide
+   * s'il fonctionne. C'est la donnée : `missing` n'en est que le rendu
+   * français, conservé pour les clients qui l'affichaient déjà.
+   */
+  blockers: Blocage[];
+  /** Rendu français de `blockers`. Ne jamais s'en servir pour décider. */
   missing: string[];
   paymentMethods: string[];
   shippingProviders: string[];
@@ -165,14 +172,14 @@ export const corridorService = {
   async capability(origine: string, destination: string): Promise<CapaciteReelle> {
     const o = origine.toUpperCase();
     const d = destination.toUpperCase();
-    const manquants: string[] = [];
+    const manquants: Blocage[] = [];
 
     const corridor = await this.find(o, d);
     if (!corridor) {
       return {
         declaredStatus: 'COMING_SOON',
         operational: false,
-        missing: [`Aucun corridor configuré de ${o} vers ${d}.`],
+        ...rendre([{ code: 'CORRIDOR_NOT_CONFIGURED', params: { origin: o, destination: d } }]),
         paymentMethods: [],
         shippingProviders: [],
         currencies: [],
@@ -185,8 +192,8 @@ export const corridorService = {
       prisma.toumaShippingProvider.findMany({ where: { active: true }, select: { code: true, countries: true } }),
     ]);
 
-    if (!configOrigine?.tradeEnabled) manquants.push(`Le pays ${o} n’est pas ouvert au commerce transfrontalier.`);
-    if (!configDestination?.tradeEnabled) manquants.push(`Le pays ${d} n’est pas ouvert au commerce transfrontalier.`);
+    if (!configOrigine?.tradeEnabled) manquants.push({ code: 'ORIGIN_TRADE_DISABLED', params: { country: o } });
+    if (!configDestination?.tradeEnabled) manquants.push({ code: 'DESTINATION_TRADE_DISABLED', params: { country: d } });
 
     // Un moyen de paiement doit exister **des deux côtés** et être admis par
     // le corridor. L'intersection, jamais l'union.
@@ -194,7 +201,7 @@ export const corridorService = {
       corridor.supportedPaymentMethods,
       intersection(configOrigine?.paymentMethods ?? [], configDestination?.paymentMethods ?? []),
     );
-    if (paiements.length === 0) manquants.push('Aucun moyen de paiement n’est disponible des deux côtés de ce corridor.');
+    if (paiements.length === 0) manquants.push({ code: 'NO_SHARED_PAYMENT_METHOD' });
 
     /**
      * Un transporteur « dessert TD » ne dit pas qu'il « achemine de TD vers
@@ -226,22 +233,22 @@ export const corridorService = {
       const simules = transporteurs.filter((t) => estSimulation(t.code)).map((t) => t.code);
       manquants.push(
         simules.length > 0
-          ? `Aucun transporteur réel ne couvre les deux pays de ce corridor : seul un adaptateur de simulation est enregistré (${simules.join(', ')}), et une simulation n’achemine aucun colis.`
-          : 'Aucun transporteur enregistré ne couvre les deux pays de ce corridor.',
+          ? { code: 'ONLY_SIMULATED_CARRIER', params: { providers: simules.join(', ') } }
+          : { code: 'NO_CARRIER_COVERING_BOTH' },
       );
     }
 
     const devises = corridor.supportedCurrencies.length > 0 ? corridor.supportedCurrencies : [];
-    if (devises.length === 0) manquants.push('Aucune devise n’est déclarée pour ce corridor.');
+    if (devises.length === 0) manquants.push({ code: 'NO_DECLARED_CURRENCY' });
 
-    if (corridor.status === 'SUSPENDED') manquants.push('Le corridor est suspendu par l’exploitant.');
-    if (corridor.status === 'COMING_SOON') manquants.push('Le corridor n’est pas encore ouvert.');
+    if (corridor.status === 'SUSPENDED') manquants.push({ code: 'CORRIDOR_SUSPENDED' });
+    if (corridor.status === 'COMING_SOON') manquants.push({ code: 'CORRIDOR_NOT_YET_OPEN' });
 
     return {
       declaredStatus: corridor.status,
       // Le statut déclaré ne suffit jamais : il faut aussi que rien ne manque.
       operational: manquants.length === 0 && (corridor.status === 'ACTIVE' || corridor.status === 'LIMITED'),
-      missing: manquants,
+      ...rendre(manquants),
       paymentMethods: paiements,
       shippingProviders: expedition,
       currencies: devises,
@@ -343,9 +350,11 @@ export const corridorService = {
 
     if (input.status === 'ACTIVE' && corridor.status !== 'ACTIVE') {
       const capacite = await this.capability(corridor.originCountry, corridor.destinationCountry);
-      const bloquants = capacite.missing.filter((m) => !m.includes('n’est pas encore ouvert') && !m.includes('est suspendu'));
+      // Sur les codes, jamais sur les phrases : reformuler un message ne doit
+      // pas pouvoir changer ce qui bloque une activation.
+      const bloquants = bloquantsALActivation(capacite.blockers);
       if (bloquants.length > 0) {
-        throw badRequest(`Le corridor ne peut pas être activé : ${bloquants.join(' ')}`);
+        throw badRequest(`Le corridor ne peut pas être activé : ${bloquants.map(phraseFr).join(' ')}`);
       }
     }
 
@@ -377,6 +386,17 @@ const SIMULATIONS = new Set(['mock', 'test', 'sandbox', 'fake', 'dummy']);
 
 export function estSimulation(code: string): boolean {
   return SIMULATIONS.has(code.trim().toLowerCase());
+}
+
+/**
+ * Assemble les deux formes d'un même motif : les codes, et leur rendu français.
+ *
+ * Les garder côte à côte dans un seul endroit évite qu'ils divergent — une
+ * `missing` calculée à un autre moment que `blockers` finirait par décrire un
+ * corridor différent de celui que les codes décrivent.
+ */
+function rendre(blocages: Blocage[]): { blockers: Blocage[]; missing: string[] } {
+  return { blockers: blocages, missing: blocages.map(phraseFr) };
 }
 
 function intersection(a: string[], b: string[]): string[] {
