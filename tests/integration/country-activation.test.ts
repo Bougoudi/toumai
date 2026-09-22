@@ -214,3 +214,4 @@ describe('Régression Tchad (§8, §78)', () => {
     assert.equal(marcheOuvert(td, 'SELL'), true);
   });
 });
+

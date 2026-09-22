@@ -7,6 +7,7 @@ import { notFound } from '../lib/errors.js';
 import { requirePermission } from '../admin/permissions.js';
 import { authenticate, currentUser, requireAdmin } from '../middleware/toumaAuth.js';
 import { changerStatut, historiqueStatuts, marches, preparation } from './country.service.js';
+import { enregistrer, matrice, selectionner } from './provider-registry.js';
 
 /**
  * API DES MARCHÉS (V26 §75).
@@ -44,7 +45,7 @@ countriesRouter.get(
     const tous = req.query.all === 'true';
     const items = await marches();
     res.json({
-      items: tous ? items : items.filter((m) => m.buyingEnabled || m.sellingEnabled),
+      items: tous ? items : items.filter((m) => m.acceptsOrders || m.acceptsSellers),
       note: 'Un marché n’accepte de transactions que s’il est en PILOT, ACTIVE ou LIMITED. Le statut déclaré ne suffit pas.',
     });
   }),
@@ -106,7 +107,7 @@ marketsRouter.get(
   '/',
   asyncHandler(async (_req, res) => {
     const items = await marches();
-    res.json({ items: items.filter((m) => m.buyingEnabled || m.sellingEnabled) });
+    res.json({ items: items.filter((m) => m.acceptsOrders || m.acceptsSellers) });
   }),
 );
 
@@ -207,5 +208,68 @@ adminCountriesRouter.post(
       changedById: currentUser(req)?.id ?? null,
     });
     res.json({ country: resultat.country, readiness: resultat.readiness });
+  }),
+);
+
+// ── Prestataires par marché (§11 à §14) ──────────────────────────────────────
+
+const TYPES_PRESTATAIRE = ['PAYMENT', 'SHIPPING', 'SMS', 'EMAIL', 'FX', 'KYC', 'COMPLIANCE', 'MAPS', 'SEARCH'] as const;
+const STATUTS_PRESTATAIRE = ['PLANNED', 'CONFIGURING', 'TESTING', 'ACTIVE', 'SUSPENDED'] as const;
+
+const corpsPrestataire = z.object({
+  type: z.enum(TYPES_PRESTATAIRE),
+  code: z.string().trim().min(2).max(60).regex(/^[a-z0-9][a-z0-9-]*$/, 'Code technique : minuscules, chiffres et tirets.'),
+  name: z.string().trim().min(2).max(120),
+  status: z.enum(STATUTS_PRESTATAIRE).optional(),
+  priority: z.number().int().min(1).max(1000).optional(),
+  simulation: z.boolean().optional(),
+  supportedMethods: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  // Identifiants publics seulement. Le service refuse toute clé dont le nom
+  // évoque un secret — la validation de forme ne suffirait pas.
+  configuration: z.record(z.unknown()).optional(),
+  notes: z.string().trim().max(1000).optional(),
+});
+
+/**
+ * Matrice marché × métier × prestataire (§13, §14).
+ *
+ * Réservée à l'administration : elle nomme les prestataires, leur priorité et
+ * leur état de santé. Un acheteur n'a pas à savoir chez qui TOUMA encaisse ;
+ * il a le droit de savoir si le paiement est disponible, et c'est ce que rend
+ * la route publique de préparation.
+ */
+adminCountriesRouter.get(
+  '/providers/matrix',
+  requirePermission('ADMIN_COUNTRIES'),
+  asyncHandler(async (req, res) => {
+    const type = typeof req.query.type === 'string' ? req.query.type.toUpperCase() : undefined;
+    const filtre = TYPES_PRESTATAIRE.find((t) => t === type);
+    res.json({
+      items: await matrice(filtre),
+      note: 'HEALTHY/UNHEALTHY ne sortent que d’une sonde réelle. NEVER_CHECKED n’est pas une panne.',
+    });
+  }),
+);
+
+adminCountriesRouter.post(
+  '/:code/providers',
+  requirePermission('ADMIN_COUNTRIES'),
+  asyncHandler(async (req, res) => {
+    const entree = parseBody(corpsPrestataire, req);
+    const pays = req.params.code.toUpperCase();
+    if (!(await prisma.country.findUnique({ where: { code: pays } }))) throw notFound(`Pays « ${pays} » inconnu.`);
+    res.status(201).json(await enregistrer({ ...entree, countryCode: pays }));
+  }),
+);
+
+/** Quel prestataire serait retenu, et pourquoi. Sert à vérifier avant d'ouvrir. */
+adminCountriesRouter.get(
+  '/:code/providers/:type',
+  requirePermission('ADMIN_COUNTRIES'),
+  asyncHandler(async (req, res) => {
+    const type = TYPES_PRESTATAIRE.find((t) => t === req.params.type.toUpperCase());
+    if (!type) throw notFound(`Type de prestataire « ${req.params.type} » inconnu.`);
+    const methode = typeof req.query.method === 'string' ? req.query.method : undefined;
+    res.json(await selectionner(req.params.code, type, { method: methode }));
   }),
 );

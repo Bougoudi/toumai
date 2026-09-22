@@ -55,6 +55,24 @@ export interface DescripteurPays {
     shippingProviders: string[];
     notes?: string;
   };
+  /**
+   * Prestataires raccordés à ce marché (§11).
+   *
+   * Ce qui est **réellement enregistré**, simulation comprise et marquée comme
+   * telle. Taire un adaptateur de simulation ne le ferait pas disparaître : il
+   * vaut mieux qu'il figure, signalé, que de laisser croire qu'il n'y a rien.
+   */
+  providers?: Array<{
+    type: 'PAYMENT' | 'SHIPPING' | 'SMS' | 'EMAIL' | 'FX' | 'KYC' | 'COMPLIANCE' | 'MAPS' | 'SEARCH';
+    code: string;
+    name: string;
+    status: 'PLANNED' | 'CONFIGURING' | 'TESTING' | 'ACTIVE' | 'SUSPENDED';
+    priority?: number;
+    simulation?: boolean;
+    supportedMethods?: string[];
+    notes?: string;
+  }>;
+
   /** Ce qui manque à ce marché, écrit noir sur blanc dans le descripteur. */
   notes: string;
 }

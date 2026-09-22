@@ -1424,6 +1424,8 @@ model Country {
   statusChanges  ToumaCountryStatusChange[]
   /// Niveaux administratifs de ce pays (V26 §7).
   divisionLevels ToumaCountryDivisionLevel[]
+  /// Prestataires raccordés à ce marché (V26 §11).
+  providers      ToumaCountryProvider[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -5790,4 +5792,84 @@ model ToumaCountryDivisionLevel {
   @@unique([countryCode, level])
   @@index([countryCode])
   @@map("touma_country_division_levels")
+}
+
+/// Nature d'un prestataire raccordé à un marché (§11).
+enum CountryProviderType {
+  PAYMENT
+  SHIPPING
+  SMS
+  EMAIL
+  FX
+  KYC
+  COMPLIANCE
+  MAPS
+  SEARCH
+}
+
+/// Où en est un prestataire sur un marché donné.
+///
+/// Le même prestataire peut être `ACTIVE` au Tchad et `TESTING` au Cameroun :
+/// un contrat signé dans un pays ne vaut pas dans l'autre.
+enum CountryProviderStatus {
+  PLANNED
+  CONFIGURING
+  TESTING
+  ACTIVE
+  SUSPENDED
+}
+
+/// Un prestataire, sur un marché, pour un métier (§11, §12).
+///
+/// **Le problème résolu.** Le prestataire de paiement était une variable
+/// d'environnement unique, globale à l'instance. Un TOUMA présent au Tchad et
+/// au Cameroun ne peut pas fonctionner ainsi : les opérateurs de monnaie
+/// mobile, les transporteurs et les passerelles SMS diffèrent d'un pays à
+/// l'autre, et un contrat signé dans l'un ne vaut pas dans l'autre.
+///
+/// **Aucun secret ici.** `configuration` porte des identifiants publics — un
+/// nom de marchand, une URL de rappel, un identifiant d'expéditeur. Les clés
+/// d'API et les secrets de signature restent dans l'environnement du serveur,
+/// jamais en base (V25 §4). Une vérification refuse l'écriture d'une clé dont
+/// le nom évoque un secret.
+model ToumaCountryProvider {
+  id          String              @id @default(cuid())
+  countryCode String
+  country     Country             @relation(fields: [countryCode], references: [code], onDelete: Cascade)
+  type        CountryProviderType
+  /// Code technique de l'adaptateur (`orange-money`, `mock`…).
+  code        String
+  name        String
+
+  /// Ordre d'essai : 1 d'abord. Deux prestataires au même rang sont départagés
+  /// par leur code, pour que la sélection soit déterministe — un choix qui
+  /// change d'une requête à l'autre rend tout incident irreproductible.
+  priority Int                   @default(100)
+  status   CountryProviderStatus @default(PLANNED)
+
+  /// Adaptateur de simulation. Un tel prestataire n'est **jamais** sélectionné
+  /// pour une opération réelle, quel que soit son statut : il répond à tout,
+  /// y compris à ce que personne ne peut faire.
+  simulation Boolean @default(false)
+
+  /// Moyens couverts (`MOBILE_MONEY`, `CASH_ON_DELIVERY`…), selon le métier.
+  supportedMethods String[] @default([])
+  /// Identifiants publics uniquement. Jamais de clé ni de secret.
+  configuration    Json?
+
+  /// Dernière vérification réelle de disponibilité, et son résultat.
+  /// Nuls tant qu'aucune sonde n'a tourné : « jamais vérifié » n'est pas
+  /// « en panne », et les confondre ferait basculer un prestataire sain.
+  lastCheckedAt DateTime?
+  lastHealthyAt DateTime?
+  healthDetail  String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([countryCode, type, code])
+  @@index([countryCode, type, status])
+  @@map("touma_country_providers")
 }

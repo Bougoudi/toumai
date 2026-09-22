@@ -5,6 +5,7 @@ import { currencyDecimals } from '../lib/money.js';
 import { estSimulation } from '../trade/corridor.service.js';
 import { providerStatus as paiementStatus } from '../payments/methods.service.js';
 import { providerStatus as iaStatus } from '../ai/registry.js';
+import { selectionner } from './provider-registry.js';
 import {
   AVANT_ACTIF,
   AVANT_PILOTE,
@@ -127,23 +128,32 @@ export async function preparation(countryCode: string): Promise<Preparation> {
 
   // 4. Paiements — deux conditions distinctes : des moyens déclarés pour ce
   //    pays, et un prestataire réellement agréé pour les opérer.
+  //
+  // Le registre par pays fait foi ; à défaut, on retombe sur le prestataire
+  // global de l'instance, en le disant. Ce repli n'est pas une commodité : il
+  // évite qu'un marché déjà en exploitation passe brutalement « bloqué » le
+  // jour où le registre arrive, alors que rien n'a changé pour ses acheteurs.
   const moyens = pays.tradeConfig?.paymentMethods ?? [];
+  const pspPays = await selectionner(code, 'PAYMENT');
   const psp = paiementStatus();
+  const pspReel = pspPays.provider !== null || psp.real;
+  const pspNom = pspPays.provider?.name ?? psp.name;
+  const pspMotif = pspPays.provider
+    ? `${pspNom} (registre du marché)`
+    : psp.real
+      ? `${pspNom} (prestataire global de l'instance ; aucun prestataire propre à ce marché)`
+      : `${pspPays.reason} Le prestataire global « ${psp.code} » est une simulation.`;
   controles.push(
     moyens.length === 0
       ? controle('payments', 'BLOCKED', 'Aucun moyen de paiement déclaré pour ce pays.', AVANT_PILOTE)
-      : psp.real
-        ? controle('payments', 'READY', `${moyens.join(', ')} opérés par ${psp.name}.`)
-        : controle(
-            'payments',
-            'BLOCKED',
-            `${moyens.join(', ')} déclarés, mais aucun prestataire agréé n'est raccordé (« ${psp.code} » est une simulation).`,
-            AVANT_ACTIF,
-          ),
+      : pspReel
+        ? controle('payments', 'READY', `${moyens.join(', ')} opérés par ${pspMotif}.`)
+        : controle('payments', 'BLOCKED', `${moyens.join(', ')} déclarés, mais aucun prestataire agréé ne les opère. ${pspMotif}`, AVANT_ACTIF),
   );
 
   // 5. Expédition — un adaptateur de simulation ne compte pas : il répond à
   //    tout, y compris à des destinations que personne ne dessert.
+  const transporteurPays = await selectionner(code, 'SHIPPING');
   const desservants = transporteurs.filter((t) => {
     if (estSimulation(t.code)) return false;
     const liste = t.countries.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
@@ -151,7 +161,9 @@ export async function preparation(countryCode: string): Promise<Preparation> {
   });
   const simules = transporteurs.filter((t) => estSimulation(t.code)).map((t) => t.code);
   controles.push(
-    desservants.length > 0
+    transporteurPays.provider
+      ? controle('shipping', 'READY', `${transporteurPays.provider.name} (registre du marché)${transporteurPays.fallbacks.length > 0 ? `, ${transporteurPays.fallbacks.length} relais` : ''}.`)
+      : desservants.length > 0
       ? controle('shipping', 'READY', `${desservants.length} transporteur(s) réel(s) : ${desservants.map((t) => t.code).join(', ')}.`)
       : controle(
           'shipping',
@@ -165,15 +177,15 @@ export async function preparation(countryCode: string): Promise<Preparation> {
 
   // 6-7. Remboursements et versements — adossés au prestataire de paiement. Il
   //      n'y a pas de remboursement réel sans encaissement réel.
-  const motifPsp = `Aucun prestataire de paiement agréé n'est raccordé (« ${psp.code} »).`;
+  const motifPsp = `Aucun prestataire de paiement agréé ne couvre ce marché. ${pspPays.reason}`;
   controles.push(
-    psp.real
-      ? controle('refunds', 'READY', `Remboursements opérés par ${psp.name}.`)
+    pspReel
+      ? controle('refunds', 'READY', `Remboursements opérés par ${pspNom}.`)
       : controle('refunds', 'BLOCKED', motifPsp, AVANT_ACTIF),
   );
   controles.push(
-    psp.real
-      ? controle('payouts', 'READY', `Versements vendeurs opérés par ${psp.name}.`)
+    pspReel
+      ? controle('payouts', 'READY', `Versements vendeurs opérés par ${pspNom}.`)
       : controle('payouts', 'BLOCKED', motifPsp, AVANT_ACTIF),
   );
 
@@ -339,20 +351,29 @@ export async function marches() {
     timezone: p.timezone,
     status: p.status,
     /**
-     * Trois champs, trois questions distinctes — et c'est voulu.
+     * Quatre champs, quatre questions — et les confondre était une erreur que
+     * ce commentaire existe pour ne pas refaire.
      *
-     * `active` dit que la ligne pays est utilisable du tout : une adresse peut
-     * s'y rattacher, un numéro s'y normaliser. Il est conservé tel quel, parce
-     * qu'il est dans le contrat public depuis le début et que le retirer
-     * casserait des clients pour un gain nul.
+     * `active` : la ligne pays est utilisable du tout. Une adresse peut s'y
+     * rattacher, un numéro s'y normaliser. Dans le contrat public depuis le
+     * début, conservé tel quel.
      *
-     * `buyingEnabled` et `sellingEnabled` disent ce que le marché **autorise
-     * aujourd'hui**, et croisent désormais le statut : des interrupteurs à vrai
-     * sur un marché en configuration laissaient passer achats et ventes.
+     * `buyingEnabled` / `sellingEnabled` : les interrupteurs de service (§46),
+     * tels qu'ils sont enregistrés. Un vendeur camerounais peut ouvrir sa
+     * boutique et publier son catalogue pendant que le marché est encore en
+     * configuration — c'est même l'ordre naturel des choses, l'offre avant
+     * l'ouverture.
+     *
+     * `acceptsOrders` : le seul champ qui dit si une **commande** peut aboutir
+     * aujourd'hui. Il croise le statut, parce qu'accepter une commande sur un
+     * marché en configuration, c'est promettre une livraison que personne ne
+     * peut faire.
      */
     active: p.active,
-    buyingEnabled: p.buyingEnabled && STATUTS_OUVERTS.has(p.status),
-    sellingEnabled: p.sellingEnabled && STATUTS_OUVERTS.has(p.status),
+    buyingEnabled: p.buyingEnabled,
+    sellingEnabled: p.sellingEnabled,
+    acceptsOrders: p.buyingEnabled && STATUTS_OUVERTS.has(p.status),
+    acceptsSellers: p.sellingEnabled && p.active,
   }));
 }
 

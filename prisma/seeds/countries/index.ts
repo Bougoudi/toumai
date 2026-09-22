@@ -67,6 +67,22 @@ export async function chargerPays(prisma: PrismaClient, p: DescripteurPays): Pro
     });
   }
 
+  for (const provider of p.providers ?? []) {
+    const valeurs = {
+      name: provider.name,
+      status: provider.status,
+      priority: provider.priority ?? 100,
+      simulation: provider.simulation ?? false,
+      supportedMethods: provider.supportedMethods ?? [],
+      notes: provider.notes ?? null,
+    };
+    await prisma.toumaCountryProvider.upsert({
+      where: { countryCode_type_code: { countryCode: p.code, type: provider.type, code: provider.code } },
+      update: valeurs,
+      create: { countryCode: p.code, type: provider.type, code: provider.code, ...valeurs },
+    });
+  }
+
   if (p.trade) {
     const commerce = {
       tradeEnabled: p.trade.enabled,

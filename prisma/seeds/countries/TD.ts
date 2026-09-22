@@ -30,6 +30,25 @@ const TD: DescripteurPays = {
     { level: 3, name: 'Sous-préfecture', namePlural: 'Sous-préfectures', nameAr: 'قسم', used: true },
     { level: 4, name: 'Localité', namePlural: 'Localités', nameAr: 'بلدة', used: true },
   ],
+  providers: [
+    {
+      type: 'PAYMENT',
+      code: 'mock',
+      name: 'Simulation de paiement',
+      status: 'ACTIVE',
+      simulation: true,
+      supportedMethods: ['MOBILE_MONEY'],
+      notes: 'Adaptateur de démonstration. Jamais sélectionné pour une opération réelle, quel que soit son statut.',
+    },
+    {
+      type: 'SHIPPING',
+      code: 'mock',
+      name: 'Simulation de transport',
+      status: 'ACTIVE',
+      simulation: true,
+      notes: 'Répond à toute destination, y compris à celles que personne ne dessert. C’est pourquoi il ne compte pas.',
+    },
+  ],
   trade: {
     enabled: true,
     paymentMethods: ['MOBILE_MONEY', 'CASH_ON_DELIVERY'],

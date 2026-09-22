@@ -18,6 +18,7 @@ import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import { loadTiers, resolveUnitPrice, tiersFor } from '../catalog/pricing.js';
 import { sweepReservations } from './reservation.js';
 import type { CheckoutInput } from './order.schema.js';
+import { marcheOuvert } from '../platform/country.service.js';
 
 /** Numéro de commande lisible et non devinable. */
 function orderNumber(): string {
@@ -105,7 +106,11 @@ export const checkoutService = {
     // 5. Adresse : doit appartenir à l'acheteur (anti-IDOR) et pointer un pays desservi.
     const address = await prisma.toumaAddress.findFirst({ where: { id: input.addressId, userId: user.id }, include: { country: true } });
     if (!address) throw notFound('Adresse de livraison introuvable.');
-    if (!address.country.active || !address.country.buyingEnabled) {
+    // Le statut du marché compte autant que l'interrupteur (V26 §33). Un pays
+    // en configuration a souvent `buyingEnabled` à vrai par héritage : accepter
+    // une commande à cette adresse, c'est promettre une livraison que personne
+    // ne peut faire.
+    if (!address.country.active || !marcheOuvert(address.country, 'BUY')) {
       throw badRequest(`Livraison non disponible vers « ${address.countryCode} » pour l'instant.`);
     }
 

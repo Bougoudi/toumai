@@ -466,6 +466,9 @@ export function toumaOpenApiDocument() {
         patch: op('Marchés', 'Modifier la configuration d’un marché', { role: 'ADMIN', params: ['code'], body: true }),
       },
       '/admin/countries/{code}/readiness': { post: op('Marchés', 'Contrôle de préparation complet : chaque domaine, son état réel et son motif', { role: 'ADMIN', params: ['code'] }) },
+      '/admin/countries/providers/matrix': { get: op('Marchés', 'Matrice marché × métier × prestataire ; « jamais vérifié » n’est pas une panne', { role: 'ADMIN', query: ['type'] }) },
+      '/admin/countries/{code}/providers': { post: op('Marchés', 'Enregistrer un prestataire sur un marché — toute clé ou secret est refusé', { role: 'ADMIN', params: ['code'], body: true }) },
+      '/admin/countries/{code}/providers/{type}': { get: op('Marchés', 'Quel prestataire serait retenu pour ce métier, et pourquoi', { role: 'ADMIN', params: ['code', 'type'], query: ['method'] }) },
       '/admin/countries/{code}/status': { post: op('Marchés', 'Changer le statut d’un marché — refusé si une dépendance bloquante manque, toujours motivé et tracé', { role: 'ADMIN', params: ['code'], body: true }) },
 
       '/trade': { get: op('Touma Trade', 'État du commerce transfrontalier : corridors configurés et réellement opérationnels', { auth: false }) },

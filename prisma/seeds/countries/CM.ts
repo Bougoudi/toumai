@@ -36,6 +36,16 @@ const CM: DescripteurPays = {
     { level: 3, name: 'Arrondissement', namePlural: 'Arrondissements', used: true },
     { level: 4, name: 'Localité', namePlural: 'Localités', used: true },
   ],
+  providers: [
+    {
+      type: 'SHIPPING',
+      code: 'mock',
+      name: 'Simulation de transport',
+      status: 'ACTIVE',
+      simulation: true,
+      notes: 'Seul transporteur enregistré pour ce marché, et il ne transporte rien.',
+    },
+  ],
   trade: {
     enabled: true,
     paymentMethods: ['MOBILE_MONEY'],
