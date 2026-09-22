@@ -61,6 +61,13 @@ ce qui n'est pas le cas aujourd'hui.
 - Identifiant de requête propagé jusqu'au code métier, journal d'accès
   structuré, codes d'erreur.
 - Deux contrôles exécutables : `check:production` et `check:go-live`.
+- **Vitrine publique bilingue français / arabe** (§62). L'application était
+  bilingue depuis V17 ; la vitrine — la seule des deux qu'un inconnu rencontre,
+  celle que renvoie un moteur de recherche — ne l'était pas. L'arabe vit sous
+  `/ar/…` ; les adresses françaises ne bougent pas, et les deux versions se
+  déclarent l'une l'autre par `hreflang`. Le plan du site liste les deux.
+- Noms de pays en arabe pour les pays configurés, avec repli sur le nom fourni
+  par le serveur plutôt qu'une translittération fabriquée.
 
 ### Corrections
 
@@ -72,6 +79,16 @@ ce qui n'est pas le cas aujourd'hui.
 - Trois faux positifs dans les contrôles d'intégrité, dont un signalant
   9 104 paiements sur 9 117 comme orphelins : les paiements se rattachent au
   groupe de commandes, pas à la commande.
+- Motifs de blocage d'un corridor : `capability.missing` était une liste de
+  phrases françaises fabriquées côté serveur. Deux conséquences. D'abord, une
+  page arabe affichait en français la raison pour laquelle un corridor ne
+  fonctionnait pas — son lecteur voyait qu'il était fermé sans pouvoir lire
+  pourquoi. Ensuite, `updateCorridor` décidait si un motif empêchait
+  l'activation en cherchant « n'est pas encore ouvert » dans la phrase :
+  reformuler ce message, ou seulement changer d'apostrophe, aurait rendu
+  bloquant un motif qui ne l'est pas. Le champ `blockers` porte désormais des
+  codes ; `missing` en reste le rendu français, inchangé pour les clients
+  existants.
 
 ### Base de données
 
