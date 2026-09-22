@@ -6,6 +6,8 @@ import { codAvailability } from './cod.service.js';
 import { getPaymentProvider } from './payment.service.js';
 import type { PaymentMethod } from './payment.types.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
+import { marcheOuvert } from '../platform/country.service.js';
+import { selectionner } from '../platform/provider-registry.js';
 
 /**
  * Moyens de paiement réellement proposables.
@@ -121,6 +123,34 @@ export async function paymentMethodsFor(user: ToumaRequestUser, query: MethodsQu
 
   const methods: MethodAvailability[] = [];
 
+  /**
+   * Le marché de l'acheteur d'abord (V26 §13, §38, §46).
+   *
+   * Deux choses se décident ici, et elles sont distinctes.
+   *
+   * 1. **Le marché accepte-t-il des commandes ?** Un pays en configuration
+   *    garde souvent ses interrupteurs à vrai par héritage. Proposer un moyen
+   *    de paiement sur un marché qui ne peut pas livrer, c'est encaisser une
+   *    commande que personne n'honorera.
+   * 2. **Le pays déclare-t-il ce moyen ?** Un opérateur de monnaie mobile
+   *    présent au Tchad ne l'est pas forcément au Cameroun. Afficher un moyen
+   *    qu'aucun prestataire ne couvre dans ce pays est une impasse qui se
+   *    découvre à l'écran de paiement.
+   *
+   * §46 tient dans la nuance : un marché peut rester ouvert pendant qu'un de
+   * ses services ne l'est pas. On ferme alors le paiement, pas le pays.
+   */
+  const marche = countryCode
+    ? await prisma.country.findUnique({ where: { code: countryCode }, include: { tradeConfig: { select: { paymentMethods: true } } } })
+    : null;
+  const marcheAccepte = marche ? marcheOuvert(marche, 'BUY') : true;
+  const motifMarche = marche && !marcheAccepte ? `Le marché ${marche.code} n’accepte pas de commandes (${marche.status}).` : null;
+  // Liste vide = le pays n'a rien déclaré : on ne restreint pas plutôt que de
+  // tout fermer sur une configuration absente.
+  const moyensDuPays = marche?.tradeConfig?.paymentMethods ?? [];
+
+  const prestatairePays = countryCode ? await selectionner(countryCode, 'PAYMENT') : null;
+
   // Méthodes portées par le prestataire. Leur disponibilité est celle du
   // prestataire : sans lui, aucune n'est proposable, quoi qu'en dise le code.
   const supportees = (() => {
@@ -132,6 +162,26 @@ export async function paymentMethodsFor(user: ToumaRequestUser, query: MethodsQu
   })();
 
   for (const method of ['MOBILE_MONEY', 'CARD', 'BANK_TRANSFER'] as const) {
+    if (motifMarche) {
+      methods.push({ method, label: LABELS[method], available: false, reason: motifMarche });
+      continue;
+    }
+    if (moyensDuPays.length > 0 && !moyensDuPays.includes(method)) {
+      methods.push({
+        method,
+        label: LABELS[method],
+        available: false,
+        reason: `Ce moyen de paiement n’est pas déclaré pour ${countryCode}.`,
+      });
+      continue;
+    }
+    // Un prestataire propre au marché prime sur celui de l'instance ; à défaut,
+    // on retombe sur ce dernier, ce qui préserve les marchés déjà en
+    // exploitation le jour où le registre arrive.
+    if (prestatairePays && !prestatairePays.provider && !provider.usable) {
+      methods.push({ method, label: LABELS[method], available: false, reason: prestatairePays.reason });
+      continue;
+    }
     if (!provider.usable) {
       methods.push({ method, label: LABELS[method], available: false, reason: provider.message });
       continue;
@@ -146,7 +196,11 @@ export async function paymentMethodsFor(user: ToumaRequestUser, query: MethodsQu
   // Paiement à la livraison : il ne dépend d'aucun prestataire — il dépend
   // d'une règle. Fermé par défaut, il s'ouvre par pays, province, boutique ou
   // catégorie, et un plafond peut s'appliquer.
-  if (countryCode) {
+  if (motifMarche) {
+    // Le paiement à la livraison ne dépend d'aucun prestataire, mais il dépend
+    // d'une livraison. Sur un marché fermé aux commandes, il l'est aussi.
+    methods.push({ method: 'CASH_ON_DELIVERY', label: LABELS.CASH_ON_DELIVERY, available: false, reason: motifMarche });
+  } else if (countryCode) {
     const cod = await codAvailability({
       countryCode,
       provinceId,
@@ -171,8 +225,12 @@ export async function paymentMethodsFor(user: ToumaRequestUser, query: MethodsQu
   }
 
   return {
-    provider: { code: provider.code, name: provider.name, real: provider.real, message: provider.message },
+    provider: prestatairePays?.provider
+      ? { code: prestatairePays.provider.code, name: prestatairePays.provider.name, real: true, message: prestatairePays.reason }
+      : { code: provider.code, name: provider.name, real: provider.real, message: provider.message },
     countryCode,
+    /** Le marché accepte-t-il des commandes aujourd'hui ? (§46) */
+    marketAcceptsOrders: marcheAccepte,
     currency,
     /** Montant considéré, quand une commande a été indiquée. */
     amount: amount?.toString() ?? null,

@@ -150,3 +150,44 @@ describe('Prestataires — matrice (§13, §14)', () => {
     assert.equal(lignes[0].lastCheckedAt, null);
   });
 });
+
+describe('Moyens de paiement et marché (§13, §38, §46)', () => {
+  it('ferme le paiement sur un marché qui n’accepte pas de commandes, sans fermer le pays', async () => {
+    // §46 tient dans cette nuance : un marché peut rester utilisable —
+    // consultation du catalogue, inscription vendeur — pendant qu'un de ses
+    // services ne l'est pas. On ferme le paiement, pas le pays.
+    const { paymentMethodsFor } = await import('../../src/touma/payments/methods.service.js');
+    const pays = await marcheNeuf();
+    await prisma.country.update({ where: { code: pays }, data: { active: true, buyingEnabled: true, status: 'CONFIGURING' } });
+
+    const utilisateur = { id: 'essai', email: 'essai@touma.test', role: 'BUYER', status: 'ACTIVE', countryCode: pays };
+    const r = await paymentMethodsFor(utilisateur as never, { countryCode: pays });
+
+    assert.equal(r.marketAcceptsOrders, false);
+    assert.equal(r.anyAvailable, false);
+    for (const m of r.methods) {
+      assert.equal(m.available, false, `${m.method} ne devrait pas être proposé`);
+      assert.match(String(m.reason), /n’accepte pas de commandes/);
+    }
+    // Le pays reste actif : son catalogue et ses boutiques restent lisibles.
+    assert.equal((await prisma.country.findUnique({ where: { code: pays } }))?.active, true);
+  });
+
+  it('n’affiche pas un moyen que le pays n’a pas déclaré', async () => {
+    const { paymentMethodsFor } = await import('../../src/touma/payments/methods.service.js');
+    const pays = await marcheNeuf();
+    await prisma.country.update({ where: { code: pays }, data: { active: true, buyingEnabled: true, status: 'ACTIVE' } });
+    await prisma.toumaTradeCountryConfig.upsert({
+      where: { countryCode: pays },
+      update: { paymentMethods: ['MOBILE_MONEY'] },
+      create: { countryCode: pays, tradeEnabled: true, paymentMethods: ['MOBILE_MONEY'] },
+    });
+
+    const utilisateur = { id: 'essai', email: 'essai@touma.test', role: 'BUYER', status: 'ACTIVE', countryCode: pays };
+    const r = await paymentMethodsFor(utilisateur as never, { countryCode: pays });
+
+    const carte = r.methods.find((m) => m.method === 'CARD');
+    assert.equal(carte?.available, false);
+    assert.match(String(carte?.reason), new RegExp(`pas déclaré pour ${pays}`));
+  });
+});
