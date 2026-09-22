@@ -147,6 +147,11 @@ export function toumaOpenApiDocument() {
         post: op('Touma Business', 'Publier un appel d’offres', { body: true }),
       },
       '/rfqs/{id}': { get: op('Touma Business', 'Détail d’un appel d’offres', { auth: false, params: ['id'] }) },
+      '/rfqs/{id}/comparison': {
+        get: op('Touma Business', 'Comparer les offres reçues côte à côte — aucun classement, aucun « meilleur fournisseur »', {
+          params: ['id'],
+        }),
+      },
       '/rfqs/{id}/close': { post: op('Touma Business', 'Clore un appel d’offres', { params: ['id'] }) },
       '/rfqs/{id}/quotes': { post: op('Touma Business', 'Répondre par une offre', { params: ['id'], body: true, role: 'SELLER' }) },
       '/quotes/mine': { get: op('Touma Business', 'Mes offres émises', { role: 'SELLER' }) },

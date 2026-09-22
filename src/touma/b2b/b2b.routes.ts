@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { comparer } from './comparison.service.js';
 import { z } from 'zod';
 import { asyncHandler, parseBody, parseQuery } from '../../middleware/validate.js';
 import { authenticate, currentUser, optionalAuth, requireRole } from '../middleware/toumaAuth.js';
@@ -51,6 +52,20 @@ rfqRouter.get(
       return res.status(401).json({ error: 'Authentification requise.' });
     }
     res.json(await b2bService.listRfqs(req.toumaUser, query));
+  }),
+);
+
+/**
+ * Comparaison des offres reçues (V28 §7).
+ *
+ * Réservée à l'acheteur : un fournisseur qui obtiendrait cette vue lirait les
+ * prix de ses concurrents. Aucun classement n'en sort — voir le service.
+ */
+rfqRouter.get(
+  '/:id/comparison',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    res.json(await comparer(currentUser(req), req.params.id));
   }),
 );
 
