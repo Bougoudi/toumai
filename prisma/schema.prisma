@@ -1697,9 +1697,10 @@ model ToumaStore {
   commissionRules ToumaCommissionRule[]
   serviceZones    ToumaStoreServiceZone[]
 
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  ToumaFlashSale ToumaFlashSale[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  ToumaFlashSale  ToumaFlashSale[]
+  supplierProfile ToumaSupplierProfile?
 
   @@index([ownerId])
   @@index([status])
@@ -5966,4 +5967,79 @@ model ToumaStockMovement {
   @@index([type, createdAt])
   @@index([referenceType, referenceId])
   @@map("touma_stock_movements")
+}
+
+// ── Profil fournisseur déclaré (V28 §1, §2) ──────────────────────────────────
+
+/// Ce qu'un fournisseur dit être.
+///
+/// TOUMA ne peut pas le savoir : rien dans une boutique ne dit si elle
+/// fabrique ou revend. Seul le fournisseur le sait, et il le déclare.
+enum SupplierType {
+  MANUFACTURER
+  WHOLESALER
+  DISTRIBUTOR
+  RETAILER
+  TRADER
+  SERVICE_PROVIDER
+}
+
+/// Profil commercial **déclaré** d'un fournisseur.
+///
+/// **Tout ici est déclaratif, et le modèle est construit pour qu'on ne puisse
+/// pas l'oublier.** Le reste de TOUMA affiche des données observées — capacité
+/// tirée du stock saisi, pays tirés des expéditions réellement faites, délais
+/// tirés des offres passées. Ces champs-là sont d'une autre nature : personne
+/// ne les a vérifiés, et personne ne le fera en les lisant.
+///
+/// D'où trois décisions de conception :
+///
+/// 1. **Une table séparée**, pas des colonnes sur `ToumaStore`. Mélangées aux
+///    champs de la boutique, elles auraient fini par être lues comme le reste.
+/// 2. **`declaredAt` obligatoire.** Une condition commerciale d'il y a deux ans
+///    n'est pas une condition commerciale : elle est datée, et l'affichage le
+///    dit.
+/// 3. **Aucun champ « verified » ici.** La vérification vit dans
+///    `ToumaSellerVerification` et nulle part ailleurs. Un fournisseur ne peut
+///    pas se vérifier lui-même en remplissant un formulaire, et le schéma ne
+///    lui en laisse pas la possibilité.
+model ToumaSupplierProfile {
+  id      String     @id @default(cuid())
+  storeId String     @unique
+  store   ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  /// Ce que le fournisseur dit être. Plusieurs valeurs : un fabricant peut
+  /// aussi distribuer, et l'obliger à choisir produirait une donnée fausse.
+  types SupplierType[] @default([])
+
+  /// Pays qu'il **dit** desservir. À ne jamais confondre avec ceux où il a
+  /// réellement expédié : les seconds sont observés, ceux-ci sont une intention.
+  declaredCountries     String[] @default([])
+  /// Devises qu'il dit accepter.
+  declaredCurrencies    String[] @default([])
+  /// Délai qu'il annonce, en jours.
+  declaredLeadTimeDays  Int?
+  /// Montant minimum de commande qu'il annonce, dans la devise de sa boutique.
+  declaredMinOrderValue Decimal? @db.Decimal(18, 4)
+  /// Quantité minimum de commande qu'il annonce.
+  declaredMinOrderQty   Int?
+  /// Conditions de paiement, en texte libre.
+  ///
+  /// Texte et non structure : TOUMA n'accorde aucun crédit et n'en tient aucun
+  /// registre. Structurer « 30 jours fin de mois » ferait croire que la
+  /// plateforme suit l'échéance, ce qu'elle ne fait pas. Le texte dit ce que le
+  /// fournisseur dit, et rien de plus.
+  paymentTerms          String?
+  /// Capacités d'expédition qu'il annonce, en texte libre.
+  shippingNotes         String?
+
+  /// Quand le fournisseur a confirmé ces informations pour la dernière fois.
+  /// Obligatoire : une déclaration sans date ne vaut rien.
+  declaredAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId])
+  @@map("touma_supplier_profiles")
 }

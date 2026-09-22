@@ -4,6 +4,7 @@ import { notFound } from '../lib/errors.js';
 import { paginated, type PageParams } from '../lib/pagination.js';
 import { reputationService } from '../reputation/reputation.service.js';
 import { AVERTISSEMENT, raisons, scorePertinence } from './matching.js';
+import { profilDeclare } from './supplier-profile.service.js';
 
 /**
  * SOURCING FOURNISSEURS.
@@ -335,6 +336,18 @@ export async function supplierProfile(idOrSlug: string) {
       verified: store.verificationStatus === 'APPROVED',
       memberSince: store.createdAt,
     },
+    /**
+     * Ce que le fournisseur dit de lui-même (§1, §2).
+     *
+     * Sous une clé à part, avec son propre statut et sa propre date. Mêlé aux
+     * champs observés ci-dessous, un acheteur ne ferait pas la différence entre
+     * « a déjà expédié vers le Cameroun » et « dit qu'il pourrait » — et c'est
+     * sur cette différence que se joue une commande de mille sacs.
+     *
+     * `null` quand le fournisseur n'a rien déclaré. Une absence de déclaration
+     * n'est pas une déclaration vide.
+     */
+    declared: await profilDeclare(store.id),
     reputation,
     catalogue: [...byCategory.values()].map((c) => ({
       ...c,

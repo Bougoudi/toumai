@@ -356,6 +356,13 @@ export function toumaOpenApiDocument() {
         }),
       },
       '/sourcing/suppliers/{idOrSlug}': { get: op('Sourcing', 'Fiche fournisseur', { auth: false, params: ['idOrSlug'] }) },
+      '/sourcing/suppliers/{storeId}/profile': {
+        put: op('Sourcing', 'Déclarer son profil commercial — déclaratif, jamais vérifié par ce chemin', {
+          role: 'SELLER',
+          params: ['storeId'],
+          body: true,
+        }),
+      },
       '/rfqs/{id}/invitations': { post: op('Sourcing', 'Solliciter des fournisseurs sur un appel d’offres', { params: ['id'], body: true }) },
       '/notifications': { get: op('Auth', 'Mes notifications') },
       '/ai/generate': { post: op('Touma AI', 'Générer un texte (proposition, validation humaine requise)', { body: true }) },
