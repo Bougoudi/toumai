@@ -357,6 +357,13 @@ export function toumaOpenApiDocument() {
       '/ai/classify': { post: op('Touma AI', 'Classer un texte', { body: true }) },
       '/ai/recommend': { post: op('Touma AI', 'Recommander des produits', { auth: false, body: true }) },
       '/seller/dashboard': { get: op('Vendeur', 'Tableau de bord vendeur', { role: 'SELLER' }) },
+      '/seller/products/{productId}/stock-movements': {
+        get: op('Vendeur', 'Historique des mouvements de stock d’un produit : chaque ligne porte l’état après application', {
+          role: 'SELLER',
+          params: ['productId'],
+          query: ['limit', 'cursor'],
+        }),
+      },
       '/seller/inventory/low-stock': { get: op('Vendeur', 'Stocks faibles', { role: 'SELLER' }) },
       '/seller/stores/{storeId}/catalogue/import': {
         post: op('Vendeur', 'Importer un catalogue CSV (dryRun=true pour simuler)', { params: ['storeId'], query: ['dryRun'], body: true, role: 'SELLER' }),

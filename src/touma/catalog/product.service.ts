@@ -9,6 +9,7 @@ import { paginated, type PageParams } from '../lib/pagination.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import type { CreateProductInput, ListProductsQuery, UpdateProductInput } from './product.schema.js';
 import { corridorService } from '../trade/corridor.service.js';
+import { creerStock, fixerStock } from '../inventory/stock.service.js';
 
 /** Projection publique d'un produit (liste). */
 const listSelect = {
@@ -459,10 +460,10 @@ export const productService = {
               position: v.position || i,
             },
           });
-          await tx.toumaInventory.create({ data: { productId: product.id, variantId: variant.id, quantity: v.quantity } });
+          await creerStock(tx, { productId: product.id, variantId: variant.id, quantity: v.quantity, actorId: user.id });
         }
       } else {
-        await tx.toumaInventory.create({ data: { productId: product.id, variantId: null, quantity: input.quantity } });
+        await creerStock(tx, { productId: product.id, variantId: null, quantity: input.quantity, actorId: user.id });
       }
       // L'historique est ce qui rendra un futur prix barré vérifiable.
       // Consigné dans la même transaction que le produit : un prix sans son
@@ -535,14 +536,19 @@ export const productService = {
         });
       }
       if (input.quantity !== undefined) {
-        // Stock du produit simple (variante nulle). Prisma n'accepte pas `null`
-        // dans une clé composée : on cherche puis on crée/actualise.
-        const inventory = await tx.toumaInventory.findFirst({ where: { productId, variantId: null } });
-        if (inventory) {
-          await tx.toumaInventory.update({ where: { id: inventory.id }, data: { quantity: input.quantity } });
-        } else {
-          await tx.toumaInventory.create({ data: { productId, variantId: null, quantity: input.quantity } });
-        }
+        // Stock du produit simple (variante nulle). `fixerStock` gère la
+        // création comme la correction, et inscrit le mouvement au journal :
+        // une quantité modifiée depuis la fiche produit laissait auparavant
+        // aussi peu de trace qu'une vente.
+        await fixerStock(tx, {
+          productId,
+          variantId: null,
+          quantity: input.quantity,
+          reason: `Quantité fixée à ${input.quantity} depuis la fiche produit.`,
+          referenceType: 'ToumaProduct',
+          referenceId: productId,
+          actorId: user.id,
+        });
       }
       return product;
     });
@@ -561,10 +567,18 @@ export const productService = {
   async setStock(productId: string, user: ToumaRequestUser, input: { variantId?: string | null; quantity: number }) {
     await this.requireOwned(productId, user);
     const variantId = input.variantId ?? null;
-    const existing = await prisma.toumaInventory.findFirst({ where: { productId, variantId } });
-    if (existing) {
-      return prisma.toumaInventory.update({ where: { id: existing.id }, data: { quantity: input.quantity } });
-    }
-    return prisma.toumaInventory.create({ data: { productId, variantId, quantity: input.quantity } });
+    // Transaction, parce que la mise à jour et son mouvement de journal ne
+    // doivent pas pouvoir exister l'une sans l'autre.
+    return prisma.$transaction((tx) =>
+      fixerStock(tx, {
+        productId,
+        variantId,
+        quantity: input.quantity,
+        reason: `Quantité fixée à ${input.quantity} depuis l’espace vendeur.`,
+        referenceType: 'ToumaProduct',
+        referenceId: productId,
+        actorId: user.id,
+      }),
+    );
   },
 };

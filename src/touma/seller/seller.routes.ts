@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { asyncHandler, parseQuery } from '../../middleware/validate.js';
 import { forbidden, notFound } from '../lib/errors.js';
@@ -7,6 +8,12 @@ import { analyticsService } from '../admin/analytics.service.js';
 import { importService } from '../catalog/import.service.js';
 import { listOrdersSchema } from '../orders/order.schema.js';
 import { orderService } from '../orders/order.service.js';
+
+/** Pagination du journal de stock : par curseur, l'historique pouvant être long. */
+const mouvementsSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().cuid().optional(),
+});
 
 /** Espace vendeur (Seller Center) : agrégats prêts à afficher. */
 export const sellerRouter = Router();
@@ -146,5 +153,63 @@ sellerRouter.get(
     res.setHeader('content-type', 'text/csv; charset=utf-8');
     res.setHeader('content-disposition', 'attachment; filename="modele-catalogue-touma.csv"');
     res.send(importService.templateCsv());
+  }),
+);
+
+/**
+ * Historique des mouvements de stock d'un produit (V27 §3).
+ *
+ * C'est la contrepartie utile du journal : le tracer ne sert à rien si le
+ * commerçant ne peut pas le lire. La question qu'il pose est toujours la même
+ * — « pourquoi ce produit est-il passé de 12 à 9 ? » — et jusqu'ici elle
+ * n'avait aucune réponse.
+ *
+ * Réservé au propriétaire de la boutique. Un mouvement de stock dit combien un
+ * concurrent vend et quand : c'est une donnée commerciale, pas un journal
+ * public.
+ */
+sellerRouter.get(
+  '/products/:productId/stock-movements',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const produit = await prisma.toumaProduct.findUnique({
+      where: { id: req.params.productId },
+      select: { id: true, title: true, store: { select: { ownerId: true } } },
+    });
+    // Introuvable plutôt qu'interdit : répondre 403 confirmerait l'existence
+    // du produit d'un autre vendeur.
+    if (!produit || (produit.store.ownerId !== user.id && user.role !== 'ADMIN')) {
+      throw notFound('Produit introuvable.');
+    }
+
+    const { limit, cursor } = parseQuery(mouvementsSchema, req);
+    const lignes = await prisma.toumaStockMovement.findMany({
+      where: { productId: produit.id },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        type: true,
+        quantityDelta: true,
+        reservedDelta: true,
+        quantityAfter: true,
+        reservedAfter: true,
+        reason: true,
+        referenceType: true,
+        referenceId: true,
+        createdAt: true,
+      },
+    });
+
+    const page = lignes.slice(0, limit);
+    res.json({
+      product: { id: produit.id, title: produit.title },
+      items: page,
+      nextCursor: lignes.length > limit ? page[page.length - 1]?.id : null,
+      note:
+        'Chaque ligne porte l’état après application. Un article dont l’inventaire ne correspond pas au dernier ' +
+        'mouvement a été modifié hors journal — le contrôle d’intégrité le signale.',
+    });
   }),
 );

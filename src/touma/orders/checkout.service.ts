@@ -19,6 +19,7 @@ import { loadTiers, resolveUnitPrice, tiersFor } from '../catalog/pricing.js';
 import { sweepReservations } from './reservation.js';
 import type { CheckoutInput } from './order.schema.js';
 import { marcheOuvert } from '../platform/country.service.js';
+import { prelever } from '../inventory/stock.service.js';
 
 /** Numéro de commande lisible et non devinable. */
 function orderNumber(): string {
@@ -523,11 +524,21 @@ export const checkoutService = {
           const { item } = line;
           // 9. Décrément atomique : la condition `quantity >= q` empêche deux
           //    acheteurs simultanés de vendre le même dernier article.
-          const decremented = await tx.toumaInventory.updateMany({
-            where: { productId: item.productId, variantId: item.variantId ?? null, quantity: { gte: item.quantity } },
-            data: { quantity: { decrement: item.quantity }, reserved: { increment: item.quantity } },
+          // Le décrément passe par `prelever`, qui conserve la condition
+          // `quantity >= q` — le verrou anti-survente — et inscrit le mouvement
+          // au journal. Avant, ce décrément ne laissait aucune trace : un
+          // vendeur qui constatait un écart n'avait rien à consulter.
+          const preleve = await prelever(tx, {
+            productId: item.productId,
+            variantId: item.variantId ?? null,
+            quantity: item.quantity,
+            type: 'SALE',
+            reason: `Commande ${order.orderNumber}.`,
+            referenceType: 'ToumaOrder',
+            referenceId: order.id,
+            actorId: user.id,
           });
-          if (decremented.count !== 1) {
+          if (!preleve) {
             throw conflict(`Stock insuffisant pour « ${item.product.title} ». Votre panier n'a pas été validé.`);
           }
 

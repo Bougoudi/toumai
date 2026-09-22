@@ -1,5 +1,4 @@
 import { Prisma, type ToumaOrderStatus } from '@prisma/client';
-import { libererReservation } from './reservation-counter.js';
 import { prisma } from '../../db/prisma.js';
 import { refreshGroupStatus } from './group-status.js';
 import { conflict, forbidden, notFound } from '../lib/errors.js';
@@ -12,6 +11,7 @@ import { recordTrustEvent, type TrustEventType } from '../trust/events.js';
 import { referralService } from '../growth/referral.service.js';
 import { refundService } from '../payments/refund.service.js';
 import type { ListOrdersQuery } from './order.schema.js';
+import { libererStock } from '../inventory/stock.service.js';
 
 /**
  * Transitions autorisées du cycle de vie d'une commande. Toute autre transition
@@ -278,11 +278,16 @@ export const orderService = {
         // Restitution du stock réservé.
         for (const item of order.items) {
           if (!item.productId) continue;
-          await libererReservation(tx, {
+          await libererStock(tx, {
             productId: item.productId,
             variantId: item.variantId ?? null,
             quantity: item.quantity,
             restock: true,
+            type: 'CANCELLATION',
+            reason: `Annulation de la commande ${order.orderNumber}.`,
+            referenceType: 'ToumaOrder',
+            referenceId: order.id,
+            actorId: user.id,
           });
         }
       }

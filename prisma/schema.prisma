@@ -314,6 +314,7 @@ model User {
   incidentsOpened      ToumaIncident[]            @relation("IncidentOpener")
   incidentEvents       ToumaIncidentEvent[]
   countryStatusChanges ToumaCountryStatusChange[] @relation("CountryStatusChangedBy")
+  stockMovements       ToumaStockMovement[]       @relation("StockMovementActor")
 }
 
 /// Événement de connexion (journal de sécurité).
@@ -1840,6 +1841,7 @@ model ToumaProduct {
   originDeclaredAt    DateTime?
 
   crossBorderRules ToumaCrossBorderProductRule[]
+  stockMovements   ToumaStockMovement[]
 
   @@index([storeId])
   @@index([categoryId])
@@ -1908,8 +1910,9 @@ model ToumaProductVariant {
   orderItems ToumaOrderItem[]
   priceTiers ToumaPriceTier[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  stockMovements ToumaStockMovement[]
 
   @@index([productId])
   @@map("touma_product_variants")
@@ -5872,4 +5875,95 @@ model ToumaCountryProvider {
   @@unique([countryCode, type, code])
   @@index([countryCode, type, status])
   @@map("touma_country_providers")
+}
+
+// ── Journal des mouvements de stock (V27) ────────────────────────────────────
+
+/// Nature d'un mouvement de stock.
+///
+/// Un type n'est pas une étiquette décorative : c'est ce qui permet de
+/// répondre à « pourquoi ce produit est-il passé de 12 à 9 ? » sans recouper
+/// des horodatages à la main.
+enum StockMovementType {
+  /// Création d'un produit ou d'une variante avec une quantité de départ.
+  INITIAL
+  /// Vente : décrément au passage de commande.
+  SALE
+  /// Retour reçu et remis en stock.
+  RETURN
+  /// Commande annulée, réservation libérée avec remise en stock.
+  CANCELLATION
+  /// Réservation libérée sans remise en stock (panier expiré).
+  RESERVATION_RELEASE
+  /// Correction saisie par le vendeur.
+  ADJUSTMENT
+  /// Import de catalogue.
+  IMPORT
+  /// Réception d'une commande fournisseur.
+  PURCHASE
+  /// Transfert entre points de stockage.
+  TRANSFER_OUT
+  TRANSFER_IN
+  /// Marchandise abîmée ou perdue, constatée.
+  DAMAGE
+  LOSS
+  /// Écart constaté lors d'un inventaire physique.
+  COUNT_CORRECTION
+}
+
+/// Un mouvement de stock, tel qu'il s'est produit.
+///
+/// **Le manque qu'il comble.** Le stock se modifiait par `UPDATE quantity`
+/// depuis six endroits du code, sans laisser la moindre trace. Un vendeur qui
+/// constatait un écart n'avait aucun moyen de savoir d'où il venait, et
+/// l'équipe non plus : le commentaire de `reservation-counter.ts` dit noir sur
+/// blanc qu'on ignore lequel des trois chemins de libération décrémente deux
+/// fois — un contrôle d'intégrité avait trouvé 101 lignes à `reserved = -1`
+/// sans pouvoir désigner le coupable. Cette table est la réponse à cette
+/// question, et à toutes celles de la même famille.
+///
+/// **`quantityAfter` est le champ qui compte.** Il fige l'état **après**
+/// application. Il permet deux choses qu'un simple delta ne permet pas :
+/// rejouer l'histoire d'un article, et détecter une dérive — si le dernier
+/// mouvement dit 9 et que la table d'inventaire dit 11, deux unités sont
+/// apparues sans passer par ici.
+model ToumaStockMovement {
+  id        String               @id @default(cuid())
+  productId String
+  product   ToumaProduct         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  variant   ToumaProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  type StockMovementType
+
+  /// Variation de la quantité vendable. Signée : négative pour une sortie.
+  /// Peut valoir 0 quand seule la réservation bouge.
+  quantityDelta Int
+  /// Variation du compteur de réservation. Signée elle aussi.
+  reservedDelta Int @default(0)
+  /// État après application. Le cœur du dispositif — voir l'en-tête du modèle.
+  quantityAfter Int
+  reservedAfter Int @default(0)
+
+  /// Ce qui a causé le mouvement, en clair. Jamais « mise à jour ».
+  reason String?
+
+  /// L'objet à l'origine : commande, retour, import, réception fournisseur.
+  /// Deux colonnes plutôt qu'une relation : les origines sont hétérogènes, et
+  /// une clé étrangère par type ferait une table pleine de colonnes nulles.
+  referenceType String?
+  referenceId   String?
+
+  /// Qui. Nul pour un mouvement déclenché par une tâche planifiée.
+  actorId   String?
+  actor     User?   @relation("StockMovementActor", fields: [actorId], references: [id], onDelete: SetNull)
+  /// Identifiant de requête (V25) : relie ce mouvement aux journaux d'accès.
+  requestId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, variantId, createdAt])
+  @@index([type, createdAt])
+  @@index([referenceType, referenceId])
+  @@map("touma_stock_movements")
 }

@@ -6,6 +6,7 @@ import { badRequest, notFound } from '../lib/errors.js';
 import { uniqueSlug } from '../lib/slug.js';
 import type { ToumaRequestUser } from '../middleware/toumaAuth.js';
 import { parseCsvObjects, toCsv } from './csv.js';
+import { creerStock, fixerStock } from '../inventory/stock.service.js';
 
 /**
  * IMPORT ET EXPORT DE CATALOGUE.
@@ -229,10 +230,18 @@ export async function importCatalogue(
             },
           });
           // Le stock d'un import remplace le stock connu : c'est l'inventaire
-          // du vendeur qui fait foi, pas une addition à l'aveugle.
-          await tx.toumaInventory.updateMany({
-            where: { productId: entry.existingId, variantId: null },
-            data: { quantity },
+          // du vendeur qui fait foi, pas une addition à l'aveugle. Le journal
+          // enregistre l'écart réellement produit — un import qui divise le
+          // stock par dix se voyait jusqu'ici uniquement dans le résultat.
+          await fixerStock(tx, {
+            productId: entry.existingId as string,
+            variantId: null,
+            quantity,
+            type: 'IMPORT',
+            reason: `Import de catalogue, ligne ${entry.line}.`,
+            referenceType: 'ToumaStore',
+            referenceId: storeId,
+            actorId: user.id,
           });
         });
         applied.push({ line: entry.line, sku: entry.sku, title: String(fields.title), action: 'update', productId: entry.existingId });
@@ -248,7 +257,14 @@ export async function importCatalogue(
               ...(imageUrl ? { images: { create: [{ url: imageUrl, position: 0 }] } } : {}),
             },
           });
-          await tx.toumaInventory.create({ data: { productId: product.id, quantity } });
+          await creerStock(tx, {
+            productId: product.id,
+            variantId: null,
+            quantity,
+            type: 'IMPORT',
+            reason: `Création par import de catalogue, ligne ${entry.line}.`,
+            actorId: user.id,
+          });
           return product;
         });
         applied.push({ line: entry.line, sku: entry.sku, title: String(fields.title), action: 'create', productId: created.id });

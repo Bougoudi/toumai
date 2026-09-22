@@ -127,6 +127,27 @@ const CONTROLES: Controle[] = [
       LIMIT 100`,
   },
   {
+    code: 'INVENTORY_LEDGER_DRIFT',
+    label: 'Stock divergent du journal des mouvements',
+    invariant:
+        'Le dernier mouvement journalisé d’un article dit la même quantité que sa ligne d’inventaire. ' +
+        'Un écart signifie qu’une unité est apparue ou disparue sans passer par le journal.',
+    severity: 'CRITIQUE',
+    sql: () => prisma.$queryRaw`
+      SELECT i."id"
+        FROM "touma_inventory" i
+        JOIN LATERAL (
+          SELECT m."quantityAfter"
+            FROM "touma_stock_movements" m
+           WHERE m."productId" = i."productId"
+             AND (m."variantId" = i."variantId" OR (m."variantId" IS NULL AND i."variantId" IS NULL))
+           ORDER BY m."createdAt" DESC, m."id" DESC
+           LIMIT 1
+        ) dernier ON TRUE
+       WHERE dernier."quantityAfter" <> i."quantity"
+       LIMIT 100`,
+  },
+  {
     code: 'INVENTORY_OVER_RESERVED',
     label: 'Réservations supérieures au stock',
     invariant: 'On ne réserve pas plus d’unités qu’il n’en existe.',

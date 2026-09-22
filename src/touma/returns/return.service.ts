@@ -1,5 +1,4 @@
 import { randomBytes } from 'node:crypto';
-import { libererReservation } from '../orders/reservation-counter.js';
 import { Prisma, type ReturnReason, type ReturnStatus } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { env } from '../../config/env.js';
@@ -13,6 +12,7 @@ import { refundService } from '../payments/refund.service.js';
 import { reputationService } from '../reputation/reputation.service.js';
 import { recordTrustEvent } from '../trust/events.js';
 import type { ApproveReturnInput, CreateReturnInput, ListReturnsQuery, ReceiveReturnInput, RefundInput } from './return.schema.js';
+import { libererStock } from '../inventory/stock.service.js';
 
 /**
  * RETOURS & REMBOURSEMENTS.
@@ -431,11 +431,16 @@ export const returnService = {
           if (!item.orderItem.productId) continue;
           // La réservation posée au checkout est libérée en même temps que le
           // stock revient : sans cela `reserved` ne redescendrait jamais.
-          await libererReservation(tx, {
+          await libererStock(tx, {
             productId: item.orderItem.productId,
             variantId: item.orderItem.variantId ?? null,
             quantity: item.quantity,
             restock: true,
+            type: 'RETURN',
+            reason: `Retour ${row.reference} reçu par le vendeur.`,
+            referenceType: 'ToumaReturnRequest',
+            referenceId: row.id,
+            actorId: user.id,
           });
         }
       }

@@ -1,6 +1,6 @@
 import { prisma } from '../../db/prisma.js';
-import { libererReservation } from './reservation-counter.js';
 import { logger } from '../../utils/logger.js';
+import { libererStock } from '../inventory/stock.service.js';
 
 /**
  * Expiration des réservations de stock.
@@ -102,11 +102,15 @@ export async function expireStaleReservations(now = new Date()): Promise<ExpiryR
         let lines = 0;
         for (const item of order.items) {
           if (!item.productId) continue;
-          await libererReservation(tx, {
+          await libererStock(tx, {
             productId: item.productId,
             variantId: item.variantId ?? null,
             quantity: item.quantity,
             restock: true,
+            type: 'CANCELLATION',
+            reason: `Réservation expirée sur la commande ${order.orderNumber}.`,
+            referenceType: 'ToumaOrder',
+            referenceId: order.id,
           });
           lines += item.quantity;
         }
