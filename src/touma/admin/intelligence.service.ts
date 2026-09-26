@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { logger } from '../../utils/logger.js';
+import { fraicheur } from '../market/freshness.js';
+import { qualifierLignes } from '../market/market-country.js';
 
 /**
  * TOUMA INTELLIGENCE — ce que les transactions réelles apprennent.
@@ -179,6 +181,9 @@ export const intelligenceService = {
         by: ['countryCode'],
         where: { createdAt: { gte: from }, resultCount: 0 },
         _count: { _all: true },
+        // La date de la dernière recherche : sans elle, un signal ne peut pas
+        // dire son âge, et un chiffre sans âge se lit comme actuel (§41).
+        _max: { createdAt: true },
       }),
       // Un appel d'offres sans offre est une demande explicite, chiffrée, que
       // personne n'a servie : le signal le plus fort du marché.
@@ -207,11 +212,41 @@ export const intelligenceService = {
       })),
       /** Recherches sans aucun résultat : le catalogue manque de ces produits. */
       emptySearches: emptySearches.map((s) => ({ term: s.term, searches: s._count._all })),
-      /** Où la demande non servie s'exprime, quand le pays est connu. */
-      emptySearchesByCountry: emptyByCountry
-        .filter((row) => row.countryCode)
-        .map((row) => ({ countryCode: row.countryCode!, searches: row._count._all }))
-        .sort((a, b) => b.searches - a.searches),
+      /**
+       * Où la demande non servie s'exprime, quand le pays est connu.
+       *
+       * Chaque ligne porte désormais le statut V26 de son marché (§43). Avant,
+       * un code pays nu arrivait dans la liste : rien ne distinguait le Tchad,
+       * où TOUMA opère, du Nigeria, qui est `PLANNED` — aucune géographie,
+       * aucun prestataire, aucun corridor. Les deux se lisaient comme des
+       * marchés, et une demande non servable passait pour une demande servie.
+       *
+       * On ne masque pas pour autant : un pays d'où l'on cherche sans pouvoir
+       * acheter est précisément ce qu'une équipe d'expansion doit voir.
+       */
+      emptySearchesByCountry: await qualifierLignes(
+        emptyByCountry
+          .filter((row) => row.countryCode)
+          .map((row) => ({
+            countryCode: row.countryCode!,
+            searches: row._count._all,
+            freshness: fraicheur(row._max.createdAt, { windowDays: days }),
+          }))
+          .sort((a, b) => b.searches - a.searches),
+      ),
+      /**
+       * Âge de l'observation la plus récente de tout ce bloc.
+       *
+       * Rendu à la racine pour qu'un lecteur pressé le voie avant les chiffres.
+       * Un tableau de bord sans date se lit comme l'état du moment — l'absence
+       * d'indication est elle-même une affirmation.
+       */
+      freshness: fraicheur(
+        [...searches.map((x) => x._max.createdAt), ...emptySearches.map((x) => x._max.createdAt), rfqs[0]?.createdAt ?? null]
+          .filter((d): d is Date => d instanceof Date)
+          .sort((a, b) => b.getTime() - a.getTime())[0] ?? null,
+        { windowDays: days },
+      ),
       unansweredRfqs: rfqs.map((r) => ({
         id: r.id,
         reference: r.reference,
