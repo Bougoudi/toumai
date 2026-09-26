@@ -1,0 +1,610 @@
+/**
+ * Jeu de données de développement pour la place de marché TOUMA.
+ *
+ * Corridor pilote : Tchad (TD) ↔ Cameroun (CM). Les autres pays sont présents
+ * mais inactifs : ouvrir un marché consiste à basculer `active`, jamais à
+ * modifier le code.
+ *
+ * ⚠️ Comptes de démonstration : mots de passe volontairement explicites, à
+ * n'utiliser qu'en développement. Aucun secret réel n'est présent ici.
+ */
+import { PAYS, chargerPays } from './seeds/countries/index.js';
+import { existsSync } from 'node:fs';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../src/db/prisma.js';
+import { geographyDatasetPath, loadGeography } from '../src/touma/geo/geography.loader.js';
+import { hashPassword } from '../src/utils/auth.js';
+import { slugify } from '../src/touma/lib/slug.js';
+
+const DEV_PASSWORD = 'touma-dev-1234';
+
+// Le fuseau compte : une date de livraison rendue dans le fuseau du serveur est
+// fausse pour celui qui attend le colis.
+/**
+ * Le référentiel des pays vit dans `prisma/seeds/countries/` — un fichier par
+ * marché (V26 §9). Ajouter le Sénégal consiste à écrire un descripteur, pas à
+ * retrouver sept endroits de ce fichier où le Tchad est mentionné.
+ */
+
+const CATEGORIES = [
+  { name: 'Matières premières & agroalimentaire', segment: 'B2B' },
+  { name: 'Emballage & conditionnement', segment: 'B2B' },
+  { name: 'Équipement & outillage', segment: 'B2B' },
+  { name: 'Mode & textile', segment: 'BOTH' },
+  { name: 'Beauté & soins', segment: 'B2C' },
+  { name: 'Maison & décoration', segment: 'B2C' },
+  { name: 'Accessoires & téléphonie', segment: 'B2C' },
+  { name: 'Produits du quotidien', segment: 'B2C' },
+];
+
+interface SeedProduct {
+  title: string;
+  description: string;
+  price: string;
+  category: string;
+  quantity: number;
+  minOrderQty?: number;
+  weightGrams?: number;
+  keywords: string;
+  brand?: string;
+  /** Visuel de démonstration servi par l'application (public/touma/img). */
+  image: string;
+  variants?: Array<{ name: string; priceDelta: string; quantity: number }>;
+}
+
+const TD_PRODUCTS: SeedProduct[] = [
+  {
+    title: 'Sésame blanc du Tchad — sac de 25 kg',
+    image: '/touma/img/sesame.svg',
+    description:
+      "Sésame blanc trié, calibre export, récolte de la saison en cours. Conditionné en sacs de 25 kg. Certificat phytosanitaire fourni sur demande. Vendu au sac, tarif dégressif à partir de 20 sacs.",
+    price: '38000',
+    category: 'Matières premières & agroalimentaire',
+    quantity: 240,
+    minOrderQty: 5,
+    weightGrams: 25000,
+    keywords: 'sesame graines export agro tchad gros',
+  },
+  {
+    title: 'Gomme arabique brute — carton de 10 kg',
+    image: '/touma/img/gomme.svg',
+    description:
+      "Gomme arabique (Acacia senegal) récoltée dans le Sahel tchadien, triée à la main. Carton de 10 kg. Idéale pour l'agroalimentaire et la cosmétique.",
+    price: '52000',
+    category: 'Matières premières & agroalimentaire',
+    quantity: 90,
+    minOrderQty: 2,
+    weightGrams: 10000,
+    keywords: 'gomme arabique acacia sahel export',
+  },
+  {
+    title: 'Boubou brodé homme — coton teint à la main',
+    image: '/touma/img/boubou.svg',
+    description:
+      "Boubou traditionnel en coton épais, broderie réalisée à la main sur le col et les manches. Coupe ample. Lavage à la main recommandé.",
+    price: '27500',
+    category: 'Mode & textile',
+    quantity: 60,
+    keywords: 'boubou broderie coton mode homme tchad',
+    variants: [
+      { name: 'Taille M', priceDelta: '0', quantity: 20 },
+      { name: 'Taille L', priceDelta: '1500', quantity: 25 },
+      { name: 'Taille XL', priceDelta: '3000', quantity: 15 },
+    ],
+  },
+  {
+    title: 'Beurre de karité brut — seau de 5 kg',
+    image: '/touma/img/karite.svg',
+    description:
+      "Beurre de karité non raffiné, pressé à froid, sans additif. Seau alimentaire de 5 kg refermable. Convient à la revente en cosmétique artisanale.",
+    price: '19500',
+    category: 'Beauté & soins',
+    quantity: 150,
+    minOrderQty: 2,
+    weightGrams: 5200,
+    keywords: 'karite beurre cosmetique brut naturel',
+  },
+];
+
+const CM_PRODUCTS: SeedProduct[] = [
+  {
+    title: 'Cacao en fèves fermentées — sac de 50 kg',
+    image: '/touma/img/cacao.svg',
+    description:
+      "Fèves de cacao fermentées et séchées, région du Centre. Sac de jute de 50 kg. Taux d'humidité contrôlé, échantillon disponible avant commande.",
+    price: '145000',
+    category: 'Matières premières & agroalimentaire',
+    quantity: 40,
+    minOrderQty: 1,
+    weightGrams: 50000,
+    keywords: 'cacao feves fermentation export cameroun',
+  },
+  {
+    title: 'Cartons ondulés double cannelure — lot de 100',
+    image: '/touma/img/cartons.svg',
+    description:
+      "Cartons d'expédition double cannelure 40×30×30 cm, livrés à plat. Lot de 100 unités. Résistance testée pour le transport routier transfrontalier.",
+    price: '68000',
+    category: 'Emballage & conditionnement',
+    quantity: 75,
+    minOrderQty: 1,
+    weightGrams: 32000,
+    keywords: 'carton emballage expedition logistique lot',
+  },
+  {
+    title: 'Pagne wax 6 yards — impression Douala',
+    image: '/touma/img/pagne.svg',
+    description:
+      "Pagne wax 100 % coton, 6 yards, impression réalisée à Douala. Couleurs stables au lavage. Vendu à la pièce, remise à partir de 10 pièces.",
+    price: '16500',
+    category: 'Mode & textile',
+    quantity: 300,
+    keywords: 'pagne wax tissu coton mode douala',
+    variants: [
+      { name: 'Motif bleu', priceDelta: '0', quantity: 120 },
+      { name: 'Motif ocre', priceDelta: '0', quantity: 100 },
+      { name: 'Motif vert', priceDelta: '500', quantity: 80 },
+    ],
+  },
+  {
+    title: 'Chargeur solaire portatif 20 000 mAh',
+    image: '/touma/img/solaire.svg',
+    description:
+      "Batterie externe avec panneau solaire intégré, 20 000 mAh, double port USB, lampe LED. Adaptée aux zones à électricité intermittente. Garantie 12 mois.",
+    price: '24000',
+    category: 'Accessoires & téléphonie',
+    quantity: 120,
+    keywords: 'solaire chargeur batterie telephone energie',
+    brand: 'Sahel Power',
+  },
+  {
+    title: 'Savon noir africain — carton de 48 pains',
+    image: '/touma/img/savon.svg',
+    description:
+      "Savon noir traditionnel à base de cendres de cabosses et d'huile de palmiste. Carton de 48 pains de 150 g. Étiquetage personnalisable pour les revendeurs.",
+    price: '32000',
+    category: 'Beauté & soins',
+    quantity: 85,
+    minOrderQty: 1,
+    weightGrams: 7500,
+    keywords: 'savon noir beaute soin revente carton',
+  },
+];
+
+async function upsertUser(input: { email: string; name: string; role: 'BUYER' | 'SELLER' | 'ADMIN'; countryCode: string; phone: string }) {
+  const passwordHash = await hashPassword(DEV_PASSWORD);
+  return prisma.user.upsert({
+    where: { email: input.email },
+    update: { toumaRole: input.role, countryCode: input.countryCode },
+    create: {
+      email: input.email,
+      name: input.name,
+      passwordHash,
+      role: input.role === 'ADMIN' ? 'admin' : 'user',
+      toumaRole: input.role,
+      countryCode: input.countryCode,
+      phone: input.phone,
+    },
+  });
+}
+
+async function seedProducts(storeId: string, countryCode: string, currency: string, products: SeedProduct[], categories: Map<string, string>) {
+  for (const p of products) {
+    const slug = slugify(p.title);
+    const existing = await prisma.toumaProduct.findUnique({ where: { slug } });
+    if (existing) continue;
+
+    const product = await prisma.toumaProduct.create({
+      data: {
+        storeId,
+        categoryId: categories.get(p.category) ?? null,
+        title: p.title,
+        slug,
+        description: p.description,
+        brand: p.brand ?? null,
+        price: new Prisma.Decimal(p.price),
+        currency,
+        countryCode,
+        minOrderQty: p.minOrderQty ?? 1,
+        weightGrams: p.weightGrams ?? 800,
+        keywords: p.keywords,
+        status: 'ACTIVE',
+        publishedAt: new Date(),
+        images: { create: [{ url: p.image, alt: p.title, position: 0 }] },
+      },
+    });
+
+    if (p.variants?.length) {
+      for (const [i, v] of p.variants.entries()) {
+        const variant = await prisma.toumaProductVariant.create({
+          data: { productId: product.id, name: v.name, priceDelta: new Prisma.Decimal(v.priceDelta), position: i },
+        });
+        await prisma.toumaInventory.create({ data: { productId: product.id, variantId: variant.id, quantity: v.quantity } });
+      }
+    } else {
+      await prisma.toumaInventory.create({ data: { productId: product.id, variantId: null, quantity: p.quantity } });
+    }
+  }
+}
+
+async function main() {
+  console.log('→ [Touma] Référentiel des pays (corridor pilote TD ↔ CM)…');
+  for (const p of PAYS) await chargerPays(prisma, p);
+  console.log(`   ${PAYS.length} marchés — ${PAYS.filter((p) => p.status === 'ACTIVE').length} ouvert(s), le reste en configuration ou référencé.`);
+
+  console.log('→ [Touma] Géographie administrative du Tchad (source GeoNames, CC BY 4.0)…');
+  if (existsSync(geographyDatasetPath())) {
+    const geo = await loadGeography('TD');
+    console.log(
+      `   ${geo.provinces} provinces, ${geo.departments} départements, ${geo.localities} localités ` +
+        `(dont ${geo.localitiesWithoutDepartment} sans département dans la source — jamais devinées` +
+        `${geo.localitiesSkipped > 0 ? ` ; ${geo.localitiesSkipped} écartées faute de province identifiable` : ''}).`,
+    );
+  } else {
+    // On ne remplace pas un jeu de données absent par des valeurs inventées :
+    // on le dit, et le reste du seed continue.
+    console.log(`   Jeu de données absent (${geographyDatasetPath()}) : géographie non chargée.`);
+    console.log('   Régénérez-le avec scripts/build-chad-geography.mjs — voir docs/chad-geography-sources.md.');
+  }
+
+  console.log('→ [Touma] Catégories du catalogue…');
+  const categories = new Map<string, string>();
+  for (const [i, c] of CATEGORIES.entries()) {
+    const category = await prisma.toumaCategory.upsert({
+      where: { slug: slugify(c.name) },
+      update: { name: c.name, segment: c.segment, position: i },
+      create: { name: c.name, slug: slugify(c.name), segment: c.segment, position: i },
+    });
+    categories.set(c.name, category.id);
+  }
+
+  console.log('→ [Touma] Transporteur de démonstration…');
+  await prisma.toumaShippingProvider.upsert({
+    where: { code: 'mock' },
+    update: { name: 'Touma Mock Carrier', active: true },
+    create: { code: 'mock', name: 'Touma Mock Carrier', countries: 'TD,CM', active: true },
+  });
+
+  console.log('→ [Touma] Comptes de démonstration…');
+  const admin = await upsertUser({ email: 'admin@touma.dev', name: 'Administration Touma', role: 'ADMIN', countryCode: 'TD', phone: '+23566000001' });
+  const sellerTd = await upsertUser({ email: 'vendeur.td@touma.dev', name: 'Aïcha Mahamat', role: 'SELLER', countryCode: 'TD', phone: '+23566000002' });
+  const sellerCm = await upsertUser({ email: 'vendeur.cm@touma.dev', name: 'Blaise Ngoumou', role: 'SELLER', countryCode: 'CM', phone: '+237690000003' });
+  const buyer = await upsertUser({ email: 'acheteur@touma.dev', name: 'Fatimé Oumar', role: 'BUYER', countryCode: 'TD', phone: '+23566000004' });
+
+  console.log('→ [Touma] Boutiques…');
+  const storeTd = await prisma.toumaStore.upsert({
+    where: { slug: 'sahel-negoce' },
+    update: {},
+    create: {
+      ownerId: sellerTd.id,
+      name: 'Sahel Négoce',
+      slug: 'sahel-negoce',
+      description: "Grossiste tchadien en produits agricoles et textiles. Expédition vers toute l'Afrique centrale.",
+      countryCode: 'TD',
+      city: "N'Djamena",
+      phone: '+23566000002',
+      status: 'ACTIVE',
+      verificationStatus: 'APPROVED',
+    },
+  });
+  const storeCm = await prisma.toumaStore.upsert({
+    where: { slug: 'douala-trade-house' },
+    update: {},
+    create: {
+      ownerId: sellerCm.id,
+      name: 'Douala Trade House',
+      slug: 'douala-trade-house',
+      description: 'Import-export basé à Douala : agroalimentaire, emballage, textile et accessoires.',
+      countryCode: 'CM',
+      city: 'Douala',
+      phone: '+237690000003',
+      status: 'ACTIVE',
+      verificationStatus: 'PENDING',
+    },
+  });
+
+  console.log('→ [Touma] Catalogue de démonstration…');
+  await seedProducts(storeTd.id, 'TD', 'XAF', TD_PRODUCTS, categories);
+  await seedProducts(storeCm.id, 'CM', 'XAF', CM_PRODUCTS, categories);
+
+  console.log('→ [Touma] Dossier Touma Verified en attente (pour tester la file d’administration)…');
+  const pending = await prisma.toumaSellerVerification.findFirst({ where: { storeId: storeCm.id } });
+  if (!pending) {
+    await prisma.toumaSellerVerification.create({
+      data: {
+        storeId: storeCm.id,
+        businessType: 'COMPANY',
+        legalName: 'Douala Trade House SARL',
+        registrationNo: 'RC/DLA/2019/B/1234',
+        contactPhone: '+237690000003',
+        contactEmail: 'vendeur.cm@touma.dev',
+        documents: [{ kind: 'registre_commerce', url: 'private://demo/rc.pdf', uploadedAt: new Date().toISOString() }] as object,
+      },
+    });
+  }
+
+  console.log('→ [Touma] Corridors du commerce transfrontalier…');
+  // Le corridor pilote n'était **dans aucun seed**. Il n'existait que dans les
+  // tests, et une installation neuve n'avait donc aucun corridor : la page
+  // publique /trade était vide, alors que l'en-tête de ce fichier annonce
+  // « corridor pilote TD ↔ CM » depuis le début.
+  //
+  // Il est créé en COMING_SOON, jamais en ACTIVE. Un corridor n'est opérationnel
+  // que si un moyen de paiement et un transporteur le couvrent réellement des
+  // deux côtés (V24 §72) — ce qui n'est le cas ni dans un sens ni dans l'autre
+  // tant qu'aucun transporteur réel n'est raccordé. Le déclarer ouvert ici
+  // ferait exactement ce que §79 interdit.
+  for (const [origine, destination] of [
+    ['TD', 'CM'],
+    ['CM', 'TD'],
+  ]) {
+    const code = `${origine}_${destination}`;
+    await prisma.toumaTradeCorridor.upsert({
+      where: { code },
+      update: {},
+      create: {
+        code,
+        originCountry: origine,
+        destinationCountry: destination,
+        status: 'COMING_SOON',
+        supportedCurrencies: ['XAF'],
+        supportedPaymentMethods: ['MOBILE_MONEY'],
+        supportedShippingMethods: [],
+        requiredDocuments: ['COMMERCIAL_INVOICE', 'PACKING_LIST'],
+        notes: 'Corridor pilote. Annoncé, non opérationnel : aucun transporteur réel ne couvre les deux pays.',
+      },
+    });
+  }
+
+  console.log('→ [Touma] Points relais du corridor…');
+  const PICKUP_POINTS = [
+    { code: 'TD-NDJ-01', name: 'Relais Marché de Dembé', countryCode: 'TD', city: "N'Djamena", district: 'Dembé', landmark: 'Face à la grande mosquée', addressLine: 'Avenue Mobutu, Dembé', openingHours: 'Lun–Sam 8h–18h' },
+    { code: 'TD-NDJ-02', name: 'Relais Moursal', countryCode: 'TD', city: "N'Djamena", district: 'Moursal', landmark: 'À côté de la pharmacie du rond-point', addressLine: 'Rue 3040, Moursal', openingHours: 'Lun–Ven 9h–17h' },
+    { code: 'CM-DLA-01', name: 'Relais Akwa', countryCode: 'CM', city: 'Douala', district: 'Akwa', landmark: 'Immeuble face à la station-service', addressLine: 'Boulevard de la Liberté, Akwa', openingHours: 'Lun–Sam 8h–19h' },
+    { code: 'CM-YDE-01', name: 'Relais Mvog-Mbi', countryCode: 'CM', city: 'Yaoundé', district: 'Mvog-Mbi', landmark: 'Près du carrefour Mvog-Mbi', addressLine: 'Avenue Kennedy, Mvog-Mbi', openingHours: 'Lun–Sam 8h–18h' },
+  ];
+  for (const point of PICKUP_POINTS) {
+    await prisma.toumaPickupPoint.upsert({ where: { code: point.code }, update: point, create: point });
+  }
+
+  console.log('→ [Touma] Adresse de livraison de l’acheteur…');
+  const address = await prisma.toumaAddress.findFirst({ where: { userId: buyer.id } });
+  if (!address) {
+    await prisma.toumaAddress.create({
+      data: {
+        userId: buyer.id,
+        fullName: 'Fatimé Oumar',
+        phone: '+23566000004',
+        line1: 'Avenue Charles de Gaulle, quartier Klemat',
+        city: "N'Djamena",
+        countryCode: 'TD',
+        isDefault: true,
+      },
+    });
+  }
+
+  console.log('→ [Touma] TOUMA Business : profil entreprise et appel d’offres de démonstration…');
+  const business = await prisma.toumaBusinessProfile.upsert({
+    where: { userId: buyer.id },
+    update: {},
+    create: {
+      userId: buyer.id,
+      legalName: 'Sahel Distribution SARL',
+      registrationNo: 'RCCM/TD/NDJ/2021/B/0421',
+      sector: 'Distribution agroalimentaire',
+      countryCode: 'TD',
+      city: "N'Djamena",
+      phone: '+23566000004',
+      annualVolume: '50–100 M XAF',
+    },
+  });
+
+  const existingRfq = await prisma.toumaRfq.findFirst({ where: { buyerId: buyer.id } });
+  const demoRfq =
+    existingRfq ??
+    (await prisma.toumaRfq.create({
+      data: {
+        reference: 'RFQ-DEMO-0001',
+        buyerId: buyer.id,
+        businessProfileId: business.id,
+        title: 'Recherche 500 kg de cacao en fèves — livraison N’Djamena',
+        description:
+          "Nous recherchons du cacao en fèves fermentées, qualité export, pour une première commande de 500 kg livrée à N'Djamena. Échantillon souhaité avant commande. Paiement à la commande via Touma Pay.",
+        countryCode: 'TD',
+        city: "N'Djamena",
+        sourceCountry: 'CM',
+        currency: 'XAF',
+        deadline: new Date(Date.now() + 14 * 24 * 3600 * 1000),
+        items: {
+          create: [
+            { name: 'Cacao en fèves fermentées', description: 'Qualité export, humidité contrôlée', quantity: 500, unit: 'kg', targetUnitPrice: '2800' },
+          ],
+        },
+      },
+    }));
+
+  await seedMessaging({ buyer, sellerCm, storeCm, business, rfq: demoRfq });
+
+  const [countries, cats, products] = await Promise.all([
+    prisma.country.count(),
+    prisma.toumaCategory.count(),
+    prisma.toumaProduct.count(),
+  ]);
+
+  console.log('\n✅ Place de marché Touma prête.');
+  console.log(`   Pays : ${countries} · Catégories : ${cats} · Produits : ${products}`);
+  console.log('\n   Comptes de développement (mot de passe commun) :');
+  console.log(`   • Administration : ${admin.email}`);
+  console.log(`   • Vendeur Tchad  : ${sellerTd.email}`);
+  console.log(`   • Vendeur Camer. : ${sellerCm.email}`);
+  console.log(`   • Acheteur       : ${buyer.email}`);
+  console.log(`   • Mot de passe   : ${DEV_PASSWORD}  (développement uniquement)\n`);
+}
+
+/**
+ * Messagerie et négociation de démonstration (V14).
+ *
+ * Cinq fils, un par nature : échange direct, appel d'offres, offre,
+ * négociation en cours, commande. Tout est marqué « DÉMO » dans le sujet :
+ * une donnée de démonstration ne doit jamais pouvoir passer pour réelle.
+ */
+async function seedMessaging({
+  buyer,
+  sellerCm,
+  storeCm,
+  business,
+  rfq,
+}: {
+  buyer: { id: string };
+  sellerCm: { id: string };
+  storeCm: { id: string; name: string };
+  business: { id: string };
+  rfq: { id: string; title: string; currency: string };
+}): Promise<void> {
+  const already = await prisma.toumaConversation.findFirst({ where: { createdById: buyer.id, subject: { startsWith: 'DÉMO' } } });
+  if (already) return;
+  console.log('→ [Touma] Messagerie et négociation de démonstration…');
+
+  const seats = [
+    { userId: buyer.id, role: 'BUYER', businessProfileId: business.id },
+    { userId: sellerCm.id, role: 'SELLER' },
+  ];
+
+  // 1. Échange direct avec une boutique.
+  const direct = await prisma.toumaConversation.create({
+    data: {
+      kind: 'BUYER_SELLER',
+      subject: `DÉMO — Échange avec ${storeCm.name}`,
+      storeId: storeCm.id,
+      createdById: buyer.id,
+      participants: { create: seats },
+    },
+  });
+  await prisma.toumaMessage.createMany({
+    data: [
+      { conversationId: direct.id, authorId: buyer.id, type: 'TEXT', body: 'Bonjour, quelle est votre quantité minimale de commande sur le cacao ?' },
+      { conversationId: direct.id, authorId: sellerCm.id, type: 'TEXT', body: 'Bonjour, notre MOQ est de 200 kg, livrable sous 12 jours vers N’Djamena.' },
+    ],
+  });
+
+  // 2. Fil d'appel d'offres.
+  const rfqThread = await prisma.toumaConversation.create({
+    data: {
+      kind: 'RFQ',
+      subject: `DÉMO — Appel d'offres : ${rfq.title}`,
+      storeId: storeCm.id,
+      rfqId: rfq.id,
+      createdById: buyer.id,
+      participants: { create: seats },
+    },
+  });
+  await prisma.toumaMessage.create({
+    data: { conversationId: rfqThread.id, type: 'SYSTEM', body: `${rfq.title} — vous êtes sollicité pour proposer une offre.` },
+  });
+
+  // 3. Offre chiffrée, puis 4. négociation dans son fil.
+  const quote = await prisma.toumaQuote.create({
+    data: {
+      reference: 'QT-DEMO-0001',
+      rfqId: rfq.id,
+      storeId: storeCm.id,
+      sellerId: sellerCm.id,
+      currency: rfq.currency,
+      itemsTotal: '1450000',
+      shippingTotal: '50000',
+      total: '1500000',
+      leadTimeDays: 18,
+      validUntil: new Date(Date.now() + 21 * 24 * 3600 * 1000),
+      message: 'Cacao fermenté qualité export, sacs de 50 kg.',
+      items: {
+        create: [{ name: 'Cacao en fèves fermentées', quantity: 500, unit: 'kg', unitPrice: '2900', lineTotal: '1450000' }],
+      },
+    },
+  });
+
+  const quoteThread = await prisma.toumaConversation.create({
+    data: {
+      kind: 'QUOTE',
+      subject: `DÉMO — Offre ${quote.reference}`,
+      storeId: storeCm.id,
+      rfqId: rfq.id,
+      quoteId: quote.id,
+      createdById: sellerCm.id,
+      participants: { create: seats },
+    },
+  });
+  await prisma.toumaMessage.create({
+    data: {
+      conversationId: quoteThread.id,
+      authorId: sellerCm.id,
+      type: 'QUOTE',
+      body: `Offre ${quote.reference} : 1 500 000 XAF, livraison sous 18 jours.`,
+      metadata: {
+        quoteId: quote.id,
+        reference: quote.reference,
+        currency: quote.currency,
+        itemsTotal: '1450000',
+        shipping: '50000',
+        total: '1500000',
+        leadTimeDays: 18,
+      },
+    },
+  });
+
+  const counter = await prisma.toumaNegotiationMessage.create({
+    data: {
+      quoteId: quote.id,
+      authorId: buyer.id,
+      kind: 'COUNTER_OFFER',
+      body: 'Pouvez-vous descendre à 2 800 XAF le kilo pour une commande ferme ?',
+      proposedTotal: '1450000',
+      proposedItemsTotal: '1400000',
+      proposedShipping: '50000',
+      proposedLeadTimeDays: 18,
+      proposedItems: [{ rfqItemId: null, name: 'Cacao en fèves fermentées', quantity: 500, unit: 'kg', unitPrice: '2800', lineTotal: '1400000' }],
+    },
+  });
+  await prisma.toumaMessage.create({
+    data: {
+      conversationId: quoteThread.id,
+      authorId: buyer.id,
+      type: 'COUNTER_OFFER',
+      body: counter.body,
+      negotiationMessageId: counter.id,
+      metadata: { quoteId: quote.id },
+    },
+  });
+  await prisma.toumaQuote.update({ where: { id: quote.id }, data: { status: 'COUNTERED' } });
+
+  // 5. Fil de commande, s'il existe une commande de démonstration.
+  const order = await prisma.toumaOrder.findFirst({ where: { buyerId: buyer.id }, orderBy: { createdAt: 'desc' } });
+  if (order) {
+    const orderThread = await prisma.toumaConversation.create({
+      data: {
+        kind: 'ORDER',
+        subject: `DÉMO — Commande ${order.orderNumber}`,
+        storeId: order.storeId,
+        orderId: order.id,
+        createdById: buyer.id,
+        participants: { create: seats },
+      },
+    });
+    await prisma.toumaMessage.create({
+      data: {
+        conversationId: orderThread.id,
+        type: 'ORDER_UPDATE',
+        body: `Commande ${order.orderNumber} créée — en attente de paiement.`,
+        metadata: { orderId: order.id, status: order.status },
+      },
+    });
+  }
+}
+
+main()
+  .catch((err) => {
+    console.error('Échec du peuplement Touma :', err);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

@@ -1,0 +1,2736 @@
+/**
+ * TOUMA — routeur, ossature de l'interface et actions.
+ *
+ * Les pages ont de vraies URLs (History API) : elles sont partageables et
+ * indexables, le serveur renvoyant la coquille avec les métadonnées de la page.
+ * Les espaces vendeur et administration sont chargés à la demande
+ * (import dynamique) pour ne pas alourdir la visite d'un simple acheteur.
+ */
+import {
+  api,
+  API,
+  ApiError,
+  chooseDialog,
+  confirmDialog,
+  emptyState,
+  errorState,
+  esc,
+  loadingState,
+  money,
+  session,
+  svg,
+  toast,
+} from './core.js';
+import { applyDocumentLocale, fr, LOCALES, locale, setLocale, t } from './i18n.js';
+import * as shop from './views-shop.js';
+import * as account from './views-account.js';
+
+// ── Table de routage ───────────────────────────────────────────────────────
+/** Chaque route : motif d'URL, vue, et exigences d'accès. */
+const ROUTES = [
+  { path: '/touma/', view: shop.home },
+  { path: '/touma/produits', view: shop.catalog },
+  { path: '/touma/produits/:slug', view: shop.product },
+  { path: '/touma/boutiques', view: shop.stores },
+  { path: '/touma/boutiques/:slug', view: shop.store },
+  { path: '/touma/panier', view: shop.cart, auth: true },
+  { path: '/touma/checkout', view: shop.checkout, auth: true },
+  { path: '/touma/commandes', view: shop.orders, auth: true },
+  { path: '/touma/commandes/:id', view: shop.order, auth: true },
+  { path: '/touma/connexion', view: account.login },
+  { path: '/touma/inscription', view: account.register },
+  { path: '/touma/compte', view: account.account, auth: true },
+
+  { path: '/touma/commandes/groupe/:id', view: shop.orderGroup, auth: true },
+
+  // TOUMA Business (chargé à la demande).
+  { path: '/touma/business', module: 'business', name: 'dashboard', auth: true },
+  { path: '/touma/business/appels-offres', module: 'business', name: 'rfqs', auth: true },
+  { path: '/touma/business/appels-offres/nouveau', module: 'business', name: 'newRfq', auth: true },
+  { path: '/touma/business/appels-offres/:id', module: 'business', name: 'rfq', auth: true },
+  { path: '/touma/business/profil', module: 'business', name: 'profile', auth: true },
+  { path: '/touma/sourcing', module: 'sourcing', name: 'suppliers' },
+  { path: '/touma/sourcing/:slug', module: 'sourcing', name: 'supplier' },
+  { path: '/touma/vendeur/offres', module: 'business', name: 'myQuotes', auth: true, role: 'SELLER' },
+
+  // Messagerie. L'ordre compte : « reglages » avant le motif générique.
+  { path: '/touma/messages', module: 'messages', name: 'inbox', auth: true },
+  { path: '/touma/messages/reglages', module: 'messages', name: 'settings', auth: true },
+  { path: '/touma/messages/:id', module: 'messages', name: 'thread', auth: true },
+  { path: '/touma/business/messages', module: 'messages', name: 'businessInbox', auth: true },
+  { path: '/touma/business/messages/:id', module: 'messages', name: 'businessThread', auth: true },
+  { path: '/touma/vendeur/messages', module: 'messages', name: 'sellerInbox', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/messages/:id', module: 'messages', name: 'sellerThread', auth: true, role: 'SELLER' },
+  { path: '/touma/negociations/:id', module: 'messages', name: 'negotiation', auth: true },
+  { path: '/touma/business/negociations/:id', module: 'messages', name: 'negotiation', auth: true },
+  { path: '/touma/vendeur/negociations/:id', module: 'messages', name: 'negotiation', auth: true, role: 'SELLER' },
+
+  // Après-vente et assistance (chargés à la demande).
+  { path: '/touma/retours', module: 'support', name: 'returns', auth: true },
+  { path: '/touma/retours/nouveau', module: 'support', name: 'newReturn', auth: true },
+  { path: '/touma/retours/:id', module: 'support', name: 'returnDetail', auth: true },
+  { path: '/touma/aide', module: 'support', name: 'tickets', auth: true },
+  { path: '/touma/aide/nouveau', module: 'support', name: 'newTicket', auth: true },
+  { path: '/touma/aide/:id', module: 'support', name: 'ticket', auth: true },
+  { path: '/touma/vendeur/retours', module: 'support', name: 'sellerReturns', auth: true, role: 'SELLER' },
+  { path: '/touma/admin/assistance', module: 'support', name: 'adminTickets', auth: true, role: 'ADMIN' },
+
+  // Litiges : le même dossier pour les deux parties, plus la décision côté
+  // administration. Le moteur existait ; aucun écran ne le montrait.
+  { path: '/touma/litiges', module: 'disputes', name: 'disputes', auth: true },
+  { path: '/touma/litiges/:id', module: 'disputes', name: 'disputeDetail', auth: true },
+  { path: '/touma/vendeur/litiges', module: 'disputes', name: 'sellerDisputes', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/litiges/:id', module: 'disputes', name: 'sellerDisputeDetail', auth: true, role: 'SELLER' },
+  { path: '/touma/admin/litiges/:id', module: 'disputes', name: 'adminDisputeDetail', auth: true, role: 'ADMIN' },
+
+  // Le pays, vu de l'intérieur : pages publiques par province et tableau de
+  // bord national. « Provinces » avant le motif générique.
+  { path: '/touma/provinces', module: 'geo', name: 'provinces' },
+  { path: '/touma/provinces/:code', module: 'geo', name: 'province' },
+  { path: '/touma/admin/national', module: 'geo', name: 'national', auth: true, role: 'ADMIN' },
+
+  // Finance : ce qui est dû, quand, et pourquoi pas encore. Le moteur de
+  // règlement existait ; aucun écran ne le montrait.
+  { path: '/touma/vendeur/zones', module: 'zones', name: 'serviceZones', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/finance', module: 'finance', name: 'sellerFinance', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/versements', module: 'finance', name: 'sellerPayouts', auth: true, role: 'SELLER' },
+  { path: '/touma/admin/finance', module: 'finance', name: 'adminFinance', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/versements', module: 'finance', name: 'adminPayouts', auth: true, role: 'ADMIN' },
+
+  // Documents commerciaux.
+  { path: '/touma/documents', module: 'documents', name: 'documents', auth: true },
+  { path: '/touma/documents/:id', module: 'documents', name: 'documentView', auth: true },
+  { path: '/touma/vendeur/documents', module: 'documents', name: 'sellerDocuments', auth: true, role: 'SELLER' },
+
+  // Promotions (codes de réduction).
+  { path: '/touma/vendeur/promotions', module: 'promotions', name: 'sellerCoupons', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/confiance', module: 'trust', name: 'sellerTrust', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/marketing', module: 'marketing', name: 'sellerMarketing', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/marketing/nouvelle', module: 'marketing', name: 'promotionForm', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/marketing/:id', module: 'marketing', name: 'promotionPerformance', auth: true, role: 'SELLER' },
+  { path: '/touma/compte/parrainage', module: 'marketing', name: 'referrals', auth: true },
+  { path: '/touma/compte/confiance', module: 'trust', name: 'buyerTrust', auth: true },
+  { path: '/touma/confiance/recours', module: 'trust', name: 'appealForm', auth: true },
+  { path: '/touma/confiance/historique/:entityType/:entityId', module: 'trust', name: 'trustHistory', auth: true },
+  { path: '/touma/admin/promotions', module: 'promotions', name: 'adminCoupons', auth: true, role: 'ADMIN' },
+  { path: '/touma/promotions/:id', module: 'promotions', name: 'couponDetail', auth: true },
+
+  // Espace vendeur (chargé à la demande).
+  { path: '/touma/vendeur', module: 'seller', name: 'dashboard', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/boutique', module: 'seller', name: 'storeSettings', auth: true },
+  { path: '/touma/vendeur/produits', module: 'seller', name: 'products', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/produits/nouveau', module: 'seller', name: 'productForm', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/import', module: 'seller', name: 'catalogueImport', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/produits/:id', module: 'seller', name: 'productForm', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/commandes', module: 'seller', name: 'orders', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/commandes/:id', module: 'seller', name: 'order', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/analyses', module: 'seller', name: 'analytics', auth: true, role: 'SELLER' },
+  { path: '/touma/vendeur/verification', module: 'seller', name: 'verification', auth: true, role: 'SELLER' },
+
+  // Administration (chargée à la demande).
+  { path: '/touma/admin', module: 'admin', name: 'dashboard', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/verifications', module: 'admin', name: 'verifications', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/risque', module: 'admin', name: 'risk', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/intelligence', module: 'admin', name: 'intelligence', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/moderation', module: 'admin', name: 'moderation', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/confiance', module: 'trust', name: 'adminTrust', auth: true, role: 'ADMIN' },
+  // Touma Intelligence. L'assistant acheteur est ouvert aux visiteurs : il ne
+  // rend que des données publiques, et demander un compte pour chercher un
+  // produit ferait fuir celui qui n'en a pas encore.
+  { path: '/touma/ia', module: 'ia', name: 'aiChat' },
+  // Commerce international. La consultation des corridors est ouverte : un
+  // acheteur doit pouvoir savoir si Touma dessert son pays avant de créer un
+  // compte.
+  { path: '/touma/commerce', module: 'trade', name: 'tradeHome' },
+  { path: '/touma/commerce/corridors/:code', module: 'trade', name: 'tradeCorridor' },
+  { path: '/touma/commerce/commandes', module: 'trade', name: 'tradeOrders', auth: true },
+  { path: '/touma/commerce/commandes/:id', module: 'trade', name: 'tradeOrder', auth: true },
+  { path: '/touma/admin/commerce', module: 'trade', name: 'adminTrade', auth: true, role: 'ADMIN' },
+  { path: '/touma/ia/conversations', module: 'ia', name: 'aiConversations', auth: true },
+  { path: '/touma/ia/conversations/:id', module: 'ia', name: 'aiConversation', auth: true },
+  { path: '/touma/ia/confirmations', module: 'ia', name: 'aiConfirmations', auth: true },
+  { path: '/touma/vendeur/ia', module: 'ia', name: 'sellerAi', auth: true, role: 'SELLER' },
+  { path: '/touma/business/ia', module: 'ia', name: 'businessAi', auth: true },
+  { path: '/touma/admin/ia', module: 'ia', name: 'adminAi', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/marketing', module: 'marketing', name: 'adminMarketing', auth: true, role: 'ADMIN' },
+  { path: '/touma/admin/:section', module: 'admin', name: 'list', auth: true, role: 'ADMIN' },
+];
+
+/** Dernier fichier analysé, conservé pour l'appliquer sans le redemander. */
+let pendingImport = null;
+
+/**
+ * Télécharge un fichier protégé par le jeton : un simple lien partirait sans
+ * en-tête d'authentification et se ferait refuser.
+ */
+async function downloadAuthed(path, filename) {
+  const text = await api(path, { accept: 'text/csv' });
+  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+const modules = {};
+const LOADERS = {
+  seller: () => import('./views-seller.js'),
+  admin: () => import('./views-admin.js'),
+  business: () => import('./views-business.js'),
+  messages: () => import('./views-messages.js'),
+  support: () => import('./views-support.js'),
+  promotions: () => import('./views-promotions.js'),
+  documents: () => import('./views-documents.js'),
+  sourcing: () => import('./views-sourcing.js'),
+  disputes: () => import('./views-disputes.js'),
+  finance: () => import('./views-finance.js'),
+  geo: () => import('./views-geo.js'),
+  zones: () => import('./views-zones.js'),
+  trust: () => import('./views-trust.js'),
+  marketing: () => import('./views-marketing.js'),
+  ia: () => import('./views-ai.js'),
+  trade: () => import('./views-trade.js'),
+};
+
+async function loadModule(name) {
+  modules[name] = modules[name] ?? LOADERS[name]();
+  return modules[name];
+}
+
+/** Fait correspondre un chemin à une route et extrait ses paramètres. */
+function matchRoute(pathname) {
+  const path = pathname.length > 8 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+  for (const route of ROUTES) {
+    const pattern = route.path.length > 8 && route.path.endsWith('/') ? route.path.slice(0, -1) : route.path;
+    const patternParts = pattern.split('/').filter(Boolean);
+    const pathParts = path.split('/').filter(Boolean);
+    if (patternParts.length !== pathParts.length) continue;
+
+    const params = {};
+    const matched = patternParts.every((part, i) => {
+      if (part.startsWith(':')) {
+        params[part.slice(1)] = decodeURIComponent(pathParts[i]);
+        return true;
+      }
+      return part === pathParts[i];
+    });
+    if (matched) return { route, params };
+  }
+  return null;
+}
+
+// ── Ossature : en-tête, tiroir, navigation basse ───────────────────────────
+function navLinks() {
+  const user = session.user;
+  const links = [
+    ['/touma/produits', t('nav.catalog')],
+    ['/touma/boutiques', t('nav.stores')],
+    ['/touma/provinces', t('nav.provinces')],
+  ];
+  links.push(['/touma/business', t('nav.business')]);
+  // L'assistant est ouvert aux visiteurs : demander un compte pour chercher un
+  // produit ferait fuir celui qui n'en a pas encore.
+  links.push(['/touma/ia', t('ia.nav')]);
+  links.push(['/touma/commerce', t('trade.nav')]);
+  if (user) {
+    links.push(['/touma/commandes', t('nav.myOrders')]);
+    if (session.isSeller) links.push(['/touma/vendeur', t('nav.seller')]);
+    if (session.isAdmin) links.push(['/touma/admin', t('nav.admin')]);
+  }
+  return links;
+}
+
+function renderChrome() {
+  const user = session.user;
+
+  // L'ossature HTML est servie en français : elle doit exister avant que le
+  // module ne se charge, sinon un réseau lent laisse une page muette. Ses
+  // quelques chaînes sont donc traduites ici, au premier rendu.
+  applyDocumentLocale();
+  const chercher = document.getElementById('search-input');
+  if (chercher) chercher.setAttribute('placeholder', t('search.placeholder'));
+  const chercherLabel = document.querySelector('label[for="search-input"]');
+  if (chercherLabel) chercherLabel.textContent = t('search.label');
+  const skip = document.querySelector('.skip-link');
+  if (skip) skip.textContent = t('nav.skipToContent');
+  const tagline = document.querySelector('.brand-tagline');
+  if (tagline) tagline.textContent = t('brand.tagline');
+  const menuBtn = document.getElementById('menu-btn');
+  if (menuBtn) menuBtn.setAttribute('aria-label', t('nav.openMenu'));
+  const drawerClose = document.getElementById('drawer-close');
+  if (drawerClose) drawerClose.setAttribute('aria-label', t('nav.closeMenu'));
+  const bottomNav = document.getElementById('bottom-nav');
+  if (bottomNav) bottomNav.setAttribute('aria-label', t('nav.quickNav'));
+
+  const current = location.pathname;
+  const isCurrent = (href) => (href === '/touma/' ? current === href : current.startsWith(href));
+
+  document.getElementById('header-nav').innerHTML = [
+    ...navLinks().map(([href, text]) => `<a href="${href}" data-link${isCurrent(href) ? ' aria-current="page"' : ''}>${text}</a>`),
+    user ? '' : `<a class="sell-cta" href="/touma/inscription" data-link>${t('nav.sell')}</a>`,
+  ].join('');
+
+  // Tiroir mobile : mêmes destinations, plus les actions de compte.
+  const drawerLinks = [...navLinks()];
+  if (user) {
+    drawerLinks.splice(2, 0, ['/touma/panier', t('nav.cart')]);
+    drawerLinks.push(['/touma/messages', t('nav.messages')]);
+    if (session.isSeller) drawerLinks.push(['/touma/vendeur/messages', t('nav.sellerMessages')]);
+    drawerLinks.push(['/touma/retours', t('nav.returns')]);
+    drawerLinks.push(['/touma/litiges', t('nav.disputes')]);
+    drawerLinks.push(['/touma/documents', t('nav.documents')]);
+    drawerLinks.push(['/touma/ia/conversations', t('ia.conversations')]);
+    drawerLinks.push(['/touma/ia/confirmations', t('ia.confirmations')]);
+    if (session.isSeller) drawerLinks.push(['/touma/vendeur/ia', t('ia.sellerTitle')]);
+    if (session.isAdmin) drawerLinks.push(['/touma/admin/ia', t('ia.adminTitle')]);
+    drawerLinks.push(['/touma/commerce/commandes', t('trade.myOrders')]);
+    if (session.isAdmin) drawerLinks.push(['/touma/admin/commerce', t('trade.adminTitle')]);
+    drawerLinks.push(['/touma/aide', t('nav.support')]);
+    drawerLinks.push(['/touma/compte', t('nav.account')]);
+  }
+  document.getElementById('drawer-nav').innerHTML = [
+    `<a href="/touma/" data-link${current === '/touma/' ? ' aria-current="page"' : ''}>${svg('home')} ${t('nav.home')}</a>`,
+    ...drawerLinks.map(([href, text]) => `<a href="${href}" data-link${isCurrent(href) ? ' aria-current="page"' : ''}>${drawerIcon(href)} ${text}</a>`),
+  ].join('');
+
+  document.getElementById('drawer-foot').innerHTML = `${localeSwitcher()}${
+    user
+      ? `<div class="small muted" style="margin-bottom:var(--space-3)">${esc(t('nav.signedInAs', { name: user.name }))}</div>
+         <a class="btn btn-secondary btn-block" href="/touma/deconnexion" data-link>${t('nav.logout')}</a>`
+      : `<a class="btn btn-block" href="/touma/connexion" data-link>${t('nav.login')}</a>
+         <a class="btn btn-accent btn-block" style="margin-top:var(--space-2)" href="/touma/inscription" data-link>${t('nav.sell')}</a>`
+  }`;
+
+  const bottom = [
+    ['/touma/', t('nav.home'), 'home'],
+    ['/touma/produits', t('nav.catalog'), 'grid'],
+    ['/touma/panier', t('nav.cart'), 'cart'],
+    ['/touma/commandes', t('nav.orders'), 'box'],
+    [user ? '/touma/compte' : '/touma/connexion', user ? t('nav.accountShort') : t('nav.loginShort'), 'user'],
+  ];
+  document.getElementById('bottom-nav').innerHTML = bottom
+    .map(
+      ([href, text, name]) =>
+        `<a href="${href}" data-link${isCurrent(href) ? ' aria-current="page"' : ''}>${svg(name)}<span>${text}</span>${
+          href === '/touma/panier' ? '<span class="icon-badge" id="cart-badge-mobile" hidden>0</span>' : ''
+        }</a>`,
+    )
+    .join('');
+
+  document.getElementById('notif-btn').hidden = !user;
+  const accountLink = document.getElementById('account-link');
+  accountLink.hidden = !user;
+  if (user) accountLink.setAttribute('title', user.name);
+  refreshCounters();
+}
+
+/**
+ * Sélecteur de langue, dans le pied du tiroir.
+ *
+ * Il annonce **ce qui est traduit**, en arabe, sous les deux boutons. Proposer
+ * « العربية » sans dire que les écrans détaillés restent en français mettrait un
+ * arabophone devant une porte qui s'ouvre sur un mur — la même faute que
+ * d'annoncer un moyen de paiement qui n'existe pas.
+ */
+function localeSwitcher() {
+  const actuelle = locale();
+  const boutons = Object.values(LOCALES)
+    .map(
+      (l) => `<button class="chip${l.code === actuelle ? ' chip-active' : ''}" type="button"
+                data-set-locale="${l.code}" lang="${l.code}" dir="${l.dir}"
+                aria-pressed="${l.code === actuelle}"
+                title="${esc(t('locale.switchTo', { language: l.nativeName }))}">${esc(l.nativeName)}</button>`,
+    )
+    .join('');
+
+  return `<div style="margin-bottom:var(--space-4)">
+    <div class="xs muted" style="margin-bottom:var(--space-2)">${esc(t('locale.label'))}</div>
+    <div class="row" style="gap:var(--space-2)">${boutons}</div>
+    <p class="xs muted" style="margin-top:var(--space-2)" lang="${actuelle}" dir="${LOCALES[actuelle].dir}">${esc(t('locale.coverage'))}</p>
+  </div>`;
+}
+
+function drawerIcon(href) {
+  if (href.includes('produits')) return svg('grid');
+  if (href.includes('boutiques')) return svg('store');
+  if (href.includes('panier')) return svg('cart');
+  if (href.includes('commandes')) return svg('box');
+  if (href.includes('business')) return svg('chart');
+  if (href.includes('messages')) return svg('inbox');
+  if (href.includes('retours')) return svg('truck');
+  if (href.includes('aide')) return svg('alert');
+  if (href.includes('documents')) return svg('inbox');
+  // Avant `vendeur` et `admin` : `/touma/vendeur/ia` porte les deux, et le
+  // premier test gagnant l'emporterait sur l'icône de l'assistant.
+  if (href.includes('/ia')) return svg('spark');
+  if (href.includes('commerce')) return svg('map');
+  if (href.includes('vendeur')) return svg('chart');
+  if (href.includes('admin')) return svg('shield');
+  return svg('user');
+}
+
+/** Compteurs du panier et des notifications (en-tête et navigation basse). */
+async function refreshCounters() {
+  const badges = [document.getElementById('cart-badge'), document.getElementById('cart-badge-mobile')].filter(Boolean);
+  const notifBadge = document.getElementById('notif-badge');
+  if (!session.user) {
+    badges.forEach((b) => (b.hidden = true));
+    if (notifBadge) notifBadge.hidden = true;
+    return;
+  }
+  try {
+    const [cart, notifications] = await Promise.all([api('/cart'), api('/notifications')]);
+    badges.forEach((b) => {
+      b.textContent = String(cart.itemCount ?? 0);
+      b.hidden = !cart.itemCount;
+    });
+    if (notifBadge) {
+      notifBadge.textContent = String(notifications.unread ?? 0);
+      notifBadge.hidden = !notifications.unread;
+    }
+  } catch {
+    // Silencieux : un compteur indisponible ne doit pas perturber la navigation.
+  }
+}
+
+// ── Tiroir de navigation ───────────────────────────────────────────────────
+function setDrawer(open) {
+  const drawer = document.getElementById('drawer');
+  const backdrop = document.getElementById('drawer-backdrop');
+  const button = document.getElementById('menu-btn');
+  drawer.hidden = false;
+  backdrop.hidden = false;
+  requestAnimationFrame(() => {
+    drawer.dataset.open = String(open);
+    backdrop.dataset.open = String(open);
+    drawer.setAttribute('aria-hidden', String(!open));
+    button.setAttribute('aria-expanded', String(open));
+    document.body.style.overflow = open ? 'hidden' : '';
+    if (open) {
+      drawer.querySelector('a')?.focus();
+    } else {
+      // Refermé, le tiroir est retiré du flux : hors écran, il élargirait la page.
+      setTimeout(() => {
+        if (drawer.dataset.open !== 'true') {
+          drawer.hidden = true;
+          backdrop.hidden = true;
+        }
+      }, 250);
+    }
+  });
+}
+
+// ── Rendu d'une page ───────────────────────────────────────────────────────
+let renderToken = 0;
+
+/**
+ * Affiche la vue correspondant à l'URL courante.
+ * Un jeton par navigation empêche un rendu lent d'écraser un écran plus récent.
+ */
+async function render() {
+  const token = ++renderToken;
+  const view = document.getElementById('view');
+  const url = new URL(location.href);
+  const matched = matchRoute(url.pathname);
+
+  renderChrome();
+
+  if (url.pathname === '/touma/deconnexion') {
+    const current = session.read();
+    if (current?.refreshToken) await api('/auth/logout', { method: 'POST', body: { refreshToken: current.refreshToken } }).catch(() => undefined);
+    session.clear();
+    toast(t('sh.loggedOut'));
+    return navigate('/touma/');
+  }
+
+  if (!matched) {
+    view.innerHTML = emptyState({
+      title: t('sh.notFoundTitle'),
+      body: t('sh.notFoundBody'),
+      actionLabel: t('sh.backHome'),
+      actionHref: '/touma/',
+      iconName: 'search',
+    });
+    return;
+  }
+
+  const { route, params } = matched;
+
+  if (route.auth && !session.user) {
+    return navigate(`/touma/connexion?suite=${encodeURIComponent(url.pathname + url.search)}`, { replace: true });
+  }
+  if (route.role === 'ADMIN' && !session.isAdmin) {
+    view.innerHTML = emptyState({ title: t('sh.restrictedTitle'), body: t('sh.restrictedBody'), actionLabel: t('action.back'), actionHref: '/touma/', iconName: 'shield' });
+    return;
+  }
+  if (route.role === 'SELLER' && !session.isSeller) {
+    view.innerHTML = emptyState({
+      title: t('sh.openStoreTitle'),
+      body: t('sh.openStoreBody'),
+      actionLabel: t('seller.noStoreAction'),
+      actionHref: '/touma/vendeur/boutique',
+      iconName: 'store',
+    });
+    return;
+  }
+
+  view.innerHTML = loadingState(route.path === '/touma/produits' || route.path === '/touma/' ? 'products' : 'list');
+
+  try {
+    const handler = route.view ?? (await loadModule(route.module))[route.name];
+    const html = await handler(params, url.searchParams);
+    if (token !== renderToken) return; // navigation plus récente : rendu abandonné
+    view.innerHTML = html;
+    document.getElementById('contenu').focus({ preventScroll: true });
+  } catch (error) {
+    if (token !== renderToken) return;
+    if (error instanceof ApiError && error.status === 401) {
+      session.clear();
+      return navigate(`/touma/connexion?suite=${encodeURIComponent(url.pathname)}`, { replace: true });
+    }
+    if (error instanceof ApiError && error.status === 404) {
+      view.innerHTML = emptyState({
+        title: t('sh.missingTitle'),
+        body: error.message,
+        actionLabel: t('sh.backCatalog'),
+        actionHref: '/touma/produits',
+        iconName: 'search',
+      });
+      return;
+    }
+    view.innerHTML = errorState(error);
+  }
+}
+
+/** Navigation interne (sans rechargement de page). */
+export function navigate(href, { replace = false } = {}) {
+  if (replace) history.replaceState({}, '', href);
+  else history.pushState({}, '', href);
+  window.scrollTo({ top: 0 });
+  return render();
+}
+
+// ── Actions : délégation d'événements ──────────────────────────────────────
+/** Exécute une action en signalant proprement l'échec à l'utilisateur. */
+async function run(action, { button } = {}) {
+  if (button) button.disabled = true;
+  try {
+    await action();
+  } catch (error) {
+    toast(error.message, 'error');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function requireLogin() {
+  if (session.user) return true;
+  navigate(`/touma/connexion?suite=${encodeURIComponent(location.pathname + location.search)}`);
+  toast(t('error.unauthorized'));
+  return false;
+}
+
+async function addToCart(productId, { quantity, variantId } = {}) {
+  await api('/cart/items', { method: 'POST', body: { productId, variantId: variantId || null, quantity: quantity || 1 } });
+  await refreshCounters();
+}
+
+// Liens internes.
+document.addEventListener('click', (event) => {
+  const link = event.target.closest('a[data-link]');
+  if (link && link.origin === location.origin && !event.metaKey && !event.ctrlKey && event.button === 0) {
+    event.preventDefault();
+    if (document.getElementById('drawer').dataset.open === 'true') setDrawer(false);
+    if (link.hasAttribute('data-close-modal')) document.getElementById('modal-root').innerHTML = '';
+    navigate(link.getAttribute('href'));
+  }
+});
+
+// Boutons et actions.
+document.addEventListener('click', (event) => {
+  const el = event.target.closest('button, [data-action]');
+  if (!el) return;
+  const d = el.dataset;
+
+  // Ossature
+  if (el.id === 'menu-btn') return setDrawer(true);
+  if (el.id === 'drawer-close') return setDrawer(false);
+  if (el.id === 'notif-btn') {
+    return run(async () => {
+      const root = document.getElementById('modal-root');
+      const { notificationsPanel } = await import('./views-account.js');
+      root.innerHTML = `<div class="modal-backdrop" role="dialog" aria-modal="true">${await notificationsPanel()}</div>`;
+    });
+  }
+  if (d.closeModal !== undefined || (event.target.classList.contains('modal-backdrop') && !el.closest('.modal'))) {
+    document.getElementById('modal-root').innerHTML = '';
+    return;
+  }
+  if (d.action === 'reload') return render();
+  if (d.toggleFilters !== undefined) {
+    const panel = document.getElementById('filters');
+    panel.dataset.open = panel.dataset.open === 'true' ? 'false' : 'true';
+    return;
+  }
+
+  // Catalogue et fiche produit
+  if (d.addToCart) {
+    if (!requireLogin()) return;
+    const variant = document.getElementById('variant');
+    const qty = document.getElementById('qty');
+    return run(
+      async () => {
+        await addToCart(d.addToCart, { quantity: Number(qty?.value || 1), variantId: variant?.value });
+        toast(t('sh.addedToCart'), 'success');
+      },
+      { button: el },
+    );
+  }
+  if (d.buyNow) {
+    if (!requireLogin()) return;
+    const variant = document.getElementById('variant');
+    const qty = document.getElementById('qty');
+    return run(
+      async () => {
+        await addToCart(d.buyNow, { quantity: Number(qty?.value || 1), variantId: variant?.value });
+        navigate('/touma/checkout');
+      },
+      { button: el },
+    );
+  }
+  if (d.contactStore) {
+    if (!requireLogin()) return;
+    return run(
+      async () => {
+        const conversation = await api('/conversations', {
+          method: 'POST',
+          body: { storeId: d.contactStore, orderId: d.order || undefined },
+        });
+        navigate(`/touma/messages/${conversation.id}`);
+      },
+      { button: el },
+    );
+  }
+  if (d.gallery !== undefined) {
+    const main = document.getElementById('gallery-main');
+    if (main) main.innerHTML = `<img src="${d.gallery || '/touma/img/placeholder.svg'}" alt="" />`;
+    el.parentElement.querySelectorAll('button').forEach((b) => b.setAttribute('aria-current', String(b === el)));
+    return;
+  }
+  if (d.clearZones) {
+    return run(async () => {
+      // Revenir à « je ne restreins rien » doit être aussi simple que déclarer.
+      const ok = await confirmDialog({
+        title: t('zone.clearAll'),
+        body: t('sh.clearZonesBody'),
+        confirmLabel: t('sh.clearZonesConfirm'),
+      });
+      if (!ok) return;
+      await api(`/stores/${d.clearZones}/zones-service`, { method: 'PUT', body: { zones: [] } });
+      toast(t('sh.noZoneRestriction'), 'success');
+      await render();
+    });
+  }
+
+  if (d.availability) {
+    const provinceId = document.getElementById('avail-province').value;
+    const cible = document.getElementById('availability-result');
+    if (!provinceId) {
+      // Deviner la destination produirait une promesse inventée.
+      cible.innerHTML = `<span class="muted">${esc(t('sh.chooseProvince'))}</span>`;
+      return;
+    }
+    return run(
+      async () => {
+        cible.innerHTML = `<span class="muted">${esc(t('sh.checking'))}</span>`;
+        const r = await api(`/products/${d.availability}/disponibilite?province=${encodeURIComponent(provinceId)}`);
+
+        // Quatre réponses, et aucune n'est « probablement ». Le délai n'est
+        // affiché que lorsque les deux côtés ont confirmé — sinon, ce serait
+        // une promesse faite à quelqu'un qui va attendre un colis.
+        const couleur = r.deliverable ? 'var(--success)' : 'var(--warning)';
+        const delai =
+          r.deliverable && r.transitDays
+            ? `<div class="xs muted">${esc(t('sh.transitAnnounced', { min: r.transitDays.min, max: r.transitDays.max }))}${
+                r.handlingDays != null ? ` · ${esc(t('sh.handlingDays', { days: r.handlingDays }))}` : ''
+              }</div>`
+            : '';
+        cible.innerHTML = `<div style="color:${couleur}"><strong>${esc(r.message)}</strong></div>${delai}`;
+      },
+      { button: el },
+    );
+  }
+
+  if (d.estimate) {
+    const destination = document.getElementById('ship-country').value;
+    const target = document.getElementById('ship-estimate');
+    return run(
+      async () => {
+        target.innerHTML = `<span class="muted">${esc(t('sh.computing'))}</span>`;
+        const quotes = await api('/shipping/quote', {
+          method: 'POST',
+          body: {
+            origin: { countryCode: d.origin },
+            destination: { countryCode: destination },
+            weightGrams: Number(d.weight) || 1000,
+            currency: d.currency,
+          },
+        });
+        target.innerHTML = quotes.items
+          .map(
+            (q) => `<div class="summary-line"><span>${esc(q.serviceName)} <span class="muted">(${q.etaMinDays}–${q.etaMaxDays} j)</span></span><strong>${money(q.amount, q.currency)}</strong></div>`,
+          )
+          .join('');
+      },
+      { button: el },
+    );
+  }
+
+  // Panier
+  if (d.qty) {
+    const input = document.querySelector(`[data-item-input="${d.item}"]`);
+    const next = Math.max(0, Number(input.value) + Number(d.qty));
+    return run(async () => {
+      await api(`/cart/items/${d.item}`, { method: 'PATCH', body: { quantity: next } });
+      await refreshCounters();
+      await render();
+    });
+  }
+  if (d.removeItem) {
+    return run(async () => {
+      await api(`/cart/items/${d.removeItem}`, { method: 'DELETE' });
+      toast(t('sh.itemRemoved'));
+      await refreshCounters();
+      await render();
+    });
+  }
+  // ── Marketing ─────────────────────────────────────────────────────────────
+  if (d.promotion) {
+    return run(async () => {
+      await api(`/seller/marketing/promotions/${d.promotion}`, {
+        method: 'PATCH',
+        body: { status: el.dataset.status },
+      });
+      toast(t(el.dataset.status === 'ACTIVE' ? 'promo.activated' : 'promo.paused'), 'success');
+      await render();
+    }, { button: el });
+  }
+
+  if (d.referralCode !== undefined) {
+    return run(async () => {
+      await api('/referrals/code', { method: 'POST' });
+      await render();
+    }, { button: el });
+  }
+
+  // ── Confiance : décisions d'administration ────────────────────────────────
+  //
+  // Les deux exigent un motif. Ce n'est pas une formalité de formulaire : une
+  // décision de confiance sans motif n'est pas contestable, et le serveur la
+  // refuse de toute façon.
+  if (d.moderateReview) {
+    const motif = prompt(t('trust.moderationReason'));
+    if (!motif) return;
+    return run(async () => {
+      await api(`/admin/trust/reviews/${d.moderateReview}/moderate`, {
+        method: 'POST',
+        body: { status: el.dataset.decision, reason: motif },
+      });
+      toast(t('trust.moderationDone'), 'success');
+      await render();
+    }, { button: el });
+  }
+
+  if (d.decideAppeal) {
+    const motivation = prompt(t('trust.appealResolution'));
+    if (!motivation) return;
+    return run(async () => {
+      await api(`/admin/trust/appeals/${d.decideAppeal}/decide`, {
+        method: 'POST',
+        body: { decision: el.dataset.decision, resolution: motivation },
+      });
+      toast(t('trust.appealDecided'), 'success');
+      await render();
+    }, { button: el });
+  }
+
+  if (d.clearCart !== undefined) {
+    return run(async () => {
+      const ok = await confirmDialog({ title: t('sh.clearCartTitle'), body: t('sh.clearCartBody'), confirmLabel: t('cart.clear'), danger: true });
+      if (!ok) return;
+      await api('/cart', { method: 'DELETE' });
+      toast(t('sh.cartCleared'));
+      await refreshCounters();
+      await render();
+    });
+  }
+
+  // Tunnel de commande
+  if (d.checkoutNext) {
+    const step = Number(d.checkoutNext);
+    if (step === 1) {
+      const selected = document.querySelector('input[name="address"]:checked');
+      if (!selected) return toast(t('sh.chooseAddress'), 'error');
+      shop.checkoutState.addressId = selected.value;
+      const delivery = document.querySelector('input[name="delivery"]:checked')?.value ?? 'HOME';
+      shop.checkoutState.deliveryMethod = delivery;
+      if (delivery === 'PICKUP_POINT') {
+        const point = document.getElementById('pickup-point');
+        if (!point?.value) return toast(t('sh.choosePickup'), 'error');
+        shop.checkoutState.pickupPointId = point.value;
+      }
+    }
+    shop.checkoutState.step = step;
+    return navigate(`/touma/checkout?etape=${step}`);
+  }
+  if (d.placeOrder !== undefined) {
+    const method = document.querySelector('input[name="method"]:checked')?.value ?? 'MOBILE_MONEY';
+    return run(
+      async () => {
+        const key = `web-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+        const result = await api('/checkout', {
+          method: 'POST',
+          body: {
+            addressId: shop.checkoutState.addressId,
+            shippingQuotes: shop.checkoutState.quotes,
+            deliveryMethod: shop.checkoutState.deliveryMethod,
+            pickupPointId: shop.checkoutState.pickupPointId ?? undefined,
+            couponCode: shop.checkoutState.coupon?.code ?? undefined,
+            loyaltyPoints: shop.checkoutState.loyaltyPoints || 0,
+            idempotencyKey: key,
+          },
+        });
+        // UN seul paiement pour tout le panier, même multi-vendeurs ; le serveur
+        // confirme auprès du prestataire et répartit ensuite par commande.
+        const created = await api('/payments/create', {
+          method: 'POST',
+          body: { orderGroupId: result.group.id, method, idempotencyKey: `pay-${result.group.id}` },
+        });
+        const confirmed = await api('/payments/confirm', { method: 'POST', body: { paymentId: created.payment.id } });
+        const paid = confirmed.status === 'SUCCEEDED';
+        shop.checkoutState.group = result.group;
+        shop.checkoutState.orders = result.orders.map((o) => ({ ...o, status: paid ? 'PAID' : o.status }));
+        // Les réductions ont été consommées : elles ne doivent pas se reporter
+        // sur la commande suivante.
+        shop.checkoutState.coupon = null;
+        shop.checkoutState.loyaltyPoints = 0;
+        shop.checkoutState.loyaltyValue = 0;
+        shop.checkoutState.shippingTotal = null;
+        shop.checkoutState.step = 3;
+        await refreshCounters();
+        toast(paid ? t('sh.orderConfirmed') : t('sh.orderCreatedUnpaid'), paid ? 'success' : 'warning');
+        navigate('/touma/checkout?etape=3');
+      },
+      { button: el },
+    );
+  }
+
+  if (d.print !== undefined) {
+    // L'export PDF passe par l'impression du navigateur : aucune bibliothèque
+    // embarquée, et un rendu fidèle à ce que l'utilisateur voit.
+    window.print();
+    return;
+  }
+
+  if (d.applyImport) {
+    return run(
+      async () => {
+        if (!pendingImport || pendingImport.storeId !== d.applyImport) {
+          return toast(t('sh.reanalyzeFirst'), 'error');
+        }
+        const ok = await confirmDialog({
+          title: 'Appliquer l’import ?',
+          body: t('sh.importOverwrite'),
+          confirmLabel: t('action.apply'),
+        });
+        if (!ok) return;
+        const result = await api(`/seller/stores/${pendingImport.storeId}/catalogue/import?dryRun=false`, {
+          method: 'POST',
+          body: pendingImport.csv,
+          contentType: 'text/csv',
+        });
+        const { importReport } = await import('./views-seller.js');
+        document.getElementById('import-report').innerHTML = importReport(result, pendingImport.storeId);
+        pendingImport = null;
+        toast(`${result.summary.created} création(s), ${result.summary.updated} mise(s) à jour.`, 'success');
+      },
+      { button: el },
+    );
+  }
+
+  if (d.exportCatalogue !== undefined) {
+    return run(async () => {
+      const storeId = document.getElementById('im-store')?.value;
+      if (!storeId) return toast(t('sh.chooseStore'), 'error');
+      // Le fichier est protégé par le jeton : on le récupère puis on le remet
+      // au navigateur, plutôt qu'un lien qui partirait sans authentification.
+      await downloadAuthed(`/seller/stores/${storeId}/catalogue/export`, 'catalogue-touma.csv');
+    });
+  }
+
+  if (d.authedDownload !== undefined) {
+    event.preventDefault();
+    return run(async () => {
+      await downloadAuthed('/seller/catalogue/modele', 'modele-catalogue-touma.csv');
+    });
+  }
+
+  if (d.pauseCoupon || d.resumeCoupon) {
+    const id = d.pauseCoupon ?? d.resumeCoupon;
+    const status = d.pauseCoupon ? 'PAUSED' : 'ACTIVE';
+    return run(async () => {
+      await api(`/coupons/${id}`, { method: 'PATCH', body: { status } });
+      toast(status === 'PAUSED' ? t('sh.codeSuspended') : t('sh.codeReactivated'), 'success');
+      await render();
+    });
+  }
+
+  if (d.removeCoupon !== undefined) {
+    shop.checkoutState.coupon = null;
+    toast(t('sh.codeRemoved'));
+    return render();
+  }
+
+  // Commandes acheteur
+  if (d.payGroup) {
+    return run(
+      async () => {
+        const created = await api('/payments/create', {
+          method: 'POST',
+          body: { orderGroupId: d.payGroup, method: 'MOBILE_MONEY', idempotencyKey: `pay-${d.payGroup}` },
+        });
+        const confirmed = await api('/payments/confirm', { method: 'POST', body: { paymentId: created.payment.id } });
+        toast(confirmed.status === 'SUCCEEDED' ? t('sh.paymentConfirmed') : `Paiement ${confirmed.status}.`, confirmed.status === 'SUCCEEDED' ? 'success' : 'error');
+        await render();
+      },
+      { button: el },
+    );
+  }
+  if (d.payOrder) {
+    const method = document.getElementById('method')?.value ?? 'MOBILE_MONEY';
+    return run(
+      async () => {
+        const created = await api('/payments/create', { method: 'POST', body: { orderId: d.payOrder, method, idempotencyKey: `pay-${d.payOrder}` } });
+        const confirmed = await api('/payments/confirm', { method: 'POST', body: { paymentId: created.payment.id } });
+        toast(confirmed.status === 'SUCCEEDED' ? t('sh.paymentConfirmed') : `Paiement ${confirmed.status}.`, confirmed.status === 'SUCCEEDED' ? 'success' : 'error');
+        await render();
+      },
+      { button: el },
+    );
+  }
+  if (d.cancelOrder) {
+    return run(async () => {
+      const ok = await confirmDialog({ title: t('sh.cancelOrderTitle'), body: t('sh.cancelOrderBody'), confirmLabel: t('order.cancel'), danger: true });
+      if (!ok) return;
+      await api(`/orders/${d.cancelOrder}/status`, { method: 'PATCH', body: { status: 'CANCELLED' } });
+      toast(t('sh.orderCancelled'));
+      await render();
+    });
+  }
+  if (d.completeOrder) {
+    return run(async () => {
+      // Action nommée : « je confirme avoir reçu » se relit dans le journal,
+      // « statut = COMPLETED » demande d'y réfléchir.
+      await api(`/orders/${d.completeOrder}/confirm-delivery`, { method: 'POST', body: {} });
+      toast(t('sh.deliveryConfirmed'), 'success');
+      await render();
+    });
+  }
+  if (d.orderReady) {
+    return run(async () => {
+      await api(`/orders/${d.orderReady}/ready-to-ship`, { method: 'POST', body: {} });
+      toast(t('sh.parcelReady'), 'success');
+      await render();
+    });
+  }
+
+  // Après-vente
+  if (d.cancelReturn) {
+    return run(async () => {
+      const ok = await confirmDialog({
+        title: t('sh.withdrawReturnTitle'),
+        body: t('sh.withdrawReturnBody'),
+        confirmLabel: t('sh.withdrawReturnConfirm'),
+        danger: true,
+      });
+      if (!ok) return;
+      await api(`/returns/${d.cancelReturn}/cancel`, { method: 'POST' });
+      toast(t('sh.returnWithdrawn'));
+      await render();
+    });
+  }
+  if (d.closeTicket) {
+    return run(async () => {
+      await api(`/support/tickets/${d.closeTicket}/close`, { method: 'POST' });
+      toast(t('sh.ticketClosed'), 'success');
+      await render();
+    });
+  }
+
+  // Compte
+  if (d.deleteAddress) {
+    return run(async () => {
+      const ok = await confirmDialog({ title: t('sh.deleteAddressTitle'), body: t('sh.deleteAddressBody'), confirmLabel: t('action.delete'), danger: true });
+      if (!ok) return;
+      await api(`/auth/me/addresses/${d.deleteAddress}`, { method: 'DELETE' });
+      toast(t('sh.addressDeleted'));
+      await render();
+    });
+  }
+  if (d.readAll !== undefined) {
+    return run(async () => {
+      await api('/notifications/read-all', { method: 'POST' });
+      document.getElementById('modal-root').innerHTML = '';
+      await refreshCounters();
+      await render();
+    });
+  }
+  if (d.logoutAll !== undefined) {
+    return run(async () => {
+      const ok = await confirmDialog({ title: t('sh.logoutAllTitle'), body: t('sh.logoutAllBody'), confirmLabel: t('action.logoutAll') });
+      if (!ok) return;
+      await api('/auth/logout', { method: 'POST', body: { allDevices: true } });
+      session.clear();
+      navigate('/touma/');
+    });
+  }
+
+  // Vendeur
+  if (d.toggleProduct) {
+    return run(async () => {
+      await api(`/products/${d.toggleProduct}`, { method: 'PATCH', body: { status: d.status } });
+      toast(d.status === 'ACTIVE' ? t('sh.productPublished') : t('sh.productUnpublished'), 'success');
+      await render();
+    });
+  }
+  if (d.archiveProduct) {
+    return run(async () => {
+      const ok = await confirmDialog({ title: t('sh.archiveProductTitle'), body: t('sh.archiveProductBody'), confirmLabel: t('action.archive'), danger: true });
+      if (!ok) return;
+      await api(`/products/${d.archiveProduct}`, { method: 'DELETE' });
+      toast(t('sh.productArchived'));
+      navigate('/touma/vendeur/produits');
+    });
+  }
+  if (d.createShipment) {
+    return run(
+      async () => {
+        const shipment = await api('/shipping/create', { method: 'POST', body: { orderId: d.createShipment } });
+        toast(`Expédition créée : ${shipment.trackingNumber}`, 'success');
+        await render();
+      },
+      { button: el },
+    );
+  }
+  if (d.updateShipment) {
+    const status = document.getElementById('ship-status').value;
+    return run(
+      async () => {
+        await api(`/shipping/${d.updateShipment}/status`, { method: 'PATCH', body: { status } });
+        toast(t('sh.trackingUpdated'), 'success');
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  // TOUMA Business
+  if (el.id === 'add-rfq-item') {
+    event.preventDefault();
+    const container = document.getElementById('rfq-items');
+    const template = container.firstElementChild.cloneNode(true);
+    template.querySelectorAll('input').forEach((input) => {
+      if (input.classList.contains('i-qty')) input.value = '100';
+      else if (input.classList.contains('i-unit')) input.value = 'kg';
+      else input.value = '';
+    });
+    // Les identifiants doivent rester uniques (libellés accessibles).
+    const index = container.children.length;
+    template.querySelectorAll('input, select').forEach((field) => {
+      const oldId = field.id;
+      field.id = `${oldId.replace(/-\d+$/, '')}-${index}`;
+      const labelFor = template.querySelector(`label[for="${oldId}"]`);
+      if (labelFor) labelFor.setAttribute('for', field.id);
+    });
+    container.appendChild(template);
+    return;
+  }
+  if (d.closeRfq) {
+    return run(async () => {
+      const ok = await confirmDialog({
+        title: t('sh.closeRfqTitle'),
+        body: t('sh.closeRfqBody'),
+        confirmLabel: t('action.closeRequest'),
+      });
+      if (!ok) return;
+      await api(`/rfqs/${d.closeRfq}/close`, { method: 'POST' });
+      toast(t('sh.rfqClosed'));
+      await render();
+    });
+  }
+  if (d.acceptQuote) {
+    const select = el.parentElement.querySelector('.accept-address');
+    return run(
+      async () => {
+        const ok = await confirmDialog({
+          title: t('sh.acceptQuoteTitle'),
+          body: t('sh.acceptQuoteBody'),
+          confirmLabel: t('biz.acceptAndOrder'),
+        });
+        if (!ok) return;
+        const result = await api(`/quotes/${d.acceptQuote}/accept`, { method: 'POST', body: { addressId: select.value } });
+        toast(`Commande ${result.orderNumber} créée.`, 'success');
+        navigate(`/touma/commandes/groupe/${result.orderGroupId}`);
+      },
+      { button: el },
+    );
+  }
+  if (d.rejectQuote) {
+    return run(async () => {
+      const reason = prompt(t('sh.rejectQuoteReason'));
+      await api(`/quotes/${d.rejectQuote}/reject`, { method: 'POST', body: reason ? { reason } : {} });
+      toast(t('sh.quoteRejected'));
+      await render();
+    });
+  }
+
+  // Administration
+  if (d.userStatus) {
+    return run(async () => {
+      await api(`/admin/users/${d.userStatus}/status`, { method: 'PATCH', body: { status: d.status } });
+      toast(t('sh.statusUpdated'));
+      await render();
+    });
+  }
+  if (d.userRisk) {
+    return run(async () => {
+      const score = await api(`/admin/risk/${d.userRisk}/recompute`, { method: 'POST' });
+      toast(`Score recalculé : ${score.score} (${score.level}).`);
+      await render();
+    });
+  }
+  if (d.storeStatus) {
+    return run(async () => {
+      await api(`/admin/stores/${d.storeStatus}/status`, { method: 'PATCH', body: { status: d.status } });
+      toast(t('sh.storeUpdated'));
+      await render();
+    });
+  }
+  if (d.productStatus) {
+    return run(async () => {
+      await api(`/admin/products/${d.productStatus}/status`, { method: 'PATCH', body: { status: d.status } });
+      toast(t('sh.productUpdated'));
+      await render();
+    });
+  }
+  if (d.approveVerification) {
+    return run(async () => {
+      const ok = await confirmDialog({ title: t('sh.approveSellerTitle'), body: t('sh.approveSellerBody'), confirmLabel: t('action.approve') });
+      if (!ok) return;
+      await api(`/admin/verifications/${d.approveVerification}/approve`, { method: 'POST', body: { comment: t('sh.docsVerified') } });
+      toast(t('sh.sellerVerified'), 'success');
+      await render();
+    });
+  }
+  if (d.removeEvidence) {
+    return run(async () => {
+      // Un motif est obligatoire, et il reste visible au dossier : écarter une
+      // pièce est un acte d'administration, pas un coup de gomme. La pièce
+      // n'est pas supprimée — son contenu cesse d'être servi, et le motif
+      // s'affiche à côté d'elle pour les deux parties.
+      const choix = await chooseDialog({
+        title: t('dispute.removeEvidence'),
+        body: t('sh.discardEvidenceBody'),
+        options: [
+          // La valeur part au dossier, le libellé s'affiche : `fr()` pour
+          // l'une, `t()` pour l'autre. Un motif consigné ne suit pas la langue
+          // de qui l'a choisi, sinon le registre du litige porterait deux
+          // libellés différents selon le lecteur.
+          { value: fr('sh.evidenceUnreadable'), label: t('sh.evidenceUnreadable') },
+          { value: fr('sh.evidenceOffTopic'), label: t('sh.evidenceOffTopicLong') },
+          { value: fr('sh.evidenceDuplicate'), label: t('sh.evidenceDuplicate') },
+          { value: fr('sh.evidencePersonal'), label: t('sh.evidencePersonalLong') },
+          { value: fr('sh.evidenceInappropriate'), label: t('sh.evidenceInappropriate') },
+        ],
+        withNote: true,
+        confirmLabel: t('action.discard'),
+      });
+      if (!choix) return;
+      const reason = choix.note ? `${choix.value} — ${choix.note}` : choix.value;
+      await api(`/disputes/evidence/${d.removeEvidence}/remove`, { method: 'POST', body: { reason } });
+      toast(t('sh.evidenceDiscarded'), 'success');
+      await render();
+    });
+  }
+  // Changement de langue : l'ossature et le sens d'écriture suivent
+  // immédiatement, sans rechargement — c'est la page qu'on est en train de lire
+  // qu'on veut voir basculer, pas la suivante.
+  if (d.setLocale) {
+    if (setLocale(d.setLocale)) {
+      renderChrome();
+      void render();
+    }
+    return;
+  }
+
+  // ── Versements ───────────────────────────────────────────────────────────
+  // Aucune de ces actions ne déplace d'argent : TOUMA ne transfère pas de
+  // fonds. Elles consignent une décision, et qui l'a prise.
+  if (d.payoutProcess) {
+    return run(async () => {
+      const providerRef = prompt(
+        t('sh.payoutReference'),
+      );
+      if (providerRef === null) return;
+      await api(`/admin/finance/payouts/${d.payoutProcess}/process`, {
+        method: 'POST',
+        body: providerRef ? { providerRef } : {},
+      });
+      toast(t('sh.payoutExecuted'), 'success');
+      await render();
+    });
+  }
+  if (d.payoutHold) {
+    return run(async () => {
+      // Le motif est obligatoire et visible du vendeur : un versement retenu
+      // sans raison est, de son point de vue, un vol silencieux.
+      const reason = prompt(t('sh.holdReason'));
+      if (!reason) return;
+      await api(`/admin/finance/payouts/${d.payoutHold}/hold`, { method: 'POST', body: { reason } });
+      toast(t('sh.payoutHeld'));
+      await render();
+    });
+  }
+  if (d.payoutRelease) {
+    return run(async () => {
+      await api(`/admin/finance/payouts/${d.payoutRelease}/release`, { method: 'POST' });
+      toast(t('sh.holdLifted'), 'success');
+      await render();
+    });
+  }
+  if (d.payoutCancel) {
+    return run(async () => {
+      const ok = await confirmDialog({
+        title: t('sh.cancelPayoutTitle'),
+        body: t('sh.cancelPayoutBody'),
+        confirmLabel: t('sh.cancelPayoutConfirm'),
+        danger: true,
+      });
+      if (!ok) return;
+      const reason = prompt(t('sh.cancelReason'));
+      if (!reason) return;
+      await api(`/admin/finance/payouts/${d.payoutCancel}/cancel`, { method: 'POST', body: { reason } });
+      toast(t('sh.payoutCancelled'));
+      await render();
+    });
+  }
+  // ── Touma Intelligence ────────────────────────────────────────────────────
+  if (d.aiSuggest) {
+    // Une suggestion remplit le champ et envoie : elle n'agit jamais seule.
+    // Un bouton qui déclencherait un outil sans passer par le message ferait
+    // disparaître de la conversation ce qui a été demandé.
+    const champ = document.getElementById('ai-message');
+    if (!champ) return false;
+    champ.value = d.aiSuggest;
+    document.getElementById('ai-chat-form')?.requestSubmit();
+    return false;
+  }
+  if (d.aiFeedback) {
+    return run(async () => {
+      await api('/ai/feedback', { method: 'POST', body: { messageId: d.message, verdict: d.aiFeedback } });
+      toast(t('ia.reportSent'), 'success');
+    });
+  }
+  if (d.aiConfirm) {
+    return run(async () => {
+      await api(`/ai/confirmations/${d.aiConfirm}/confirm`, { method: 'POST' });
+      toast(t('ia.confirmed'), 'success');
+      await render();
+    });
+  }
+  if (d.aiReject) {
+    return run(async () => {
+      await api(`/ai/confirmations/${d.aiReject}/reject`, { method: 'POST' });
+      toast(t('ia.rejected'));
+      await render();
+    });
+  }
+  if (d.aiForget) {
+    return run(async () => {
+      await api('/ai/memory', { method: 'DELETE' });
+      toast(t('ia.memoryForgotten'), 'success');
+      await render();
+    });
+  }
+  if (d.aiDelete) {
+    return run(async () => {
+      await api(`/ai/conversations/${d.aiDelete}`, { method: 'DELETE' });
+      toast(t('ia.conversationDeleted'));
+      navigate('/touma/ia/conversations');
+    });
+  }
+
+  if (d.rejectVerification) {
+    return run(async () => {
+      const comment = prompt(t('sh.rejectReason'));
+      if (!comment) return;
+      await api(`/admin/verifications/${d.rejectVerification}/reject`, { method: 'POST', body: { comment } });
+      toast(t('sh.fileRejected'));
+      await render();
+    });
+  }
+});
+
+// Formulaires.
+document.addEventListener('submit', (event) => {
+  const form = event.target;
+  const submit = form.querySelector('[type="submit"]');
+
+  if (form.id === 'trade-eligibility-form') {
+    event.preventDefault();
+    const donnees = new FormData(form);
+    const cible = document.getElementById('trade-eligibility-result');
+    cible.innerHTML = `<p class="muted small">${t('trade.check')}…</p>`;
+    if (submit) submit.disabled = true;
+    return (async () => {
+      try {
+        const r = await api('/trade/eligibility/check', {
+          method: 'POST',
+          body: {
+            sellerCountry: String(donnees.get('sellerCountry')).trim().toUpperCase(),
+            buyerCountry: String(donnees.get('buyerCountry')).trim().toUpperCase(),
+          },
+        });
+        const { renderEligibility } = await loadModule('trade');
+        cible.innerHTML = renderEligibility(r);
+      } catch (error) {
+        cible.innerHTML = `<p class="small" style="color:var(--danger)">${esc(error instanceof ApiError ? error.message : t('ia.failed'))}</p>`;
+      } finally {
+        if (submit) submit.disabled = false;
+      }
+    })();
+  }
+
+  if (form.id === 'ai-chat-form') {
+    event.preventDefault();
+    const champ = document.getElementById('ai-message');
+    const question = champ.value.trim();
+    if (!question) return false;
+    const transcript = document.getElementById('ai-transcript');
+    const attente = document.createElement('div');
+    attente.className = 'card muted small';
+    attente.textContent = t('ia.thinking');
+    transcript.append(attente);
+    champ.value = '';
+    if (submit) submit.disabled = true;
+    return (async () => {
+      try {
+        const reponse = await api(form.dataset.endpoint, {
+          method: 'POST',
+          // La conversation se poursuit sur le même fil : l'identifiant est
+          // porté par le formulaire, pas par une variable de module, pour que
+          // deux onglets ne se mélangent pas.
+          body: { message: question, ...(form.dataset.conversation ? { conversationId: form.dataset.conversation } : {}) },
+        });
+        form.dataset.conversation = reponse.conversationId;
+        const { renderTurn } = await loadModule('ia');
+        attente.outerHTML = renderTurn(question, reponse);
+        transcript.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (error) {
+        attente.className = 'card small';
+        attente.style.borderInlineStart = '3px solid var(--danger)';
+        attente.textContent = error instanceof ApiError ? error.message : t('ia.failed');
+      } finally {
+        if (submit) submit.disabled = false;
+        champ.focus();
+      }
+    })();
+  }
+
+  if (form.id === 'search-form') {
+    event.preventDefault();
+    const q = document.getElementById('search-input').value.trim();
+    return navigate(q ? `/touma/produits?q=${encodeURIComponent(q)}` : '/touma/produits');
+  }
+
+  if (form.id === 'filters') {
+    event.preventDefault();
+    const params = new URLSearchParams();
+    for (const [key, value] of new FormData(form).entries()) if (String(value).trim()) params.set(key, String(value).trim());
+    return navigate(`/touma/produits?${params.toString()}`);
+  }
+
+  if (form.id === 'admin-search') {
+    event.preventDefault();
+    const q = new FormData(form).get('q');
+    return navigate(`/touma/admin/${form.dataset.section}${q ? `?q=${encodeURIComponent(String(q))}` : ''}`);
+  }
+
+  if (form.id === 'promotion-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const minimum = document.getElementById('pr-min').value.trim();
+        const budget = document.getElementById('pr-budget').value.trim();
+        const type = document.getElementById('pr-type').value;
+        await api('/seller/marketing/promotions', {
+          method: 'POST',
+          body: {
+            storeId: document.getElementById('pr-store').value,
+            name: document.getElementById('pr-name').value.trim(),
+            type,
+            value: document.getElementById('pr-value').value.trim() || '0',
+            // Une remise en montant fixe exige sa devise : le serveur la
+            // refuse sans, et il a raison — il n'existe pas de taux officiel.
+            ...(type === 'FIXED_AMOUNT' ? { currency: 'XAF' } : {}),
+            stacking: document.getElementById('pr-stacking').value,
+            rules: minimum ? [{ kind: 'MIN_ORDER_AMOUNT', threshold: minimum }] : [],
+            ...(budget ? { budget: { total: budget, currency: 'XAF' } } : {}),
+          },
+        });
+        toast(t('promo.created'), 'success');
+        navigate('/touma/vendeur/marketing');
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'appeal-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api('/trust/appeals', {
+          method: 'POST',
+          body: {
+            subjectType: document.getElementById('ap-subject').value,
+            message: document.getElementById('ap-message').value.trim(),
+          },
+        });
+        toast(t('trust.appealSent'), 'success');
+        navigate('/touma/compte/confiance');
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'login-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const data = await api('/auth/login', {
+          method: 'POST',
+          body: { email: document.getElementById('l-email').value, password: document.getElementById('l-password').value },
+        });
+        session.write({ user: data.user, accessToken: data.accessToken, refreshToken: data.refreshToken });
+        // Un nom vide produirait « Bienvenue, . » — on salue sans prénom
+        // plutôt que de saluer quelqu'un qui n'en a pas donné.
+        const prenom = (data.user.name ?? '').trim().split(/\s+/)[0];
+        toast(prenom ? t('sh.welcomeBack', { name: prenom }) : t('sh.welcome'), 'success');
+        navigate(document.getElementById('l-next').value || '/touma/');
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'register-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const body = {
+          name: document.getElementById('r-name').value,
+          email: document.getElementById('r-email').value,
+          password: document.getElementById('r-password').value,
+          countryCode: document.getElementById('r-country').value,
+          role: document.querySelector('input[name="role"]:checked')?.value ?? 'BUYER',
+        };
+        const phone = document.getElementById('r-phone').value.trim();
+        if (phone) body.phone = phone;
+        const data = await api('/auth/register', { method: 'POST', body });
+        session.write({ user: data.user, accessToken: data.accessToken, refreshToken: data.refreshToken });
+        toast(t('sh.accountCreated'), 'success');
+        navigate(data.user.role === 'SELLER' ? '/touma/vendeur/boutique' : '/touma/produits');
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'address-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const data = Object.fromEntries(new FormData(form).entries());
+        const created = await api('/auth/me/addresses', { method: 'POST', body: { ...data, isDefault: true } });
+        shop.checkoutState.addressId = created.id;
+        toast(t('sh.addressSaved'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'create-store-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const store = await api('/stores', {
+          method: 'POST',
+          body: {
+            name: document.getElementById('ns-name').value,
+            countryCode: document.getElementById('ns-country').value,
+            city: document.getElementById('ns-city').value || undefined,
+            description: document.getElementById('ns-desc').value || undefined,
+          },
+        });
+        const current = session.read();
+        if (current?.user?.role === 'BUYER') session.write({ ...current, user: { ...current.user, role: 'SELLER' } });
+        toast(`Boutique « ${store.name} » créée.`, 'success');
+        navigate('/touma/vendeur/produits/nouveau');
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.classList.contains('store-form')) {
+    event.preventDefault();
+    return run(
+      async () => {
+        const body = Object.fromEntries([...new FormData(form).entries()].filter(([, v]) => String(v).trim() !== ''));
+        await api(`/stores/${form.dataset.store}`, { method: 'PATCH', body });
+        toast(t('sh.storeUpdated'), 'success');
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'product-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const image = document.getElementById('p-image').value.trim();
+        const body = {
+          title: document.getElementById('p-title').value,
+          description: document.getElementById('p-description').value,
+          price: document.getElementById('p-price').value.replace(',', '.'),
+          quantity: Number(document.getElementById('p-quantity').value),
+          minOrderQty: Number(document.getElementById('p-min').value),
+          weightGrams: Number(document.getElementById('p-weight').value),
+          countryCode: document.getElementById('p-country').value,
+          // Chaîne vide = pas de déclaration. `null` l'efface côté serveur et
+          // ramène le statut à « inconnu » ; `undefined` ne toucherait à rien,
+          // et le vendeur ne pourrait jamais revenir sur sa déclaration.
+          countryOfOrigin: document.getElementById('p-origin').value || null,
+          manufacturerCountry: document.getElementById('p-manufacturer').value || null,
+          originEvidence: document.getElementById('p-origin-evidence').value.trim() || null,
+          keywords: document.getElementById('p-keywords').value,
+          status: document.getElementById('p-status').value,
+          images: image ? [{ url: image }] : [],
+        };
+        const categoryId = document.getElementById('p-category').value;
+        if (categoryId) body.categoryId = categoryId;
+
+        if (form.dataset.product) {
+          await api(`/products/${form.dataset.product}`, { method: 'PATCH', body });
+          toast(t('sh.productUpdated'), 'success');
+        } else {
+          await api('/products', { method: 'POST', body: { ...body, storeId: document.getElementById('p-store').value } });
+          toast(t('sh.productPublished'), 'success');
+        }
+        navigate('/touma/vendeur/produits');
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'verification-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api('/verification/submit', {
+          method: 'POST',
+          body: {
+            storeId: document.getElementById('v-store').value,
+            businessType: document.getElementById('v-type').value,
+            legalName: document.getElementById('v-legal').value,
+            registrationNo: document.getElementById('v-reg').value || undefined,
+            contactPhone: document.getElementById('v-phone').value,
+            contactEmail: document.getElementById('v-email').value,
+            documents: [{ kind: 'justificatif', url: document.getElementById('v-doc').value }],
+          },
+        });
+        toast(t('sh.fileSent'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'review-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api('/reviews', {
+          method: 'POST',
+          body: {
+            orderId: form.dataset.order,
+            productId: document.getElementById('r-product').value,
+            rating: Number(document.getElementById('r-rating').value),
+            comment: document.getElementById('r-comment').value || undefined,
+          },
+        });
+        toast(t('sh.reviewPublished'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'business-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const optional = (id) => document.getElementById(id).value.trim() || undefined;
+        await api('/business/profile', {
+          method: 'PUT',
+          body: {
+            legalName: document.getElementById('b-legal').value,
+            registrationNo: optional('b-reg'),
+            taxId: optional('b-tax'),
+            sector: optional('b-sector'),
+            countryCode: document.getElementById('b-country').value,
+            city: optional('b-city'),
+            phone: optional('b-phone'),
+            website: optional('b-website'),
+            annualVolume: optional('b-volume'),
+          },
+        });
+        toast(t('sh.businessProfileSaved'), 'success');
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'rfq-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const items = [...document.querySelectorAll('#rfq-items .rfq-item')].map((row) => {
+          const target = row.querySelector('.i-target').value.trim().replace(',', '.');
+          const categoryId = row.querySelector('.i-category').value;
+          return {
+            name: row.querySelector('.i-name').value,
+            description: row.querySelector('.i-desc').value.trim() || undefined,
+            quantity: Number(row.querySelector('.i-qty').value),
+            unit: row.querySelector('.i-unit').value || t('nego.unitDefault'),
+            targetUnitPrice: target || undefined,
+            categoryId: categoryId || undefined,
+          };
+        });
+        const deadline = document.getElementById('q-deadline').value;
+        const source = document.getElementById('q-source').value;
+        const rfq = await api('/rfqs', {
+          method: 'POST',
+          body: {
+            title: document.getElementById('q-title').value,
+            description: document.getElementById('q-description').value,
+            countryCode: document.getElementById('q-country').value,
+            city: document.getElementById('q-city').value.trim() || undefined,
+            sourceCountry: source || undefined,
+            currency: document.getElementById('q-currency').value,
+            deadline: deadline ? new Date(`${deadline}T12:00:00Z`).toISOString() : undefined,
+            items,
+          },
+        });
+        toast(t('sh.rfqPublished'), 'success');
+        navigate(`/touma/business/appels-offres/${rfq.id}`);
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'quote-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const items = [...document.querySelectorAll('#quote-lines .quote-line')].map((row) => ({
+          rfqItemId: row.dataset.rfqItem,
+          name: row.querySelector('.ql-name').value,
+          quantity: Number(row.querySelector('.ql-qty').value),
+          unit: row.querySelector('.ql-unit').value,
+          unitPrice: row.querySelector('.ql-price').value.replace(',', '.'),
+        }));
+        await api(`/rfqs/${form.dataset.rfq}/quotes`, {
+          method: 'POST',
+          body: {
+            storeId: document.getElementById('qf-store').value,
+            shippingTotal: document.getElementById('qf-shipping').value.replace(',', '.') || '0',
+            leadTimeDays: Number(document.getElementById('qf-lead').value),
+            validityDays: Number(document.getElementById('qf-validity').value),
+            message: document.getElementById('qf-message').value.trim() || undefined,
+            items,
+          },
+        });
+        toast(t('sh.quoteSent'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.classList.contains('negotiate-form')) {
+    event.preventDefault();
+    return run(
+      async () => {
+        const body = form.querySelector('.neg-body').value.trim();
+        if (!body) return toast(t('sh.writeMessage'), 'error');
+        const proposed = form.querySelector('.neg-total').value.trim().replace(',', '.');
+        await api(`/quotes/${form.dataset.quote}/messages`, {
+          method: 'POST',
+          body: { kind: proposed ? 'COUNTER_OFFER' : 'MESSAGE', body, proposedTotal: proposed || undefined },
+        });
+        toast(proposed ? t('sh.counterSent') : t('sh.messageSent'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'message-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const body = document.getElementById('m-body').value.trim();
+        if (!body) return toast(t('sh.writeMessage'), 'error');
+
+        if (composerState.editing) {
+          await api(`/messages/${composerState.editing}`, { method: 'PATCH', body: { body } });
+          toast(t('sh.messageEdited'));
+        } else {
+          await api(`/conversations/${form.dataset.conversation}/messages`, {
+            method: 'POST',
+            body: { body, replyToId: composerState.replyTo || undefined },
+          });
+        }
+        resetComposer();
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'conv-search') {
+    event.preventDefault();
+    const q = form.querySelector('#conv-q').value.trim();
+    return navigate(`${form.dataset.base}${q ? `?q=${encodeURIComponent(q)}` : ''}`);
+  }
+
+  if (form.id === 'counter-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const lines = counterLines(form);
+        if (lines.some((l) => !l.name)) return toast(t('sh.lineNeedsName'), 'error');
+        await api(`/negotiations/${form.dataset.negotiation}/counter`, {
+          method: 'POST',
+          body: {
+            items: lines,
+            shippingTotal: String(document.getElementById('c-shipping').value).replace(',', '.').trim() || '0',
+            leadTimeDays: Number(document.getElementById('c-lead').value) || 7,
+            validityDays: Number(document.getElementById('c-validity').value) || undefined,
+            note: document.getElementById('c-note').value.trim() || undefined,
+          },
+        });
+        toast(t('sh.proposalSent'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'accept-offer-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const ok = await confirmDialog({
+          title: t('sh.acceptQuoteTitle'),
+          body: t('sh.acceptQuoteNowBody'),
+          confirmLabel: t('action.accept'),
+        });
+        if (!ok) return;
+        const result = await api(`/negotiations/${form.dataset.negotiation}/accept`, {
+          method: 'POST',
+          body: { addressId: document.getElementById('a-address').value },
+        });
+        toast(t('sh.quoteAccepted'), 'success');
+        navigate(`/touma/commandes/${result.orderId}`);
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'template-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api('/messaging/templates', {
+          method: 'POST',
+          body: { title: document.getElementById('t-title').value.trim(), content: document.getElementById('t-content').value.trim() },
+        });
+        toast(t('sh.answerSaved'));
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'import-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const file = document.getElementById('im-file').files?.[0];
+        const pasted = document.getElementById('im-csv').value.trim();
+        // Le fichier prime sur le collage : c'est le geste le plus explicite.
+        const csv = file ? await file.text() : pasted;
+        if (!csv) return toast(t('sh.chooseFile'), 'error');
+
+        const storeId = document.getElementById('im-store').value;
+        const result = await api(`/seller/stores/${storeId}/catalogue/import?dryRun=true`, {
+          method: 'POST',
+          body: csv,
+          contentType: 'text/csv',
+        });
+        const { importReport } = await import('./views-seller.js');
+        document.getElementById('import-report').innerHTML = importReport(result, storeId);
+        // Le CSV analysé est conservé pour l'appliquer sans redemander le fichier.
+        pendingImport = { storeId, csv };
+        toast(result.summary.errors ? `${result.summary.errors} ligne(s) à corriger.` : t('sh.fileParsed'), result.summary.errors ? 'warning' : 'success');
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'sourcing-filters') {
+    event.preventDefault();
+    const params = new URLSearchParams();
+    for (const [key, value] of new FormData(form).entries()) if (String(value).trim()) params.set(key, String(value).trim());
+    return navigate(`/touma/sourcing?${params.toString()}`);
+  }
+
+  if (form.id === 'invite-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const storeIds = [...document.querySelectorAll('.supplier-pick')]
+          .filter((box) => box.checked)
+          .map((box) => box.dataset.store);
+        if (!storeIds.length) return toast(t('sh.pickSupplier'), 'error');
+        const rfqId = document.getElementById('so-rfq').value;
+        const result = await api(`/rfqs/${rfqId}/invitations`, { method: 'POST', body: { storeIds } });
+        toast(
+          result.invited
+            ? `${result.invited} fournisseur(s) sollicité(s).`
+            : t('sh.suppliersAlready'),
+          result.invited ? 'success' : 'info',
+        );
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'coupon-create-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const value = document.getElementById('co-value').value.trim().replace(',', '.');
+        const currency = document.getElementById('co-currency').value.trim().toUpperCase();
+        const countries = document.getElementById('co-countries').value
+          .split(',')
+          .map((c) => c.trim().toUpperCase())
+          .filter(Boolean);
+        const endsAt = document.getElementById('co-ends').value;
+        const limit = document.getElementById('co-limit').value;
+        const perUser = document.getElementById('co-limit-user').value;
+        const min = document.getElementById('co-min').value.trim().replace(',', '.');
+        const max = document.getElementById('co-max').value.trim().replace(',', '.');
+
+        await api('/coupons', {
+          method: 'POST',
+          body: {
+            code: document.getElementById('co-code').value.trim(),
+            type: document.getElementById('co-type').value,
+            value: value || undefined,
+            currency: currency || undefined,
+            description: document.getElementById('co-description').value || '',
+            storeId: form.dataset.scope === 'store' ? document.getElementById('co-store').value : undefined,
+            minOrderAmount: min || undefined,
+            maxDiscountAmount: max || undefined,
+            countryCodes: countries,
+            firstOrderOnly: document.getElementById('co-first').checked,
+            // Une date de fin saisie vaut pour toute la journée choisie.
+            endsAt: endsAt ? new Date(`${endsAt}T23:59:59Z`).toISOString() : undefined,
+            usageLimit: limit ? Number(limit) : undefined,
+            usageLimitPerUser: perUser ? Number(perUser) : undefined,
+          },
+        });
+        toast(t('sh.codeCreated'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'coupon-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const code = document.getElementById('c-code').value.trim();
+        if (!code) return toast(t('sh.enterCode'), 'error');
+        // C'est le serveur qui valide le code et calcule la remise : l'interface
+        // se contente d'afficher ce qu'il renvoie.
+        const preview = await api('/coupons/preview', { method: 'POST', body: { code } });
+        shop.checkoutState.coupon = preview;
+        toast(`${preview.label} appliqué.`, 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'loyalty-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const field = document.getElementById('c-points');
+        const points = Math.max(0, Math.floor(Number(field.value) || 0));
+        const usable = await api('/loyalty/usable');
+        if (points > usable.usablePoints) {
+          return toast(t('sh.maxPoints', { count: usable.usablePoints }), 'error');
+        }
+        shop.checkoutState.loyaltyPoints = points;
+        // Le taux vient du serveur : l'interface se contente de multiplier.
+        shop.checkoutState.loyaltyValue = points * usable.pointValue;
+        toast(points ? `${points} point(s) appliqué(s).` : t('sh.pointsRedeemed'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        // Le serveur recalcule le montant : l'interface n'envoie que des quantités.
+        const items = [...form.querySelectorAll('.rr-pick')]
+          .filter((box) => box.checked)
+          .map((box) => ({
+            orderItemId: box.dataset.item,
+            quantity: Number(form.querySelector(`.rr-qty[data-item="${box.dataset.item}"]`)?.value || 1),
+          }));
+        if (!items.length) return toast(t('sh.pickReturnItem'), 'error');
+        const photo = document.getElementById('rr-photo').value.trim();
+        const created = await api('/returns', {
+          method: 'POST',
+          body: {
+            orderId: form.dataset.order,
+            reason: document.getElementById('rr-reason').value,
+            comment: document.getElementById('rr-comment').value || '',
+            items,
+            evidence: photo ? [{ url: photo, name: 'photo', mimeType: 'image/jpeg' }] : [],
+          },
+        });
+        toast(t('sh.returnRequested'), 'success');
+        navigate(`/touma/retours/${created.id}`);
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-approve-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const amount = document.getElementById('ra-amount').value.trim().replace(',', '.');
+        await api(`/returns/${form.dataset.return}/approve`, {
+          method: 'POST',
+          body: { approvedAmount: amount || undefined, note: document.getElementById('ra-note').value || undefined },
+        });
+        toast(t('sh.returnAccepted'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-reject-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/returns/${form.dataset.return}/reject`, {
+          method: 'POST',
+          body: { note: document.getElementById('rj-note').value },
+        });
+        toast(t('sh.returnRefused'), 'info');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-ship-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/returns/${form.dataset.return}/ship`, {
+          method: 'POST',
+          body: { trackingNumber: document.getElementById('rs-tracking').value },
+        });
+        toast(t('sh.returnShipped'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-receive-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/returns/${form.dataset.return}/receive`, {
+          method: 'POST',
+          body: {
+            condition: document.getElementById('rc-condition').value || undefined,
+            restock: document.getElementById('rc-restock').checked,
+          },
+        });
+        toast(t('sh.returnReceived'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'return-refund-form') {
+    event.preventDefault();
+    const amount = document.getElementById('rf-amount').value.trim().replace(',', '.');
+    return run(
+      async () => {
+        // Mouvement d'argent réel : confirmation explicite avant l'appel.
+        const ok = await confirmDialog({
+          title: t('sh.confirmRefund'),
+          body: t('sh.refundBody', { amount }),
+          confirmLabel: t('action.refund'),
+        });
+        if (!ok) return;
+        await api(`/returns/${form.dataset.return}/refund`, { method: 'POST', body: { amount: amount || undefined } });
+        toast(t('sh.refundDone'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'ticket-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const created = await api('/support/tickets', {
+          method: 'POST',
+          body: {
+            subject: document.getElementById('t-subject').value,
+            category: document.getElementById('t-category').value,
+            message: document.getElementById('t-message').value,
+            orderId: form.dataset.order || undefined,
+          },
+        });
+        toast(t('sh.supportSent'), 'success');
+        navigate(`/touma/aide/${created.id}`);
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'ticket-reply-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/support/tickets/${form.dataset.ticket}/messages`, {
+          method: 'POST',
+          body: {
+            body: document.getElementById('tr-body').value,
+            internal: document.getElementById('tr-internal')?.checked ?? false,
+          },
+        });
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'ticket-update-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        await api(`/support/tickets/${form.dataset.ticket}`, {
+          method: 'PATCH',
+          body: {
+            status: document.getElementById('tu-status').value,
+            priority: document.getElementById('tu-priority').value,
+          },
+        });
+        toast(t('sh.ticketUpdated'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'service-zones-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const { collectZones } = await loadModule('zones');
+        const zones = collectZones();
+        await api(`/stores/${form.dataset.store}/zones-service`, { method: 'PUT', body: { zones } });
+        const exclues = zones.filter((z) => !z.served && z.provinceId).length;
+        toast(
+          exclues === 0
+            ? t('sh.zonesSavedAll')
+            : `Zones enregistrées : ${exclues} province${exclues > 1 ? 's' : ''} exclue${exclues > 1 ? 's' : ''}.`,
+          'success',
+        );
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'payout-create-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        // Le serveur seul décide de ce qui entre dans le versement : il ne
+        // regroupe que les parts réglables. Un montant envoyé par le client
+        // n'aurait aucune valeur — et n'est d'ailleurs pas demandé.
+        const data = new FormData(form);
+        const payout = await api('/admin/finance/payouts', {
+          method: 'POST',
+          body: {
+            storeId: String(data.get('storeId')).trim(),
+            currency: String(data.get('currency')).trim().toUpperCase(),
+          },
+        });
+        toast(`Versement ${payout.reference ?? ''} créé.`.trim(), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'dispute-message-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const internal = document.getElementById('dm-internal')?.checked ?? false;
+        await api(`/disputes/${form.dataset.dispute}/messages`, {
+          method: 'POST',
+          body: { body: document.getElementById('dm-body').value, internal },
+        });
+        toast(internal ? t('sh.internalNoteSaved') : t('sh.messageSent'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'dispute-resolve-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const montant = document.getElementById('dr-amount').value.trim();
+        const nature = document.getElementById('dr-type').value;
+        // Le montant part tel qu'il est saisi : c'est le serveur qui le valide
+        // et le range en décimal. Le convertir ici en nombre JavaScript
+        // introduirait une approximation dans une décision d'argent.
+        await api(`/disputes/${form.dataset.dispute}/resolve`, {
+          method: 'POST',
+          body: {
+            decision: document.getElementById('dr-decision').value,
+            resolution: document.getElementById('dr-resolution').value,
+            resolutionType: nature || undefined,
+            refundAmount: montant || undefined,
+          },
+        });
+        toast(t('sh.decisionRecorded'), 'success');
+        await render();
+      },
+      { button: submit },
+    );
+  }
+
+  if (form.id === 'dispute-form') {
+    event.preventDefault();
+    return run(
+      async () => {
+        const litige = await api('/disputes', {
+          method: 'POST',
+          body: {
+            orderId: form.dataset.order,
+            reason: document.getElementById('d-reason').value,
+            details: document.getElementById('d-details').value || undefined,
+          },
+        });
+        toast(t('sh.disputeOpened'), 'success');
+        // On emmène l'acheteur dans son dossier. Jusqu'ici il recevait un
+        // message de confirmation et restait sur sa commande, sans aucun écran
+        // où suivre ce qu'il venait d'ouvrir.
+        return navigate(`/touma/litiges/${litige.id}`);
+      },
+      { button: submit },
+    );
+  }
+});
+
+// Champs à enregistrement direct (stock vendeur, quantité de panier, choix).
+document.addEventListener('change', (event) => {
+  const input = event.target;
+
+  if (input.classList.contains('stock-input')) {
+    return run(async () => {
+      await api(`/products/${input.dataset.product}/stock`, { method: 'PUT', body: { quantity: Number(input.value) } });
+      toast(t('sh.stockSaved'), 'success');
+    });
+  }
+  if (input.dataset.itemInput) {
+    return run(async () => {
+      await api(`/cart/items/${input.dataset.itemInput}`, { method: 'PATCH', body: { quantity: Number(input.value) } });
+      await refreshCounters();
+      await render();
+    });
+  }
+  if (input.name === 'delivery') {
+    const picker = document.getElementById('pickup-choice');
+    if (picker) picker.hidden = input.value !== 'PICKUP_POINT';
+    shop.checkoutState.deliveryMethod = input.value;
+    if (input.value !== 'PICKUP_POINT') shop.checkoutState.pickupPointId = null;
+  }
+  if (input.id === 'pickup-point') {
+    shop.checkoutState.pickupPointId = input.value;
+  }
+  if (input.type === 'radio') {
+    // Retour visuel sur les choix (adresse, transport, paiement).
+    document.querySelectorAll(`input[name="${input.name}"]`).forEach((radio) => {
+      const box = radio.closest('.check');
+      if (box) box.dataset.selected = String(radio.checked);
+    });
+    if (input.dataset.store) shop.checkoutState.quotes[input.dataset.store] = input.value;
+    if (input.name === 'address') shop.checkoutState.addressId = input.value;
+  }
+});
+
+// Génération de description par Touma AI (proposition, jamais publication auto).
+document.addEventListener('click', (event) => {
+  if (event.target.closest('#ai-description') === null) return;
+  const button = event.target.closest('#ai-description');
+  const title = document.getElementById('p-title').value.trim();
+  if (!title) return toast(t('sh.titleFirst'), 'error');
+  const category = document.getElementById('p-category');
+  run(
+    async () => {
+      const result = await api('/ai/generate', {
+        method: 'POST',
+        body: {
+          useCase: 'product_description',
+          prompt: title,
+          context: { title, category: category.options[category.selectedIndex]?.text, countryCode: document.getElementById('p-country').value },
+        },
+      });
+      document.getElementById('p-description').value = result.text;
+      toast(t('sh.draftGenerated'));
+    },
+    { button },
+  );
+});
+
+// ── Messagerie ─────────────────────────────────────────────────────────────
+/** Message auquel on répond, et message en cours de modification. */
+const composerState = { replyTo: null, editing: null };
+
+function setReplyBanner(text) {
+  const banner = document.getElementById('reply-banner');
+  if (!banner) return;
+  banner.hidden = !text;
+  banner.querySelector('span').textContent = text ?? '';
+}
+
+function resetComposer() {
+  composerState.replyTo = null;
+  composerState.editing = null;
+  setReplyBanner(null);
+  const field = document.getElementById('m-body');
+  if (field) field.value = '';
+}
+
+/** Insère un texte dans le champ de saisie sans écraser ce qui est déjà écrit. */
+function fillComposer(content) {
+  const field = document.getElementById('m-body');
+  if (!field) return;
+  field.value = field.value.trim() ? `${field.value.trim()}\n${content}` : content;
+  field.focus();
+  field.setSelectionRange(field.value.length, field.value.length);
+}
+
+/** Total d'une contre-offre, affiché pendant la saisie. Le serveur recalcule. */
+function refreshCounterTotal() {
+  const form = document.getElementById('counter-form');
+  const target = document.getElementById('counter-total');
+  if (!form || !target) return;
+  let total = 0;
+  form.querySelectorAll('.counter-line').forEach((line) => {
+    const qty = Number(line.querySelector('.cl-qty').value) || 0;
+    const price = Number(String(line.querySelector('.cl-price').value).replace(',', '.')) || 0;
+    total += qty * price;
+  });
+  total += Number(String(document.getElementById('c-shipping').value).replace(',', '.')) || 0;
+  target.textContent = money(String(total), form.dataset.currency);
+}
+
+/** Lignes saisies dans le formulaire de contre-offre. */
+function counterLines(form) {
+  return [...form.querySelectorAll('.counter-line')].map((line) => ({
+    name: line.querySelector('.cl-name').value.trim(),
+    quantity: Number(line.querySelector('.cl-qty').value) || 1,
+    unit: line.querySelector('.cl-unit').value.trim() || t('nego.unitDefault'),
+    unitPrice: String(line.querySelector('.cl-price').value).replace(',', '.').trim(),
+  }));
+}
+
+document.addEventListener('click', (event) => {
+  const el = event.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.dataset.action;
+
+  if (action === 'reply-message') {
+    composerState.replyTo = el.dataset.id;
+    composerState.editing = null;
+    setReplyBanner(`Réponse à ${el.dataset.author} : « ${el.dataset.body} »`);
+    document.getElementById('m-body')?.focus();
+    return;
+  }
+
+  if (action === 'cancel-reply') return resetComposer();
+
+  if (action === 'use-template') return fillComposer(el.dataset.content);
+
+  if (action === 'edit-message') {
+    const article = el.closest('.msg');
+    const body = article?.querySelector('.msg-body')?.textContent ?? '';
+    composerState.editing = el.dataset.id;
+    composerState.replyTo = null;
+    const field = document.getElementById('m-body');
+    if (field) {
+      field.value = body;
+      field.focus();
+    }
+    setReplyBanner(t('sh.editingMessage'));
+    return;
+  }
+
+  if (action === 'delete-message') {
+    return run(async () => {
+      const ok = await confirmDialog({
+        title: t('sh.deleteMessageTitle'),
+        body: t('sh.deleteMessageBody'),
+        confirmLabel: t('action.delete'),
+        danger: true,
+      });
+      if (!ok) return;
+      await api(`/messages/${el.dataset.id}`, { method: 'DELETE' });
+      toast(t('sh.messageDeleted'));
+      await render();
+    });
+  }
+
+  if (action === 'report-message') {
+    return run(async () => {
+      const choice = await chooseDialog({
+        title: t('sh.reportMessageTitle'),
+        body: t('sh.reportMessageBody'),
+        withNote: true,
+        options: [
+          { value: 'OFF_PLATFORM_PAYMENT', label: t('report.reason.OFF_PLATFORM_PAYMENT') },
+          { value: 'FRAUD', label: t('report.reason.FRAUD') },
+          { value: 'SPAM', label: t('report.reason.SPAM') },
+          { value: 'ABUSE', label: t('report.reason.ABUSE') },
+          { value: 'PROHIBITED_CONTENT', label: t('report.reason.PROHIBITED_CONTENT') },
+          { value: 'OTHER', label: t('report.reason.OTHER') },
+        ],
+      });
+      if (!choice) return;
+      await api(`/messages/${el.dataset.id}/report`, { method: 'POST', body: { reason: choice.value, details: choice.note || undefined } });
+      toast(t('sh.reportSent'), 'success');
+    });
+  }
+
+  if (action === 'toggle-mute' || action === 'toggle-archive') {
+    const muted = action === 'toggle-mute';
+    const current = muted ? el.dataset.muted === 'true' : el.dataset.archived === 'true';
+    return run(
+      async () => {
+        await api(`/conversations/${el.dataset.id}`, { method: 'PATCH', body: muted ? { muted: !current } : { archived: !current } });
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'load-older') {
+    return run(
+      async () => {
+        const data = await api(`/conversations/${el.dataset.conversation}/messages?before=${el.dataset.cursor}`);
+        if (data.items.length === 0) {
+          el.remove();
+          return;
+        }
+        const view = await loadModule('messages');
+        const container = document.getElementById('thread-messages');
+        const currency = el.dataset.currency || null;
+        container.insertAdjacentHTML('afterbegin', view.messagesHtml(data.items, currency));
+        if (data.hasMore) el.dataset.cursor = data.olderCursor;
+        else el.remove();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'apply-proposal') {
+    return run(
+      async () => {
+        await api(`/negotiations/${el.dataset.id}/apply`, { method: 'POST', body: {} });
+        toast(t('sh.counterEndorsed'), 'success');
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'reject-offer') {
+    return run(
+      async () => {
+        const ok = await confirmDialog({
+          title: t('sh.refuseQuoteTitle'),
+          body: t('sh.refuseQuoteBody'),
+          confirmLabel: t('action.refuse'),
+          danger: true,
+        });
+        if (!ok) return;
+        await api(`/negotiations/${el.dataset.id}/reject`, { method: 'POST', body: {} });
+        toast(t('sh.quoteRefused'));
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'add-counter-line') {
+    const container = document.getElementById('counter-lines');
+    const index = container.querySelectorAll('.counter-line').length;
+    const line = document.createElement('div');
+    line.className = 'counter-line';
+    line.innerHTML = `
+      <div class="field"><label class="sr-only" for="cl-name-${index}">${esc(t('nego.designation'))}</label><input id="cl-name-${index}" class="cl-name" type="text" placeholder="${esc(t('nego.designation'))}" required /></div>
+      <div class="field"><label class="sr-only" for="cl-qty-${index}">${esc(t('nego.quantity'))}</label><input id="cl-qty-${index}" class="cl-qty" type="number" min="1" value="1" required /></div>
+      <div class="field"><label class="sr-only" for="cl-unit-${index}">${esc(t('nego.unit'))}</label><input id="cl-unit-${index}" class="cl-unit" type="text" value="${esc(t('nego.unitDefault'))}" required /></div>
+      <div class="field"><label class="sr-only" for="cl-price-${index}">${esc(t('nego.unitPrice'))}</label><input id="cl-price-${index}" class="cl-price" type="text" inputmode="decimal" value="0" required /></div>
+      <button type="button" class="link-btn xs" data-action="remove-counter-line">${esc(t('nego.removeLine'))}</button>`;
+    container.appendChild(line);
+    refreshCounterTotal();
+    return;
+  }
+
+  if (action === 'remove-counter-line') {
+    const lines = document.querySelectorAll('.counter-line');
+    if (lines.length <= 1) return toast(t('sh.proposalNeedsLine'), 'error');
+    el.closest('.counter-line').remove();
+    refreshCounterTotal();
+    return;
+  }
+
+  if (action === 'resolve-report') {
+    return run(
+      async () => {
+        await api(`/messaging/reports/${el.dataset.id}/resolve`, {
+          method: 'POST',
+          body: { status: el.dataset.status, closeConversation: el.dataset.status === 'ACTIONED' },
+        });
+        toast(t('sh.reportHandled'));
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'resolve-risk') {
+    return run(
+      async () => {
+        await api(`/messaging/risk-flags/${el.dataset.id}/resolve`, { method: 'POST', body: { status: el.dataset.status } });
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'delete-template') {
+    return run(
+      async () => {
+        await api(`/messaging/templates/${el.dataset.id}`, { method: 'DELETE' });
+        await render();
+      },
+      { button: el },
+    );
+  }
+
+  if (action === 'unblock-user') {
+    return run(
+      async () => {
+        await api(`/messaging/blocks/${el.dataset.id}`, { method: 'DELETE' });
+        toast(t('sh.accountUnblocked'));
+        await render();
+      },
+      { button: el },
+    );
+  }
+});
+
+// Préférences de notification : une case cochée s'applique immédiatement.
+document.addEventListener('change', (event) => {
+  const input = event.target.closest('[data-action="set-preference"]');
+  if (input) {
+    return run(async () => {
+      await api('/messaging/preferences', {
+        method: 'PUT',
+        body: { category: input.dataset.category, [input.dataset.channel]: input.checked },
+      });
+      toast(t('sh.preferenceSaved'));
+    });
+  }
+
+  // Pièce versée à un litige. Même mécanisme que la messagerie : le contenu
+  // part brut, et ce sont ses octets qui décident de son type.
+  const preuve = event.target.closest('#d-file');
+  if (preuve?.files?.length) {
+    const chosen = preuve.files[0];
+    const disputeId = preuve.dataset.dispute;
+    preuve.value = '';
+    return run(async () => {
+      const buffer = await chosen.arrayBuffer();
+      await api(`/disputes/${disputeId}/evidence`, {
+        method: 'POST',
+        body: buffer,
+        contentType: 'application/octet-stream',
+        headers: { 'x-file-name': encodeURIComponent(chosen.name) },
+      });
+      toast(t('sh.evidenceFiled'), 'success');
+      await render();
+    });
+  }
+
+  // Envoi d'un fichier : le contenu part brut, le serveur reconnaît le type.
+  const file = event.target.closest('#m-file');
+  if (file?.files?.length) {
+    const form = document.getElementById('message-form');
+    const chosen = file.files[0];
+    file.value = '';
+    return run(async () => {
+      const buffer = await chosen.arrayBuffer();
+      await api(`/conversations/${form.dataset.conversation}/attachments`, {
+        method: 'POST',
+        body: buffer,
+        contentType: 'application/octet-stream',
+        // Un en-tête HTTP ne transporte pas les accents : on encode.
+        headers: { 'x-file-name': encodeURIComponent(chosen.name) },
+      });
+      toast(t('sh.fileUploaded'), 'success');
+      await render();
+    });
+  }
+});
+
+// Recalcul du total pendant la saisie d'une contre-offre.
+document.addEventListener('input', (event) => {
+  if (event.target.closest('#counter-form')) refreshCounterTotal();
+});
+
+// Entrée envoie, Maj+Entrée va à la ligne : l'usage attendu d'une messagerie.
+document.addEventListener('keydown', (event) => {
+  if (event.target.id !== 'm-body' || event.key !== 'Enter' || event.shiftKey) return;
+  event.preventDefault();
+  document.getElementById('message-form')?.requestSubmit();
+});
+
+// Fermeture du tiroir et des modales au clavier.
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  if (document.getElementById('drawer').dataset.open === 'true') setDrawer(false);
+});
+document.getElementById('drawer-backdrop').addEventListener('click', () => setDrawer(false));
+
+// ── Temps réel ─────────────────────────────────────────────────────────────
+/**
+ * Flux d'événements de messagerie.
+ *
+ * Strictement facultatif : tout ce que fait le flux, un rechargement le fait
+ * aussi. S'il tombe (proxy, réseau mobile, veille du téléphone), l'application
+ * continue de fonctionner — c'est la condition pour s'en servir.
+ */
+let stream = null;
+let streamRetry = null;
+
+function currentConversationId() {
+  const match = location.pathname.match(/\/messages\/([\w-]{10,})$/);
+  return match ? match[1] : null;
+}
+
+async function connectStream() {
+  if (!session.user || stream) return;
+  try {
+    const { ticket } = await api('/messaging/stream-ticket', { method: 'POST', body: {} });
+    stream = new EventSource(`${API}/messaging/stream?ticket=${encodeURIComponent(ticket)}`);
+
+    const onActivity = (event) => {
+      let payload = {};
+      try {
+        payload = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      // Le fil ouvert se rafraîchit ; ailleurs, seuls les compteurs bougent.
+      if (payload.conversationId && payload.conversationId === currentConversationId()) render();
+      else refreshCounters();
+    };
+
+    ['message.created', 'message.updated', 'message.deleted', 'offer.created', 'offer.accepted', 'offer.rejected'].forEach((name) =>
+      stream.addEventListener(name, onActivity),
+    );
+
+    stream.addEventListener('error', () => {
+      // Le ticket est court : on referme et on retente, sans boucler serré.
+      stream?.close();
+      stream = null;
+      clearTimeout(streamRetry);
+      streamRetry = setTimeout(connectStream, 15_000);
+    });
+  } catch {
+    // Flux indisponible : l'application reste entièrement utilisable en REST.
+    stream = null;
+  }
+}
+
+function disconnectStream() {
+  clearTimeout(streamRetry);
+  stream?.close();
+  stream = null;
+}
+
+window.addEventListener('touma:session', () => {
+  disconnectStream();
+  connectStream();
+});
+if (session.user) connectStream();
+
+// Navigation par l'historique du navigateur.
+window.addEventListener('popstate', render);
+window.addEventListener('touma:session', renderChrome);
+
+// Bandeau du corridor.
+(async () => {
+  const bar = document.getElementById('corridor');
+  try {
+    const { items } = await api('/countries');
+    const names = items.map((c) => c.name).join(' ↔ ');
+    bar.innerHTML = t('sh.corridorOpen', { names: `<strong>${esc(names)}</strong>` });
+  } catch {
+    bar.textContent = t('sh.tagline');
+  }
+})();
+
+// Recherche pré-remplie depuis l'URL.
+const initialQuery = new URL(location.href).searchParams.get('q');
+if (initialQuery) document.getElementById('search-input').value = initialQuery;
+
+render();
+
+// ── Application installable ──────────────────────────────────────────────────
+//
+// Le service worker n'apporte pas la vitesse — il apporte la tolérance au
+// réseau. Sur un téléphone de N'Djamena ou de Douala, la connexion n'est pas
+// « présente ou absente » : elle est intermittente. Une application qui ouvre sa
+// coquille et explique ce qu'elle ne peut pas faire vaut mieux qu'une page
+// blanche.
+//
+// Il n'est enregistré qu'en HTTPS (ou sur localhost) : ailleurs, le navigateur
+// le refuse, et insister ne ferait qu'encombrer la console.
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/touma/sw.js', { scope: '/touma/' }).catch(() => {
+      // Un service worker refusé ne casse rien : l'application fonctionne
+      // exactement pareil, simplement sans filet hors ligne.
+    });
+  });
+}
+
+// Invitation à installer — seulement là où le navigateur la propose vraiment
+// (Android, Chrome et Edge de bureau). Refusée une fois, elle ne revient pas :
+// une bannière qui insiste est une bannière qu'on apprend à ignorer.
+let installEvent = null;
+const INSTALL_DISMISSED = 'touma.install.refuse';
+
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault();
+  installEvent = event;
+  if (localStorage.getItem(INSTALL_DISMISSED) === '1') return;
+  showInstallBar();
+});
+
+function showInstallBar() {
+  if (document.getElementById('install-bar')) return;
+  const bar = document.createElement('div');
+  bar.className = 'install-bar';
+  bar.id = 'install-bar';
+  bar.innerHTML = `
+    <div>
+      <strong>${esc(t('sh.installTitle'))}</strong>
+      <span>${esc(t('sh.installBody'))}</span>
+    </div>
+    <div class="install-actions">
+      <button type="button" class="btn btn-sm" data-install>${esc(t('sh.install'))}</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-install-dismiss>${esc(t('sh.installLater'))}</button>
+    </div>`;
+  document.body.appendChild(bar);
+}
+
+document.addEventListener('click', async (event) => {
+  const install = event.target.closest('[data-install]');
+  if (install) {
+    document.getElementById('install-bar')?.remove();
+    if (!installEvent) return;
+    installEvent.prompt();
+    const { outcome } = await installEvent.userChoice;
+    installEvent = null;
+    if (outcome === 'dismissed') localStorage.setItem(INSTALL_DISMISSED, '1');
+    return;
+  }
+  if (event.target.closest('[data-install-dismiss]')) {
+    localStorage.setItem(INSTALL_DISMISSED, '1');
+    document.getElementById('install-bar')?.remove();
+  }
+});
+
+window.addEventListener('appinstalled', () => {
+  document.getElementById('install-bar')?.remove();
+  localStorage.setItem(INSTALL_DISMISSED, '1');
+});

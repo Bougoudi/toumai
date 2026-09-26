@@ -1,0 +1,317 @@
+/**
+ * Contrats de l'API TOUMA — les formes que le serveur promet et que les
+ * interfaces attendent.
+ *
+ * Pourquoi un paquet plutôt qu'un fichier de types recopié : parce qu'une
+ * interface et un serveur qui décrivent séparément la même réponse finissent
+ * toujours par ne plus décrire la même chose, et personne ne s'en aperçoit
+ * avant l'écran blanc. Ici, la description est unique ; si le serveur change de
+ * forme, le contrôle de typage échoue des deux côtés à la fois.
+ *
+ * **Aucune dépendance d'exécution.** Ce paquet ne contient que des types : il
+ * disparaît à la compilation et n'ajoute pas un octet au navigateur.
+ *
+ * **Les montants sont des chaînes.** `"145000"`, jamais `145000`. Un nombre
+ * flottant JavaScript ne représente pas fidèlement une somme d'argent ; le
+ * serveur travaille en décimal exact et transmet du texte. Toute interface qui
+ * reconvertit en `number` pour additionner réintroduit le défaut que la base a
+ * justement évité.
+ */
+
+/** Code ISO 3166-1 alpha-2 (« TD », « CM »). */
+export type CountryCode = string;
+
+/** Code ISO 4217 (« XAF »). */
+export type CurrencyCode = string;
+
+/** Montant décimal exact, transporté en texte. Jamais un `number`. */
+export type MoneyString = string;
+
+/** Date ISO 8601 en UTC. */
+export type IsoDate = string;
+
+// ── Pagination ───────────────────────────────────────────────────────────────
+
+/** Enveloppe des listes paginées par page (catalogue, boutiques, commandes). */
+export interface Paginated<T> {
+  items: T[];
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+  hasNext: boolean;
+}
+
+/** Enveloppe des listes paginées par curseur (messages d'une conversation). */
+export interface Cursored<T> {
+  items: T[];
+  hasMore: boolean;
+  olderCursor: string | null;
+}
+
+// ── Référentiel ──────────────────────────────────────────────────────────────
+
+export interface Country {
+  code: CountryCode;
+  name: string;
+  currency: CurrencyCode;
+  dialCode: string;
+  /** Un pays peut être ouvert à l'achat sans l'être à la vente, et l'inverse. */
+  buyingEnabled: boolean;
+  sellingEnabled: boolean;
+  active: boolean;
+}
+
+// ── Boutiques ────────────────────────────────────────────────────────────────
+
+export type StoreVerificationStatus = 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED';
+
+/** Boutique telle qu'elle apparaît à côté d'un produit. */
+export interface StoreSummary {
+  id: string;
+  name: string;
+  slug: string;
+  countryCode: CountryCode;
+  /**
+   * « Vérifiée » signifie que des pièces ont été contrôlées, pas que la
+   * transaction est garantie — l'interface doit le dire aussi clairement.
+   */
+  verificationStatus: StoreVerificationStatus;
+  ratingAverage: MoneyString;
+}
+
+export interface Store extends StoreSummary {
+  city: string | null;
+  status: string;
+  ratingCount: number;
+}
+
+// ── Catalogue ────────────────────────────────────────────────────────────────
+
+export interface CategorySummary {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface ProductImage {
+  id: string;
+  url: string;
+  alt: string | null;
+  position: number;
+}
+
+/** Produit tel qu'il apparaît dans une liste. */
+export interface ProductSummary {
+  id: string;
+  title: string;
+  slug: string;
+  price: MoneyString;
+  /** Prix barré, quand il y en a un — jamais inventé pour faire une remise. */
+  compareAtPrice: MoneyString | null;
+  currency: CurrencyCode;
+  /** Quantité minimale de commande : le B2B en vit. */
+  minOrderQty: number;
+  /** Pays **d'expédition** : d'où part le colis. */
+  countryCode: CountryCode;
+  /** Origine **déclarée** de la marchandise. `null` quand rien n'est déclaré. */
+  countryOfOrigin: CountryCode | null;
+  /** Ce que vaut `countryOfOrigin`. `UNKNOWN` tant que rien n'est déclaré. */
+  originStatus: ProductOrigin['status'];
+  status: string;
+  rating: number;
+  /** Sans avis, `rating` vaut 0 : c'est `ratingCount` qui dit s'il veut dire quelque chose. */
+  ratingCount: number;
+  image: string | null;
+  store: StoreSummary;
+  category: CategorySummary | null;
+  stock: number;
+  inStock: boolean;
+  createdAt: IsoDate;
+}
+
+/**
+ * Origine **déclarée** d'une marchandise.
+ *
+ * `status` voyage toujours avec le pays, et jamais l'un sans l'autre : un pays
+ * d'origine rendu seul se lit comme un fait établi, alors qu'il sort d'un champ
+ * que le vendeur remplit lui-même — et c'est sur cette donnée qu'un certificat
+ * d'origine s'établirait.
+ */
+export interface ProductOrigin {
+  countryCode: CountryCode | null;
+  manufacturerCountry: CountryCode | null;
+  status: 'UNKNOWN' | 'DECLARED' | 'VERIFIED' | 'DISPUTED';
+  evidence: string | null;
+  declaredAt: IsoDate | null;
+}
+
+/** Produit complet, sur sa fiche. */
+export interface Product extends Omit<ProductSummary, 'image' | 'store'> {
+  description: string;
+  brand: string | null;
+  sku: string | null;
+  weightGrams: number | null;
+  /** Origine de la marchandise, distincte du pays d'expédition (`countryCode`). */
+  origin: ProductOrigin;
+  store: Store;
+  images: ProductImage[];
+  variants: ProductVariant[];
+  reviews: ProductReview[];
+  publishedAt: IsoDate | null;
+}
+
+export interface ProductVariant {
+  id: string;
+  name: string;
+  price: MoneyString;
+  stock: number;
+}
+
+export interface ProductReview {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: IsoDate;
+  author: { name: string } | null;
+}
+
+// ── Commerce transfrontalier (V24) ───────────────────────────────────────────
+
+/**
+ * Capacité **réelle** d'un corridor.
+ *
+ * Elle est transmise à part du statut déclaré, et les deux ne sont jamais
+ * fondus en un seul champ. Un exploitant peut écrire « ACTIVE » dans une table ;
+ * cela ne fait apparaître ni transporteur ni moyen de paiement. Une interface
+ * qui n'afficherait que le statut déclaré annoncerait un corridor ouvert là où
+ * rien ne peut circuler.
+ */
+export interface CorridorCapability {
+  /** Statut enregistré par l'exploitant. */
+  declaredStatus: 'ACTIVE' | 'LIMITED' | 'COMING_SOON' | 'SUSPENDED' | 'CLOSED';
+  /** Ce qui fonctionne réellement aujourd'hui. */
+  operational: boolean;
+  /**
+   * Ce qui manque pour que le corridor fonctionne, sous forme de codes. Vide
+   * s'il fonctionne.
+   *
+   * C'est cette liste qu'une interface doit lire : elle est traduisible, et un
+   * client qui décide sur un code ne se casse pas quand une phrase est
+   * reformulée. `missing` reste le rendu français des mêmes motifs.
+   */
+  blockers: CorridorBlocker[];
+  /** Rendu français de `blockers`. À afficher, jamais à interpréter. */
+  missing: string[];
+  paymentMethods: string[];
+  shippingProviders: string[];
+  currencies: string[];
+}
+
+/**
+ * Motif pour lequel un corridor ne fonctionne pas.
+ *
+ * `params` porte les valeurs que la phrase intercale — un code pays, la liste
+ * des adaptateurs de simulation enregistrés — et n'est jamais traduit.
+ */
+export interface CorridorBlocker {
+  code:
+    | 'CORRIDOR_NOT_CONFIGURED'
+    | 'ORIGIN_TRADE_DISABLED'
+    | 'DESTINATION_TRADE_DISABLED'
+    | 'NO_SHARED_PAYMENT_METHOD'
+    | 'NO_CARRIER_COVERING_BOTH'
+    | 'ONLY_SIMULATED_CARRIER'
+    | 'NO_DECLARED_CURRENCY'
+    | 'CORRIDOR_SUSPENDED'
+    | 'CORRIDOR_NOT_YET_OPEN';
+  params?: Record<string, string>;
+}
+
+/** Un corridor tel que le rend la liste publique. */
+export interface CorridorSummary {
+  id: string;
+  /** Code canonique : `TD_CM`. */
+  code: string;
+  /** Adresse lisible des pages publiques : `tchad-cameroun`. */
+  slug: string;
+  originCountry: CountryCode;
+  originCountryName: string | null;
+  destinationCountry: CountryCode;
+  destinationCountryName: string | null;
+  declaredStatus: CorridorCapability['declaredStatus'];
+  operational: boolean;
+  blockers: CorridorBlocker[];
+  missing: string[];
+  supportedCurrencies: CurrencyCode[];
+  paymentMethods: string[];
+  shippingProviders: string[];
+  requiredDocuments: string[];
+  estimatedTransitMinDays: number | null;
+  estimatedTransitMaxDays: number | null;
+}
+
+/**
+ * Itinéraire déclaré sur un corridor.
+ *
+ * `attributed` dit si quelqu'un l'affirme. Un itinéraire sans source n'est
+ * l'avis de personne, et l'interface doit pouvoir l'écrire plutôt que de le
+ * présenter comme un fait établi.
+ */
+export interface CorridorRoute {
+  id: string;
+  name: string;
+  legs: unknown;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  attributed: boolean;
+}
+
+/** Un corridor et son détail. */
+export interface CorridorDetail {
+  id: string;
+  code: string;
+  slug: string;
+  originCountry: CountryCode;
+  originCountryName: string | null;
+  destinationCountry: CountryCode;
+  destinationCountryName: string | null;
+  status: CorridorCapability['declaredStatus'];
+  supportedCurrencies: CurrencyCode[];
+  supportedPaymentMethods: string[];
+  supportedShippingMethods: string[];
+  requiredDocuments: string[];
+  estimatedTransitMinDays: number | null;
+  estimatedTransitMaxDays: number | null;
+  notes: string | null;
+  capability: CorridorCapability;
+  routes: CorridorRoute[];
+}
+
+// ── Erreurs ──────────────────────────────────────────────────────────────────
+
+/**
+ * Toute erreur de l'API a cette forme. Une ressource qui appartient à quelqu'un
+ * d'autre répond « introuvable », jamais « interdit » : répondre 403 confirmerait
+ * son existence.
+ */
+export interface ApiError {
+  error: string;
+  details?: unknown;
+}
+
+// ── Chemins ──────────────────────────────────────────────────────────────────
+
+/** Racine de l'API versionnée. Un client n'a pas à la recomposer à la main. */
+export const API_BASE = '/api/v1' as const;
+
+export const ENDPOINTS = {
+  countries: `${API_BASE}/countries`,
+  products: `${API_BASE}/products`,
+  product: (slug: string) => `${API_BASE}/products/${encodeURIComponent(slug)}`,
+  stores: `${API_BASE}/stores`,
+  store: (slug: string) => `${API_BASE}/stores/${encodeURIComponent(slug)}`,
+  corridors: `${API_BASE}/trade/corridors`,
+  /** Accepte le code (`TD_CM`) comme l'adresse lisible (`tchad-cameroun`). */
+  corridor: (reference: string) => `${API_BASE}/trade/corridors/${encodeURIComponent(reference)}`,
+} as const;
