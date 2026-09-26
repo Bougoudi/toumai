@@ -369,6 +369,12 @@ export function toumaOpenApiDocument() {
       '/ai/classify': { post: op('Touma AI', 'Classer un texte', { body: true }) },
       '/ai/recommend': { post: op('Touma AI', 'Recommander des produits', { auth: false, body: true }) },
       '/seller/dashboard': { get: op('Vendeur', 'Tableau de bord vendeur', { role: 'SELLER' }) },
+      '/seller/stockouts': {
+        get: op('Vendeur', 'Ruptures de stock : durée issue du journal des mouvements, demande issue des commandes', {
+          role: 'SELLER',
+          query: ['days', 'storeId'],
+        }),
+      },
       '/seller/products/{productId}/stock-movements': {
         get: op('Vendeur', 'Historique des mouvements de stock d’un produit : chaque ligne porte l’état après application', {
           role: 'SELLER',

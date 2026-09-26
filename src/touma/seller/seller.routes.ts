@@ -8,6 +8,13 @@ import { analyticsService } from '../admin/analytics.service.js';
 import { importService } from '../catalog/import.service.js';
 import { listOrdersSchema } from '../orders/order.schema.js';
 import { orderService } from '../orders/order.service.js';
+import { ruptures } from '../market/stockout.js';
+
+/** Fenêtre d'analyse des ruptures. */
+const rupturesSchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(30),
+  storeId: z.string().cuid().optional(),
+});
 
 /** Pagination du journal de stock : par curseur, l'historique pouvant être long. */
 const mouvementsSchema = z.object({
@@ -210,6 +217,42 @@ sellerRouter.get(
       note:
         'Chaque ligne porte l’état après application. Un article dont l’inventaire ne correspond pas au dernier ' +
         'mouvement a été modifié hors journal — le contrôle d’intégrité le signale.',
+    });
+  }),
+);
+
+/**
+ * Ruptures de stock du vendeur, avec leur durée et la demande observée (V29 §8).
+ *
+ * Restreint à ses propres boutiques. Les ruptures d'un concurrent disent ce
+ * qu'il n'arrive pas à fournir : c'est une donnée commerciale.
+ */
+sellerRouter.get(
+  '/stockouts',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const { days, storeId } = parseQuery(rupturesSchema, req);
+
+    const boutiques = await prisma.toumaStore.findMany({ where: { ownerId: user.id }, select: { id: true } });
+
+    // Le contrôle sur la boutique demandée passe **avant** le cas « aucune
+    // boutique ». Dans l'autre ordre, un vendeur sans boutique recevait 200 et
+    // une liste vide pour n'importe quel identifiant, là où un vendeur qui en a
+    // recevait 404 : deux réponses différentes à la même tentative, et la
+    // seconde disait au premier que le contrôle existe.
+    if (storeId && !boutiques.some((b) => b.id === storeId)) throw notFound('Boutique introuvable.');
+
+    if (boutiques.length === 0) {
+      return res.json({ items: [], windowDays: days, note: 'Aucune boutique : rien à analyser.' });
+    }
+
+    const resultats = await Promise.all(
+      (storeId ? [storeId] : boutiques.map((b) => b.id)).map((id) => ruptures({ days, storeId: id })),
+    );
+    res.json({
+      items: resultats.flatMap((r) => r.items),
+      windowDays: days,
+      note: resultats[0]?.note ?? '',
     });
   }),
 );
