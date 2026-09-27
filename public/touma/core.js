@@ -6,6 +6,7 @@
  * politique de sécurité du contenu (CSP) du serveur.
  */
 
+import { corridorNomme, libelleCorridor, operationnels, phraseBandeau } from './corridors.js';
 import { locale, statusLabel, STATUS_FR, t } from './i18n.js';
 
 export const API = '/api/v1';
@@ -362,3 +363,29 @@ export function productImage(url, alt, cls = '') {
   const src = url || '/touma/img/placeholder.svg';
   return `<img class="${cls}" src="${esc(src)}" alt="${esc(alt || t('core.productImageAlt'))}" loading="lazy" decoding="async" />`;
 }
+
+// ── Corridors réellement ouverts ─────────────────────────────────────────────
+//
+// La décision — que peut-on dire d'un corridor ? — vit dans `corridors.js`, qui
+// ne fait aucune requête et se vérifie donc sans navigateur. Ici, seule la
+// requête : elle est mise en cache pour la durée de la visite, parce que
+// l'accueil et le bandeau la demandent tous les deux au même instant.
+//
+// Une API muette rend `null`, pas une liste vide : « je ne sais pas » et
+// « aucun » ne se rendent pas de la même façon, et `corridors.js` s'appuie sur
+// cette distinction.
+let corridorsPromesse = null;
+
+/**
+ * Les corridors réellement opérationnels, ou `null` si l'état est inconnu.
+ *
+ * @returns {Promise<Array<object> | null>}
+ */
+export function corridorsOuverts() {
+  corridorsPromesse ??= api('/trade/corridors')
+    .then(({ items }) => operationnels(items))
+    .catch(() => null);
+  return corridorsPromesse;
+}
+
+export { libelleCorridor, corridorNomme, phraseBandeau } from './corridors.js';

@@ -324,7 +324,12 @@ const FR = {
 
   // Catalogue — l'écran où l'on choisit.
   // Accueil — ce qu'un visiteur voit en arrivant.
-  'home.corridor': '🇹🇩 Tchad ↔ 🇨🇲 Cameroun · corridor pilote ouvert',
+  // Écrite en dur, cette pastille annonçait un corridor pilote ouvert alors que
+  // le corridor Tchad ↔ Cameroun est `COMING_SOON` et qu'aucun transporteur réel
+  // ne le couvre. Elle vient maintenant de l'état mesuré, et ne s'affiche pas
+  // quand aucun corridor n'est ouvert.
+  'home.corridorOpen': '{corridor} · corridor ouvert',
+  'home.corridorsOpen': 'Corridors ouverts : {corridor}',
   'home.headline': 'Acheter et vendre entre pays africains, simplement.',
   'home.lede': 'TOUMA connecte fournisseurs, commerçants et acheteurs d’un pays à l’autre : catalogue, paiement, transport et suivi de bout en bout.',
   'home.exploreCatalog': 'Explorer le catalogue',
@@ -332,7 +337,8 @@ const FR = {
   'home.verifiedCount': '{count} boutique(s) vérifiée(s)',
   'home.verifiedCountHint': 'Entreprises contrôlées par notre équipe',
   'home.productCount': '{count} produit(s) en ligne',
-  'home.productCountHint': 'Gros et détail, {corridor}',
+  'home.productCountHint': 'Gros et détail',
+  'home.productCountHintCorridor': 'Gros et détail, {corridor}',
   'home.trackedDelivery': 'Livraison suivie',
   'home.trackedDeliveryHint': 'Tarif et délai calculés pour le corridor réel',
   'home.categories': 'Catégories',
@@ -367,7 +373,11 @@ const FR = {
   'home.sell2Body': 'Prix, stock, quantité minimale de commande, variantes.',
   'home.sell3': 'Expédiez et encaissez',
   'home.sell3Body': 'Créez l’expédition en un clic, suivez vos ventes et votre stock.',
-  'home.ctaTitle': 'Prêt à commercer entre {corridor} ?',
+  // « Prêt à commercer entre Tchad ↔ Cameroun ? » invitait à un échange que
+  // TOUMA ne peut pas encore acheminer. Le corridor n'est nommé que s'il est
+  // ouvert ; sinon l'invitation reste vraie sans le nommer.
+  'home.ctaTitle': 'Prêt à vendre et acheter sur TOUMA ?',
+  'home.ctaTitleCorridor': 'Prêt à commercer entre {corridor} ?',
   'home.ctaBody': 'Créez un compte gratuitement : le même compte permet d’acheter et de vendre.',
   'home.createAccount': 'Créer mon compte',
   'home.seeCatalog': 'Voir le catalogue',
@@ -2478,7 +2488,11 @@ const FR = {
   'sh.installBody': 'Ouverture plus rapide, et l’application s’ouvre même quand le réseau faiblit.',
   'sh.install': 'Installer',
   'sh.installLater': 'Plus tard',
-  'sh.corridorOpen': 'Corridor ouvert : {names} — d’autres marchés africains s’activeront depuis le référentiel.',
+  // Le bandeau n'est écrit que pour les corridors dont `operational` est vrai
+  // côté serveur. L'ancienne version promettait en plus que « d'autres marchés
+  // africains s'activeront » : une échéance qu'aucune donnée ne porte.
+  'sh.corridorOpen': 'Corridor ouvert : {names}',
+  'sh.corridorsOpen': 'Corridors ouverts : {names}',
   'sh.transitAnnounced': 'Transport annoncé : {min}–{max} jours',
   'sh.handlingDays': 'préparation {days} j',
   'sh.maxPoints': 'Vous pouvez utiliser au plus {count} point(s).',
@@ -2910,7 +2924,8 @@ const AR = {
   'summary.loyaltyPoints': '{count} نقطة ولاء',
   'summary.total': 'المجموع',
 
-  'home.corridor': '🇹🇩 تشاد ↔ 🇨🇲 الكاميرون · ممر تجريبي مفتوح',
+  'home.corridorOpen': '{corridor} · ممرّ مفتوح',
+  'home.corridorsOpen': 'الممرّات المفتوحة: {corridor}',
   'home.headline': 'البيع والشراء بين البلدان الأفريقية، ببساطة.',
   'home.lede': 'تربط TOUMA المورّدين والتجار والمشترين من بلد إلى آخر: الكتالوج والدفع والنقل والتتبّع من البداية إلى النهاية.',
   'home.exploreCatalog': 'استكشاف الكتالوج',
@@ -2918,7 +2933,8 @@ const AR = {
   'home.verifiedCount': '{count} متجر موثّق',
   'home.verifiedCountHint': 'شركات تحقّق منها فريقنا',
   'home.productCount': '{count} منتج على الإنترنت',
-  'home.productCountHint': 'بالجملة وبالتجزئة، {corridor}',
+  'home.productCountHint': 'بالجملة وبالتجزئة',
+  'home.productCountHintCorridor': 'بالجملة وبالتجزئة، {corridor}',
   'home.trackedDelivery': 'توصيل متتبَّع',
   'home.trackedDeliveryHint': 'السعر والمدة محسوبان للممر الفعلي',
   'home.categories': 'الفئات',
@@ -2953,7 +2969,8 @@ const AR = {
   'home.sell2Body': 'السعر والمخزون والحد الأدنى للطلب والخيارات.',
   'home.sell3': 'اشحن واقبض',
   'home.sell3Body': 'أنشئ الشحنة بنقرة، وتابع مبيعاتك ومخزونك.',
-  'home.ctaTitle': 'جاهز للتجارة بين {corridor}؟',
+  'home.ctaTitle': 'جاهز للبيع والشراء على TOUMA؟',
+  'home.ctaTitleCorridor': 'جاهز للتجارة بين {corridor}؟',
   'home.ctaBody': 'أنشئ حساباً مجاناً: الحساب نفسه يتيح الشراء والبيع.',
   'home.createAccount': 'إنشاء حسابي',
   'home.seeCatalog': 'عرض الكتالوج',
@@ -5015,7 +5032,8 @@ const AR = {
   'sh.installBody': 'فتح أسرع، ويفتح التطبيق حتى حين يضعف الاتصال.',
   'sh.install': 'تثبيت',
   'sh.installLater': 'لاحقاً',
-  'sh.corridorOpen': 'الممرّ مفتوح: {names} — وستُفعَّل أسواق أفريقية أخرى انطلاقاً من المرجع.',
+  'sh.corridorOpen': 'الممرّ مفتوح: {names}',
+  'sh.corridorsOpen': 'الممرّات المفتوحة: {names}',
   'sh.transitAnnounced': 'مدة النقل المعلَنة: {min}–{max} يوماً',
   'sh.handlingDays': 'التحضير {days} ي',
   'sh.maxPoints': 'يمكنك استعمال {count} نقطة على الأكثر.',

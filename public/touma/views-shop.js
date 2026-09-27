@@ -2,27 +2,35 @@
  * TOUMA — parcours acheteur : accueil, catalogue, fiche produit, boutiques,
  * panier, tunnel de commande, commandes et suivi.
  */
-import { api, esc, money, formatDate, label, session, statusPill, stars, productImage, svg, emptyState, toast } from './core.js';
+import { api, corridorNomme, corridorsOuverts, esc, money, formatDate, label, session, statusPill, stars, productImage, svg, emptyState, toast } from './core.js';
 import { productCard, storeCard, breadcrumb, stepper, orderTimeline, trackingTimeline, pagination, featureBlock } from './components.js';
 import { t } from './i18n.js';
 
 // ── Accueil ────────────────────────────────────────────────────────────────
 export async function home() {
-  const [latest, popular, categories, verifiedStores, countries] = await Promise.all([
+  const [latest, popular, categories, verifiedStores, ouverts] = await Promise.all([
     api('/products?limit=8&sort=recent'),
     api('/products?limit=8&sort=popular'),
     api('/categories'),
     api('/stores?verified=true&limit=3'),
-    api('/countries'),
+    corridorsOuverts(),
   ]);
-  const corridor = countries.items.map((c) => c.name).join(' ↔ ');
   const topCategories = categories.items.filter((c) => c.productCount > 0).slice(0, 10);
+
+  // L'accueil nommait le corridor en joignant les noms du référentiel — ce qui
+  // aurait produit « Tchad ↔ Cameroun ↔ Nigeria ↔ … » à mesure que des pays
+  // PLANNED y entrent, et qui annonçait surtout un corridor ouvert alors qu'il
+  // ne l'est pas. Il ne le nomme désormais que s'il est réellement opérationnel.
+  const corridor = corridorNomme(ouverts);
+  const pastille = corridor === null
+    ? ''
+    : `<span class="corridor-pill" dir="ltr">${esc(t(ouverts.length > 1 ? 'home.corridorsOpen' : 'home.corridorOpen', { corridor }))}</span>`;
 
   return `
     <section class="hero">
       <div class="hero-grid">
         <div>
-          <span class="corridor-pill">${esc(t('home.corridor'))}</span>
+          ${pastille}
           <h1>${esc(t('home.headline'))}</h1>
           <p>${esc(t('home.lede'))}</p>
           <div class="row">
@@ -32,7 +40,7 @@ export async function home() {
         </div>
         <div class="hero-visual" aria-hidden="true">
           <div class="hero-card"><span class="feature-icon">${svg('store')}</span><span><strong>${esc(t('home.verifiedCount', { count: verifiedStores.total ?? verifiedStores.items.length }))}</strong><span>${esc(t('home.verifiedCountHint'))}</span></span></div>
-          <div class="hero-card"><span class="feature-icon">${svg('box')}</span><span><strong>${esc(t('home.productCount', { count: latest.total }))}</strong><span>${esc(t('home.productCountHint', { corridor }))}</span></span></div>
+          <div class="hero-card"><span class="feature-icon">${svg('box')}</span><span><strong>${esc(t('home.productCount', { count: latest.total }))}</strong><span>${esc(corridor === null ? t('home.productCountHint') : t('home.productCountHintCorridor', { corridor }))}</span></span></div>
           <div class="hero-card"><span class="feature-icon">${svg('truck')}</span><span><strong>${esc(t('home.trackedDelivery'))}</strong><span>${esc(t('home.trackedDeliveryHint'))}</span></span></div>
         </div>
       </div>
@@ -107,7 +115,7 @@ export async function home() {
     </section>
 
     <section class="cta-band">
-      <h2>${esc(t('home.ctaTitle', { corridor }))}</h2>
+      <h2>${esc(corridor === null ? t('home.ctaTitle') : t('home.ctaTitleCorridor', { corridor }))}</h2>
       <p class="muted">${esc(t('home.ctaBody'))}</p>
       <div class="row" style="justify-content:center">
         <a class="btn btn-accent btn-lg" href="/touma/inscription" data-link>${esc(t('home.createAccount'))}</a>

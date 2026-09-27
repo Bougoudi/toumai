@@ -26,7 +26,7 @@
 // une installation existante garderait un cache où `i18n.js` n'existe pas, et
 // `core.js` échouerait à l'importer — l'application ne s'ouvrirait plus hors
 // ligne.
-const VERSION = 'touma-v2';
+const VERSION = 'touma-v3';
 const SHELL_CACHE = `${VERSION}-shell`;
 const IMAGE_CACHE = `${VERSION}-images`;
 
@@ -38,8 +38,9 @@ const SHELL = [
   '/touma/touma.js',
   '/touma/core.js',
   '/touma/components.js',
-  // Importé par le noyau : sans lui, rien ne démarre hors ligne.
+  // Importés par le noyau : sans eux, rien ne démarre hors ligne.
   '/touma/i18n.js',
+  '/touma/corridors.js',
   '/touma/hors-ligne.html',
   '/touma/img/icon-192.png',
   '/touma/manifest.webmanifest',

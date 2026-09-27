@@ -109,3 +109,42 @@ chaque lecture. Retirer le dernier transporteur réel d'un corridor le fait
 sortir du plan du site et réapparaître en `noindex` à la revalidation suivante,
 sans qu'aucune page soit modifiée. Le bandeau « corridor ouvert » de la vitrine
 suit la même source, et disparaît dans les mêmes conditions.
+
+## L'application suit la même source que la vitrine
+
+La vitrine a été corrigée en V24 d'un bandeau « Corridor ouvert : Tchad ↔
+Cameroun » écrit en dur. L'application, elle, ne l'avait pas été, et disait la
+même chose de deux manières :
+
+| Endroit | Ce qu'il affichait | D'où il le tirait |
+|---|---|---|
+| bandeau de l'ossature | « Corridor ouvert : Cameroun ↔ Tchad » | les noms de `GET /countries`, joints |
+| pastille de l'accueil | « 🇹🇩 Tchad ↔ 🇨🇲 Cameroun · corridor pilote ouvert » | une chaîne du dictionnaire |
+| appel à l'action | « Prêt à commercer entre Tchad ↔ Cameroun ? » | les noms de `GET /countries`, joints |
+
+Aucune de ces trois sources ne dit qu'un corridor fonctionne. La première dit
+que deux pays figurent au référentiel — elle aurait produit « Tchad ↔ Cameroun
+↔ Nigeria ↔ Côte d'Ivoire ↔ … » à mesure que des pays `PLANNED` y entrent. La
+seconde ne dit rien du tout : elle était vraie corridor suspendu. Mesuré sur
+l'instance de développement au moment de la correction : les deux corridors
+Tchad ↔ Cameroun étaient `COMING_SOON`, aucun opérationnel, tous deux bloqués
+par `ONLY_SIMULATED_CARRIER` — et les trois écrans annonçaient « ouvert ».
+
+Les trois lisent maintenant `GET /api/v1/trade/corridors` et ne retiennent que
+les corridors dont `operational` est vrai, c'est-à-dire ceux qu'un moyen de
+paiement **et** un transporteur réel couvrent des deux côtés. La décision est
+isolée dans `public/touma/corridors.js`, qui ne fait aucune requête : c'est ce
+qui permet de la vérifier sans navigateur, donc dans l'intégration continue, qui
+n'exécute que les tests unitaires (`tests/unit/app-corridor-banner.test.ts`).
+
+Trois états, pas deux. `null` — l'API n'a pas répondu — n'est pas une liste
+vide. Le premier n'autorise aucune phrase ; le second autorise de dire qu'aucun
+corridor n'est ouvert. Quand il n'y a rien d'ouvert, le bandeau retombe sur la
+signature de TOUMA et la pastille disparaît : c'est la page Commerce
+transfrontalier qui explique ce qui manque, avec les motifs de blocage, et non
+un bandeau en haut de chaque écran.
+
+Les pays y sont désignés par leur code ISO — `TD → CM` — et non par leur nom,
+comme le fait déjà la fiche de corridor. Le référentiel ne porte pas de nom
+arabe fiable (le `nativeName` du Cameroun vaut « Cameroun ») ; un code se lit
+dans les deux langues, un nom français au milieu d'un écran arabe se lit mal.

@@ -17,6 +17,8 @@ import {
   esc,
   loadingState,
   money,
+  corridorsOuverts,
+  phraseBandeau,
   session,
   svg,
   toast,
@@ -2647,15 +2649,20 @@ window.addEventListener('popstate', render);
 window.addEventListener('touma:session', renderChrome);
 
 // Bandeau du corridor.
+//
+// Il lisait `/countries` : il annonçait donc « Corridor ouvert » dès que deux
+// pays figuraient au référentiel, ce qui ne dit rien de la possibilité d'y
+// expédier quoi que ce soit. Il lit maintenant l'état réel, et se tait quand
+// aucun corridor n'est ouvert — le repli est la signature de TOUMA, jamais une
+// promesse de corridor. Voir `phraseBandeau` dans corridors.js.
 (async () => {
   const bar = document.getElementById('corridor');
-  try {
-    const { items } = await api('/countries');
-    const names = items.map((c) => c.name).join(' ↔ ');
-    bar.innerHTML = t('sh.corridorOpen', { names: `<strong>${esc(names)}</strong>` });
-  } catch {
+  const phrase = phraseBandeau(await corridorsOuverts());
+  if (phrase === null) {
     bar.textContent = t('sh.tagline');
+    return;
   }
+  bar.textContent = phrase;
 })();
 
 // Recherche pré-remplie depuis l'URL.
