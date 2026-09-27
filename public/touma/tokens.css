@@ -1,0 +1,146 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOUMA — jetons de design (design tokens)
+   Source unique de vérité pour couleurs, espacements, typographie, rayons,
+   ombres et points de rupture. Aucun composant ne code une valeur en dur.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Couleurs de marque ─────────────────────────────────────────────── */
+  --touma-green: #0b5d5e;
+  --touma-orange: #e07a3f;
+  --touma-sand: #f3ebdd;
+  --touma-cream: #faf8f2;
+  --touma-ink: #172121;
+
+  /* Déclinaisons (calculées une fois, réutilisées partout) */
+  --green-900: #063536;
+  --green-800: #084546;
+  --green-700: var(--touma-green);
+  --green-600: #0f7274;
+  --green-500: #14898b;
+  --green-100: #d9ecec;
+  --green-50: #eef7f7;
+
+  --orange-700: #b85e28;
+  --orange-600: #cc6c33;
+  --orange-500: var(--touma-orange);
+  --orange-400: #ea9463;
+  --orange-100: #fbe6d7;
+  --orange-50: #fdf3ec;
+
+  /* ── Rôles sémantiques ──────────────────────────────────────────────── */
+  --bg: var(--touma-cream);
+  --bg-alt: var(--touma-sand);
+  --surface: #ffffff;
+  --surface-sunken: #f6f3ec;
+  --border: #e3dccd;
+  --border-strong: #cfc5b0;
+
+  --text: var(--touma-ink);
+  --text-muted: #5f6b6b;
+  --text-subtle: #86908f;
+  --text-on-dark: #ffffff;
+
+  --primary: var(--green-700);
+  --primary-hover: var(--green-600);
+  --primary-active: var(--green-800);
+  --primary-soft: var(--green-50);
+
+  --accent: var(--orange-500);
+  --accent-hover: var(--orange-400);
+  --accent-active: var(--orange-700);
+  --accent-soft: var(--orange-50);
+
+  --success: #0f7043;
+  --success-soft: #e3f3ea;
+  --warning: #9a6212;
+  --warning-soft: #fbf0dc;
+  --danger: #a32d1b;
+  --danger-soft: #fbe8e4;
+  --info: #17557f;
+  --info-soft: #e5eef7;
+
+  --focus-ring: 0 0 0 3px rgba(224, 122, 63, 0.45);
+
+  /* ── Typographie ────────────────────────────────────────────────────── */
+  --font-sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, monospace;
+
+  --text-xs: 0.75rem;    /* 12 */
+  --text-sm: 0.8125rem;  /* 13 */
+  --text-base: 0.9375rem;/* 15 */
+  --text-md: 1rem;       /* 16 */
+  --text-lg: 1.125rem;   /* 18 */
+  --text-xl: 1.375rem;   /* 22 */
+  --text-2xl: 1.75rem;   /* 28 */
+  --text-3xl: clamp(1.75rem, 1.2rem + 2.4vw, 2.75rem);
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.55;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* ── Espacements (échelle 4px) ──────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Rayons ─────────────────────────────────────────────────────────── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* ── Ombres ─────────────────────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px rgba(23, 33, 33, 0.06);
+  --shadow-sm: 0 1px 3px rgba(23, 33, 33, 0.08), 0 1px 2px rgba(23, 33, 33, 0.04);
+  --shadow-md: 0 4px 12px rgba(23, 33, 33, 0.08);
+  --shadow-lg: 0 12px 32px rgba(23, 33, 33, 0.12);
+
+  /* ── Gabarit ────────────────────────────────────────────────────────── */
+  --container: 1200px;
+  --container-narrow: 720px;
+  --header-height: 64px;
+  --bottom-nav-height: 60px;
+
+  /* ── Superposition ──────────────────────────────────────────────────── */
+  --z-header: 100;
+  --z-drawer: 200;
+  --z-modal: 300;
+  --z-toast: 400;
+
+  /* ── Mouvement (respecte les préférences système) ───────────────────── */
+  --transition-fast: 120ms ease;
+  --transition: 200ms ease;
+}
+
+/* Cible tactile minimale recommandée (44 px) sur les appareils sans souris. */
+@media (pointer: coarse) {
+  :root {
+    --tap-target: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0ms;
+    --transition: 0ms;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -11,3 +11,6 @@ prisma/*.db
 coverage
 .DS_Store
 scratchpad
+apps/*/node_modules
+apps/*/.next
+packages/*/node_modules

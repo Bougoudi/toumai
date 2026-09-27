@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="Visuel du produit">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#FAF8F2"/><stop offset="1" stop-color="#F3EBDD"/>
+  </linearGradient></defs>
+  <rect width="600" height="600" fill="url(#bg)"/>
+  <circle cx="500" cy="110" r="150" fill="#0B5D5E" opacity=".07"/>
+  <circle cx="90" cy="520" r="120" fill="#E07A3F" opacity=".08"/>
+  <rect x="130" y="150" width="34" height="300" rx="17" fill="#E07A3F" opacity="0.90"/><rect x="186" y="150" width="34" height="300" rx="17" fill="#127273" opacity="0.83"/><rect x="242" y="150" width="34" height="300" rx="17" fill="#E07A3F" opacity="0.76"/><rect x="298" y="150" width="34" height="300" rx="17" fill="#127273" opacity="0.69"/><rect x="354" y="150" width="34" height="300" rx="17" fill="#E07A3F" opacity="0.62"/><rect x="410" y="150" width="34" height="300" rx="17" fill="#127273" opacity="0.55"/><rect x="466" y="150" width="34" height="300" rx="17" fill="#E07A3F" opacity="0.48"/>
+</svg>
