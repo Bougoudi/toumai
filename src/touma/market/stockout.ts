@@ -70,6 +70,15 @@ const DEMANDE_PLANCHER = 5;
 const JOURS_PLANCHER = 1;
 
 /**
+ * Plafond de produits examinés en un passage.
+ *
+ * Nommé plutôt que répété dans les requêtes, parce que la réconciliation doit
+ * pouvoir savoir qu'il a été atteint : au plafond, des produits en rupture
+ * n'ont pas été examinés, et rien ne peut être déclaré résolu.
+ */
+export const PLAFOND_CANDIDATS = 500;
+
+/**
  * Ruptures de stock des produits actifs, avec leur durée et la demande observée.
  *
  * `maintenant` est injectable : sans cela, un test de durée devrait attendre
@@ -78,6 +87,18 @@ const JOURS_PLANCHER = 1;
 export async function ruptures(options: { days: number; storeId?: string; limit?: number; maintenant?: Date } = { days: 30 }): Promise<{
   items: SignalRupture[];
   windowDays: number;
+  /**
+   * `true` quand la liste a été coupée par une limite, en sortie ou à la
+   * sélection des candidats.
+   *
+   * Ce n'est pas un détail d'affichage. La réconciliation (§36) clôt les
+   * signaux qui ne sont plus observés, en comparant l'état en base à ce qui
+   * vient d'être calculé : sur une liste tronquée, elle conclurait qu'une
+   * rupture bien réelle a disparu parce qu'elle était au-delà de la limite.
+   * Une observation incomplète n'autorise pas à déclarer quoi que ce soit
+   * résolu — d'où ce drapeau, et le refus de clore qu'il provoque.
+   */
+  truncated: boolean;
   note: string;
 }> {
   const jours = options.days;
@@ -111,7 +132,7 @@ export async function ruptures(options: { days: number; storeId?: string; limit?
          WHERE p."status" = 'ACTIVE' AND p."storeId" = ${options.storeId}
          GROUP BY i."productId"
         HAVING SUM(i."quantity") <= 0
-         LIMIT 500`
+         LIMIT ${PLAFOND_CANDIDATS}`
     : await prisma.$queryRaw<Array<{ productId: string }>>`
         SELECT i."productId"
           FROM "touma_inventory" i
@@ -119,7 +140,7 @@ export async function ruptures(options: { days: number; storeId?: string; limit?
          WHERE p."status" = 'ACTIVE'
          GROUP BY i."productId"
         HAVING SUM(i."quantity") <= 0
-         LIMIT 500`;
+         LIMIT ${PLAFOND_CANDIDATS}`;
 
   const enRupture = candidats.length === 0
     ? []
@@ -137,6 +158,7 @@ export async function ruptures(options: { days: number; storeId?: string; limit?
     return {
       items: [],
       windowDays: jours,
+      truncated: false,
       note: 'Aucun produit actif n’est en rupture complète. Ce n’est pas une absence de données : la vérification a eu lieu.',
     };
   }
@@ -214,7 +236,14 @@ export async function ruptures(options: { days: number; storeId?: string; limit?
       phrase = `En rupture depuis moins d’un jour, avec ${d.units} unité(s) commandée(s) sur ${jours} jours. Réassort probablement en cours.`;
     } else {
       signal = 'STOCKOUT';
-      phrase = `En rupture depuis ${joursRupture} jour(s). Moins de ${DEMANDE_PLANCHER} unités commandées sur ${jours} jours : la demande observée ne justifie pas une alerte.`;
+      // Le constat dit ce qui est mesuré, **et rien de plus**.
+      //
+      // Il disait « la demande observée ne justifie pas une alerte ». Vérifié
+      // sur le serveur : ce texte se retrouvait tel quel dans le corps d'une
+      // alerte à laquelle un vendeur s'était abonné, qui affirmait donc ne pas
+      // en être une. Décider s'il faut alerter appartient à la surveillance
+      // (§28), pas au producteur du signal ; celui-ci ne fournit que le fait.
+      phrase = `En rupture depuis ${joursRupture} jour(s). Moins de ${DEMANDE_PLANCHER} unités commandées sur ${jours} jours : la demande observée est faible.`;
     }
 
     return {
@@ -250,6 +279,10 @@ export async function ruptures(options: { days: number; storeId?: string; limit?
   return {
     items: items.slice(0, limite),
     windowDays: jours,
+    // Tronqué de deux façons : la sortie coupée par `limite`, ou la sélection
+    // des candidats arrivée au plafond — auquel cas des produits en rupture
+    // n'ont même pas été examinés.
+    truncated: items.length > limite || candidats.length >= PLAFOND_CANDIDATS,
     note:
       'La durée vient du journal des mouvements de stock ; elle est inconnue pour une rupture antérieure à ce journal. ' +
       'La demande vient des lignes de commande : les recherches sans résultat ne sont pas rattachées à un produit, ' +

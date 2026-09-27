@@ -383,6 +383,28 @@ export function toumaOpenApiDocument() {
         }),
       },
       '/seller/inventory/low-stock': { get: op('Vendeur', 'Stocks faibles', { role: 'SELLER' }) },
+      '/seller/market/signals': {
+        get: op(
+          'Vendeur',
+          'Signaux de marché persistés : âge observé depuis la première observation, les résolus conservés',
+          { role: 'SELLER', query: ['storeId', 'kind', 'includeResolved', 'limit'] },
+        ),
+      },
+      '/seller/market/watches': {
+        get: op('Vendeur', 'Surveillances de marché du vendeur', { role: 'SELLER' }),
+        post: op('Vendeur', 'Surveiller un produit ou une boutique : liste `kinds` vide = tous les signaux', {
+          role: 'SELLER',
+          body: true,
+        }),
+      },
+      '/seller/market/watches/{id}': {
+        patch: op('Vendeur', 'Mettre une surveillance en sourdine jusqu’à une échéance', {
+          role: 'SELLER',
+          params: ['id'],
+          body: true,
+        }),
+        delete: op('Vendeur', 'Supprimer une surveillance', { role: 'SELLER', params: ['id'] }),
+      },
       '/seller/stores/{storeId}/catalogue/import': {
         post: op('Vendeur', 'Importer un catalogue CSV (dryRun=true pour simuler)', { params: ['storeId'], query: ['dryRun'], body: true, role: 'SELLER' }),
       },

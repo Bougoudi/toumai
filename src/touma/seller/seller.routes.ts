@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
-import { asyncHandler, parseQuery } from '../../middleware/validate.js';
-import { forbidden, notFound } from '../lib/errors.js';
+import { asyncHandler, parseBody, parseQuery } from '../../middleware/validate.js';
+import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { authenticate, currentUser, requireRole } from '../middleware/toumaAuth.js';
 import { analyticsService } from '../admin/analytics.service.js';
 import { importService } from '../catalog/import.service.js';
 import { listOrdersSchema } from '../orders/order.schema.js';
 import { orderService } from '../orders/order.service.js';
 import { ruptures } from '../market/stockout.js';
+import { TYPES_SIGNAL } from '../market/signals.service.js';
 
 /** Fenêtre d'analyse des ruptures. */
 const rupturesSchema = z.object({
@@ -254,5 +255,200 @@ sellerRouter.get(
       windowDays: days,
       note: resultats[0]?.note ?? '',
     });
+  }),
+);
+
+// ── Signaux de marché persistés et surveillance (V29 §28 à §30, §36) ─────────
+//
+// Un vendeur ne lit et ne surveille que ses propres boutiques. Les signaux d'un
+// concurrent disent ce qu'il n'arrive pas à fournir : §47 et §48 l'interdisent.
+//
+// Le contrôle de propriété passe **avant** tout le reste dans chaque route,
+// y compris avant le cas « ce vendeur n'a aucune boutique ». Dans l'autre
+// ordre, un vendeur sans boutique reçoit 200 pour n'importe quel identifiant
+// là où un vendeur qui en a reçoit 404 — et l'écart entre les deux réponses
+// apprend au premier que le contrôle existe.
+
+/** Lecture des signaux : ouverts par défaut, les clos sur demande. */
+const signauxSchema = z.object({
+  storeId: z.string().cuid().optional(),
+  kind: z.enum(TYPES_SIGNAL).optional(),
+  /** `true` pour voir aussi ce qui est résolu — l'histoire, pas seulement l'état. */
+  includeResolved: z.coerce.boolean().default(false),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+/** Création d'une surveillance. */
+const surveillanceSchema = z.object({
+  storeId: z.string().cuid(),
+  scope: z.enum(['PRODUCT', 'STORE']),
+  /** Obligatoire pour une portée produit ; ignoré pour une portée boutique. */
+  productId: z.string().cuid().optional(),
+  /** Liste vide = tous les types de signaux. */
+  kinds: z.array(z.enum(TYPES_SIGNAL)).default([]),
+});
+
+/** Mise en sourdine : une échéance, jamais un silence définitif. */
+const sourdineSchema = z.object({
+  mutedUntil: z.coerce.date().nullable(),
+});
+
+/** Les identifiants des boutiques du vendeur, et le contrôle de celle demandée. */
+async function boutiquesDuVendeur(userId: string, storeId?: string): Promise<string[]> {
+  const boutiques = await prisma.toumaStore.findMany({ where: { ownerId: userId }, select: { id: true } });
+  if (storeId && !boutiques.some((b) => b.id === storeId)) throw notFound('Boutique introuvable.');
+  return storeId ? [storeId] : boutiques.map((b) => b.id);
+}
+
+sellerRouter.get(
+  '/market/signals',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const { storeId, kind, includeResolved, limit } = parseQuery(signauxSchema, req);
+    const ids = await boutiquesDuVendeur(user.id, storeId);
+
+    if (ids.length === 0) {
+      return res.json({ items: [], note: 'Aucune boutique : aucun signal à suivre.' });
+    }
+
+    const signaux = await prisma.toumaMarketSignal.findMany({
+      where: { storeId: { in: ids }, ...(kind ? { kind } : {}), ...(includeResolved ? {} : { resolvedAt: null }) },
+      orderBy: [{ resolvedAt: 'asc' }, { firstSeenAt: 'asc' }],
+      take: limit,
+    });
+
+    const maintenant = Date.now();
+    res.json({
+      items: signaux.map((s) => ({
+        id: s.id,
+        kind: s.kind,
+        subjectType: s.subjectType,
+        subjectId: s.subjectId,
+        storeId: s.storeId,
+        measured: s.measured,
+        observedAt: s.observedAt.toISOString(),
+        firstSeenAt: s.firstSeenAt.toISOString(),
+        lastSeenAt: s.lastSeenAt.toISOString(),
+        resolvedAt: s.resolvedAt?.toISOString() ?? null,
+        /**
+         * L'âge **observé**, et non déduit.
+         *
+         * Pour un signal clos, il s'arrête à la résolution : compter jusqu'à
+         * aujourd'hui ferait vieillir indéfiniment une rupture réglée le mois
+         * dernier.
+         */
+        ageDays: Math.max(
+          0,
+          Math.floor(((s.resolvedAt?.getTime() ?? maintenant) - s.firstSeenAt.getTime()) / 86_400_000),
+        ),
+      })),
+      note:
+        'Un signal est conservé après sa résolution : sa disparition est une information. ' +
+        '`ageDays` est observé depuis la première fois que le signal a été vu, et non déduit d’un calcul.',
+    });
+  }),
+);
+
+sellerRouter.get(
+  '/market/watches',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const surveillances = await prisma.toumaMarketWatch.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({
+      items: surveillances.map((w) => ({
+        id: w.id,
+        storeId: w.storeId,
+        scope: w.scope,
+        subjectId: w.subjectId,
+        kinds: w.kinds,
+        mutedUntil: w.mutedUntil?.toISOString() ?? null,
+        createdAt: w.createdAt.toISOString(),
+      })),
+      note: 'Une liste `kinds` vide signifie « tous les types de signaux ». Une surveillance muette reste enregistrée.',
+    });
+  }),
+);
+
+sellerRouter.post(
+  '/market/watches',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const input = parseBody(surveillanceSchema, req);
+    await boutiquesDuVendeur(user.id, input.storeId);
+
+    // Pour une portée boutique, le sujet **est** la boutique. Laisser la
+    // colonne nulle ferait échouer la contrainte d'unicité à son office : deux
+    // NULL ne se heurtent pas, et le même vendeur enregistrerait deux fois la
+    // même surveillance.
+    let subjectId = input.storeId;
+    if (input.scope === 'PRODUCT') {
+      if (!input.productId) throw badRequest('Une surveillance de produit demande `productId`.');
+      // Le produit doit appartenir à la boutique surveillée : autrement un
+      // vendeur s'abonnerait aux signaux du produit d'un concurrent en le
+      // rattachant à sa propre boutique.
+      const produit = await prisma.toumaProduct.findFirst({
+        where: { id: input.productId, storeId: input.storeId },
+        select: { id: true },
+      });
+      if (!produit) throw notFound('Produit introuvable dans cette boutique.');
+      subjectId = produit.id;
+    }
+
+    const surveillance = await prisma.toumaMarketWatch.upsert({
+      where: {
+        userId_storeId_scope_subjectId: { userId: user.id, storeId: input.storeId, scope: input.scope, subjectId },
+      },
+      create: { userId: user.id, storeId: input.storeId, scope: input.scope, subjectId, kinds: input.kinds },
+      update: { kinds: input.kinds },
+    });
+
+    res.status(201).json({
+      id: surveillance.id,
+      storeId: surveillance.storeId,
+      scope: surveillance.scope,
+      subjectId: surveillance.subjectId,
+      kinds: surveillance.kinds,
+      mutedUntil: surveillance.mutedUntil?.toISOString() ?? null,
+      note: 'Une surveillance ne crée aucun signal : elle décide seulement lesquels vous sont signalés.',
+    });
+  }),
+);
+
+sellerRouter.patch(
+  '/market/watches/:id',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const { mutedUntil } = parseBody(sourdineSchema, req);
+    // Le filtre sur `userId` **est** le contrôle d'accès : une surveillance
+    // d'autrui n'est pas trouvée, et répond donc comme une surveillance qui
+    // n'existe pas.
+    const existante = await prisma.toumaMarketWatch.findFirst({
+      where: { id: req.params.id, userId: user.id },
+      select: { id: true },
+    });
+    if (!existante) throw notFound('Surveillance introuvable.');
+
+    const surveillance = await prisma.toumaMarketWatch.update({
+      where: { id: existante.id },
+      data: { mutedUntil },
+    });
+    res.json({ id: surveillance.id, mutedUntil: surveillance.mutedUntil?.toISOString() ?? null });
+  }),
+);
+
+sellerRouter.delete(
+  '/market/watches/:id',
+  asyncHandler(async (req, res) => {
+    const user = currentUser(req);
+    const existante = await prisma.toumaMarketWatch.findFirst({
+      where: { id: req.params.id, userId: user.id },
+      select: { id: true },
+    });
+    if (!existante) throw notFound('Surveillance introuvable.');
+    await prisma.toumaMarketWatch.delete({ where: { id: existante.id } });
+    res.status(204).end();
   }),
 );

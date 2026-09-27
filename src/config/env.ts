@@ -135,6 +135,14 @@ export const env = {
        * deuxième passe de la même heure est refusée par l'unicité en base.
        */
       intelligence: process.env.TOUMA_CRON_INTELLIGENCE ?? '7 * * * *',
+      /**
+       * Signaux de marché : deux fois par heure suffit.
+       *
+       * Une rupture qui dure depuis trois jours ne devient pas plus grave dans
+       * le quart d'heure, et chaque passage traverse l'inventaire. La minute
+       * décalée évite de tomber en même temps que les autres balayages.
+       */
+      marketSignals: process.env.TOUMA_CRON_MARKET_SIGNALS ?? '13,43 * * * *',
       /** Les purges n'ont aucune urgence : une fois par nuit suffit. */
       purges: process.env.TOUMA_CRON_PURGES ?? '30 3 * * *',
     },

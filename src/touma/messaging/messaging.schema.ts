@@ -82,7 +82,7 @@ export const savedReplySchema = z.object({
 export const savedReplyUpdateSchema = savedReplySchema.partial().refine((v) => v.title || v.content, 'Rien à modifier.');
 
 export const notificationPreferenceSchema = z.object({
-  category: z.enum(['MESSAGES', 'NEGOTIATION', 'RFQ', 'ORDERS', 'MARKETING']),
+  category: z.enum(['MESSAGES', 'NEGOTIATION', 'RFQ', 'ORDERS', 'MARKETING', 'MARKET']),
   inApp: z.boolean().optional(),
   email: z.boolean().optional(),
 });

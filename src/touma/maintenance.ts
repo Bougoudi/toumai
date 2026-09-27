@@ -10,6 +10,7 @@ import { purgeWebhookDeliveries } from './payments/webhook-log.js';
 import { processTrustEvents } from './trust/events.js';
 import { flashSaleService } from './growth/flash-sale.service.js';
 import { runAiJobsOnce } from './ai/jobs.js';
+import { runMarketSignalsOnce } from './market/signals.service.js';
 
 /**
  * Entretien périodique du domaine TOUMA.
@@ -118,6 +119,22 @@ export const maintenanceJobs = {
    * motif — elle n'est ni exécutée, ni silencieusement abandonnée.
    */
   accountDeletions: () => privacyService.runDueDeletions(),
+  /**
+   * Signaux de marché : aligne ce qui est persisté sur ce qui est observé, puis
+   * émet les alertes dues (V29 §36, §54).
+   *
+   * Idempotent par construction — un signal déjà ouvert n'est pas réouvert, une
+   * alerte déjà émise n'est pas réémise — donc rejouable sans dégât. C'est ce
+   * qui permet de ne pas avoir de file de travaux ici : deux instances qui
+   * passent en même temps ne produisent pas deux alertes, la contrainte
+   * d'unicité en base s'en charge.
+   *
+   * La fréquence est basse à dessein. Un signal de marché n'a pas d'urgence à
+   * la minute : une rupture qui dure depuis trois jours ne devient pas plus
+   * grave dans le quart d'heure, et recalculer souvent ne ferait que multiplier
+   * une agrégation qui traverse l'inventaire.
+   */
+  marketSignals: () => runMarketSignalsOnce(),
 };
 
 /** Joue tous les travaux une fois. Employé au démarrage et par les tests. */
@@ -142,6 +159,7 @@ export function startToumaMaintenance(): void {
   cron.schedule(c.trust, safe('confiance', maintenanceJobs.trust));
   cron.schedule(c.flashSales, safe('ventes flash', maintenanceJobs.flashSales));
   cron.schedule(c.intelligence, safe('intelligence', maintenanceJobs.intelligence));
+  cron.schedule(c.marketSignals, safe('signaux de marché', maintenanceJobs.marketSignals));
   cron.schedule(c.purges, safe('purges', async () => {
     const cles = await maintenanceJobs.idempotency();
     const webhooks = await maintenanceJobs.webhooks();

@@ -73,7 +73,7 @@ export const templatesService = {
   },
 };
 
-const CATEGORIES: NotificationCategory[] = ['MESSAGES', 'NEGOTIATION', 'RFQ', 'ORDERS', 'MARKETING'];
+const CATEGORIES: NotificationCategory[] = ['MESSAGES', 'NEGOTIATION', 'RFQ', 'ORDERS', 'MARKETING', 'MARKET'];
 
 /**
  * Préférences de notification. Valeurs par défaut explicites : in-app activé

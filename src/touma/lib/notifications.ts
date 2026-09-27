@@ -68,13 +68,20 @@ export type NotificationType =
   | 'TRUST_APPEAL_REJECTED'
   | 'TRUST_SCORE_CHANGED'
   | 'TRUST_BADGE_AWARDED'
-  | 'TRUST_REVIEW_FLAGGED';
+  | 'TRUST_REVIEW_FLAGGED'
+  // ── Intelligence de marché (V29 §28 à §30) ───────────────────────────────
+  //
+  // Une alerte de marché porte un fait mesuré sur la boutique de son
+  // destinataire — une rupture qui dure sur un produit qu'on commande. Elle a
+  // sa propre catégorie : quelqu'un doit pouvoir couper les alertes de marché
+  // sans couper les notifications de commande, et l'inverse.
+  | 'MARKET_SIGNAL_RAISED';
 
 /**
  * Catégories de préférence. Elles regroupent les types : un utilisateur coupe
  * « les messages », pas « MESSAGE_REPLY ».
  */
-export type NotificationCategory = 'MESSAGES' | 'NEGOTIATION' | 'RFQ' | 'ORDERS' | 'MARKETING';
+export type NotificationCategory = 'MESSAGES' | 'NEGOTIATION' | 'RFQ' | 'ORDERS' | 'MARKETING' | 'MARKET';
 
 const CATEGORY_BY_TYPE: Partial<Record<NotificationType, NotificationCategory>> = {
   MESSAGE_RECEIVED: 'MESSAGES',
@@ -116,6 +123,7 @@ const CATEGORY_BY_TYPE: Partial<Record<NotificationType, NotificationCategory>> 
   EVIDENCE_ADDED: 'ORDERS',
   FUNDS_HELD: 'ORDERS',
   FUNDS_RELEASED: 'ORDERS',
+  MARKET_SIGNAL_RAISED: 'MARKET',
 };
 
 /** Catégorie d'un type de notification (par défaut : ORDERS, jamais MARKETING). */

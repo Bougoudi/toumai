@@ -113,13 +113,12 @@ LIMITED}`. Les trois conditions, pas une seule.
 
 ## Ce qui n'est pas fait
 
-V29 demande 60 parties. Cette livraison en couvre deux et constate que §3, §4,
-§15 et §34 étaient déjà tenus.
+V29 demande 60 parties. Sont couvertes : §8, §36, §41, §43, §28 à §30, §54 ; et
+§3, §4, §15, §34 étaient déjà tenus.
 
-Restent entières : les tables de signaux persistés (§36), le moteur
-d'opportunités (§12 à §14, §17), les alertes et listes de surveillance (§28 à
-§30), les rapports (§21), la recherche naturelle (§31, §32), le pipeline
-observable (§33), les tâches planifiées (§54) et les interfaces (§51 à §53).
+Restent entières : le moteur d'opportunités (§12 à §14, §17), les rapports
+(§21), la recherche naturelle (§31, §32), le pipeline observable (§33) et les
+interfaces (§51 à §53).
 
 Rien n'a été créé en parallèle des services existants : `demand.service.ts`,
 `price.service.ts`, `intelligence.service.ts` et `trade/analytics.service.ts`
@@ -192,3 +191,138 @@ Le contrôle de propriété de la boutique arrivait **après** le retour anticip
 vide pour n'importe quel identifiant, là où un vendeur qui en a recevait 404 :
 deux réponses différentes à la même tentative, et la seconde apprenait au
 premier que le contrôle existe. Le contrôle passe maintenant en premier.
+
+---
+
+## Signaux persistés, surveillance et alertes (§28 à §30, §36, §54)
+
+### Le manque
+
+Les signaux étaient recalculés à chaque lecture. Deux conséquences, et la
+seconde est la plus fâcheuse :
+
+1. **Aucun signal n'avait d'âge.** Une rupture apparue ce matin et une rupture
+   qui dure depuis douze jours portaient le même libellé. La durée déduite du
+   journal de stock (V27) ne couvrait que les ruptures, et seulement celles
+   postérieures au journal.
+2. **Aucune alerte n'était possible sans harceler.** Un recalcul deux fois par
+   heure aurait envoyé la même alerte quarante-huit fois par jour.
+
+### Le principe
+
+On persiste l'**état** du signal, et on notifie une **apparition**, jamais une
+présence. Un signal ouvert qui reste ouvert ne produit rien de plus qu'une date
+de dernière observation mise à jour.
+
+### Ce qui garantit quoi
+
+| Invariant | Garanti par |
+|---|---|
+| un seul signal ouvert par sujet et par type | `openKey` unique en base |
+| une alerte au plus par signal et par surveillance | `@@unique([signalId, watchId])` |
+| aucune clôture sur observation incomplète | le drapeau `truncated` de `ruptures()` |
+
+Les deux premiers sont dans le schéma, délibérément. « Vérifier puis écrire »
+laisse deux passages concurrents du planificateur faire le travail deux fois ;
+une contrainte, elle, tient.
+
+`openKey` mérite un mot : elle vaut `PRODUCT:<id>:<kind>` tant que le signal est
+ouvert, et `null` à la clôture. Les `NULL` ne se heurtent pas dans un index
+unique PostgreSQL : on obtient donc l'index partiel voulu — un seul signal ouvert
+par sujet, autant de clos qu'il en faut — sans le SQL brut que Prisma ne sait pas
+décrire.
+
+Le type fait partie de la clé, et ce n'est pas un détail. Quand une rupture passe
+de `STOCKOUT` à `HIGH_DEMAND_STOCKOUT`, l'ancien signal est clos et un nouveau
+s'ouvre. C'est voulu : ce changement de gravité est justement l'événement qu'un
+vendeur veut apprendre, et le garder dans la même ligne le rendrait invisible.
+
+### Une observation tronquée n'autorise aucune résolution
+
+C'est la règle la moins visible et la plus dangereuse. La réconciliation clôt les
+signaux qui ne sont plus observés, en comparant l'état en base au calcul qui vient
+d'avoir lieu. Sur une liste coupée par une limite, un signal absent n'est pas un
+signal disparu — il est peut-être simplement au-delà de la limite. Le clore
+reviendrait à annoncer à un vendeur qu'une rupture est réglée parce qu'elle était
+au-delà de la cinq-centième ligne.
+
+`ruptures()` rend donc `truncated`, vrai quand la sortie a été coupée **ou** quand
+la sélection des candidats a atteint son plafond — auquel cas des produits en
+rupture n'ont même pas été examinés. La réconciliation ne clôt alors rien, et le
+dit : `closureSkipped` nomme les boutiques concernées.
+
+Le plafond est abaissable par paramètre, **pour les essais seulement** : il
+faudrait cinq cents produits en rupture dans une même boutique pour l'atteindre,
+et un test qui coûte cela ne serait pas écrit.
+
+### Trois défauts trouvés en exécutant, pas en relisant
+
+Le code passait ses tests. Trois défauts n'ont été vus qu'en lançant la chaîne
+complète sur le serveur et en lisant ce qu'un vendeur reçoit.
+
+**Une alerte qui affirmait ne pas en être une.** Le corps reprenait le constat du
+signal, et celui de `STOCKOUT` disait « la demande observée ne justifie pas une
+alerte ». Ce texte arrivait donc dans une alerte à laquelle le vendeur s'était
+abonné. Le constat a été corrigé à la source : il énonce « la demande observée est
+faible » et ne décide plus s'il faut alerter — cette décision appartient à la
+surveillance (§28), pas au producteur du signal.
+
+**Deux âges juxtaposés qui se lisaient comme une contradiction.** Le corps portait
+« en rupture depuis 8 jour(s) » puis « signal observé depuis 0 jour(s) ». Les deux
+sont justes et ne mesurent pas la même chose : la durée de la rupture vient du
+journal de stock, l'âge du signal dit depuis quand TOUMA le suit. L'âge se formule
+désormais comme une date de relevé — « relevé pour la première fois aujourd'hui »
+— jamais comme une seconde durée.
+
+**Un chemin normal qui journalisait une erreur.** Chaque passage tentait
+l'insertion de l'alerte et laissait la contrainte la refuser. C'est correct, et
+cela faisait écrire à Prisma une ligne `prisma:error` par signal déjà alerté, à
+chaque passage. Un journal qui crie à l'erreur quand tout va bien n'est plus lu.
+Les alertes déjà émises sont maintenant lues d'avance ; la contrainte reste la
+garantie, et le `catch` ne couvre plus que la course entre deux passages
+simultanés.
+
+**Et un code brut dans un titre.** L'alerte s'intitulait « Sac de riz 50 kg :
+STOCKOUT ». Le reste des notifications de TOUMA est en français ; le code reste
+dans `data.kind`, pour un client qui sait le traduire.
+
+### Ce que la surveillance ne fait pas
+
+Une surveillance ne crée aucun signal : elle décide seulement lesquels sont portés
+à l'attention de quelqu'un. Un vendeur ne peut surveiller que ses propres
+boutiques, et un produit doit appartenir à la boutique surveillée — sans ce second
+contrôle, on s'abonnerait aux signaux du produit d'un concurrent en le rattachant
+à sa propre boutique.
+
+Une surveillance créée après l'apparition d'un signal reçoit ce signal : on
+s'abonne à l'état d'un produit, pas à l'instant où il a changé. L'alerte porte donc
+l'âge du signal, pour qu'une rupture d'un mois ne se lise pas comme une nouvelle.
+
+Il n'y a **pas d'alerte de résolution**. Un vendeur qui réapprovisionne sait qu'il
+a réapprovisionné ; le lui annoncer serait du bruit. La résolution est lisible à la
+demande (`includeResolved=true`), et l'âge d'un signal clos s'arrête à sa
+résolution — le compter jusqu'à aujourd'hui ferait vieillir indéfiniment une
+rupture réglée le mois dernier.
+
+### Le planificateur
+
+`marketSignals` rejoint les travaux d'entretien, deux fois par heure
+(`13,43 * * * *`, réglable par `TOUMA_CRON_MARKET_SIGNALS`). La fréquence est
+basse à dessein : une rupture qui dure depuis trois jours ne devient pas plus
+grave dans le quart d'heure, et chaque passage traverse l'inventaire.
+
+Idempotent par construction, donc rejouable à la main et sans verrou distribué :
+deux instances qui passent en même temps ne produisent pas deux alertes.
+
+### Les routes
+
+| Route | Ce qu'elle rend |
+|---|---|
+| `GET /seller/market/signals` | les signaux de ses boutiques, avec `ageDays` observé ; `includeResolved=true` pour l'histoire |
+| `GET /seller/market/watches` | ses surveillances |
+| `POST /seller/market/watches` | surveiller un produit ou une boutique ; `kinds` vide = tous les types |
+| `PATCH /seller/market/watches/{id}` | mettre en sourdine jusqu'à une échéance |
+| `DELETE /seller/market/watches/{id}` | retirer une surveillance |
+
+La catégorie de notification `MARKET` est nouvelle : quelqu'un doit pouvoir couper
+les alertes de marché sans couper les notifications de commande.

@@ -250,6 +250,7 @@ model User {
   businessProfile     ToumaBusinessProfile?
   rfqs                ToumaRfq[]
   quotes              ToumaQuote[]                   @relation("QuoteSeller")
+  marketWatches       ToumaMarketWatch[]
   negotiationMessages ToumaNegotiationMessage[]
   conversations       ToumaConversationParticipant[]
   messages            ToumaMessage[]
@@ -1701,6 +1702,8 @@ model ToumaStore {
   updatedAt       DateTime              @updatedAt
   ToumaFlashSale  ToumaFlashSale[]
   supplierProfile ToumaSupplierProfile?
+  marketSignals   ToumaMarketSignal[]
+  marketWatches   ToumaMarketWatch[]
 
   @@index([ownerId])
   @@index([status])
@@ -6042,4 +6045,151 @@ model ToumaSupplierProfile {
 
   @@index([storeId])
   @@map("touma_supplier_profiles")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INTELLIGENCE DE MARCHÉ : SIGNAUX PERSISTÉS, SURVEILLANCE, ALERTES (V29)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Ce qu'un signal observe. Seule la valeur réellement produite aujourd'hui y
+/// figure : en ajouter d'autres « pour plus tard » laisserait croire que des
+/// signaux de catégorie ou de région existent.
+enum MarketSignalSubject {
+  PRODUCT
+}
+
+/// Un signal de marché observé, conservé pour qu'il ait une histoire (§36).
+///
+/// **Pourquoi persister.** Un signal recalculé à chaque lecture n'a pas d'âge :
+/// il paraît toujours neuf. Or l'âge est souvent toute l'information — une
+/// rupture apparue ce matin et une rupture qui dure depuis douze jours portent
+/// le même `kind` et n'appellent pas la même décision. La durée déduite du
+/// journal de stock (V27) ne couvre que les ruptures ; ici, **tout** signal
+/// acquiert un âge, observé et non déduit.
+///
+/// **Ce que cela rend possible.** Une alerte qui ne harcèle pas. On notifie une
+/// **apparition**, jamais une présence : sans mémoire, un recalcul horaire
+/// enverrait la même alerte vingt-quatre fois par jour.
+///
+/// **Ce que ce n'est pas.** Ni une prévision, ni un score. `measured` ne
+/// contient que des faits constatés, et le signal porte la fraîcheur de son
+/// calcul (§41) plutôt que de se présenter comme « live ».
+model ToumaMarketSignal {
+  id String @id @default(cuid())
+
+  /// Le type, tel que son producteur le nomme : `HIGH_DEMAND_STOCKOUT`,
+  /// `STOCKOUT_WITH_DEMAND`, `STOCKOUT_DURATION_UNKNOWN`, `STOCKOUT`.
+  kind        String
+  subjectType MarketSignalSubject
+  subjectId   String
+
+  /// La boutique concernée. Un signal est **privé au vendeur** : les ruptures
+  /// d'un concurrent disent ce qu'il n'arrive pas à fournir (§47, §48).
+  storeId String
+  store   ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  /// Les faits mesurés au dernier calcul. Jamais une estimation non marquée.
+  measured Json @default("{}")
+
+  /// L'instant du calcul, d'où se déduit la fraîcheur affichée (§41).
+  observedAt DateTime
+
+  /// L'histoire : depuis quand cet état tient.
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime
+
+  /// Un signal qui cesse d'être observé est **clos, jamais supprimé** :
+  /// effacer la ligne perdrait l'information qu'il a existé, qui est
+  /// précisément ce qu'on persiste.
+  resolvedAt DateTime?
+
+  /// Unicité **tant que le signal est ouvert** : `PRODUCT:<id>:<kind>`.
+  ///
+  /// Mise à `null` à la clôture. Les NULL ne se heurtent pas dans un index
+  /// unique PostgreSQL : on obtient donc l'index partiel voulu — un seul signal
+  /// ouvert par sujet et par type, autant de clos qu'il en faut — sans le SQL
+  /// brut que Prisma ne sait pas décrire. C'est ce qui rend la réconciliation
+  /// rejouable sans produire de doublon.
+  openKey String? @unique
+
+  alerts ToumaMarketAlert[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([storeId, resolvedAt])
+  @@index([subjectType, subjectId, resolvedAt])
+  @@index([kind, resolvedAt])
+  @@map("touma_market_signals")
+}
+
+/// Portée d'une surveillance : un produit précis, ou toute une boutique.
+enum MarketWatchScope {
+  PRODUCT
+  STORE
+}
+
+/// Ce qu'un vendeur demande à être prévenu de (§28 à §30).
+///
+/// Une surveillance ne crée aucun signal : elle décide seulement lesquels sont
+/// portés à l'attention de quelqu'un. Un vendeur ne peut surveiller que ses
+/// propres boutiques — surveiller celle d'un concurrent serait s'abonner à ses
+/// difficultés d'approvisionnement.
+model ToumaMarketWatch {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  storeId String
+  store   ToumaStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  scope MarketWatchScope
+  /// Le sujet surveillé. Pour une portée `STORE`, c'est l'identifiant de la
+  /// boutique elle-même, et non `null` : une colonne nulle ne se heurterait pas
+  /// dans la contrainte d'unicité ci-dessous, et le même vendeur pourrait
+  /// enregistrer deux fois la même surveillance.
+  subjectId String
+
+  /// Les types de signaux qui déclenchent une alerte. Liste vide = tous.
+  kinds String[] @default([])
+
+  /// Silence volontaire, avec une échéance. On ne supprime pas une
+  /// surveillance pour la taire : l'effacer perdrait ce que le vendeur avait
+  /// demandé à suivre.
+  mutedUntil DateTime?
+
+  alerts ToumaMarketAlert[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, storeId, scope, subjectId])
+  @@index([storeId])
+  @@map("touma_market_watches")
+}
+
+/// Une alerte émise, et la garantie qu'elle ne le sera qu'une fois.
+///
+/// La contrainte `@@unique([signalId, watchId])` **est** la garantie. La mettre
+/// dans le code — « vérifier si on a déjà notifié, puis notifier » — laisserait
+/// deux passages concurrents du planificateur envoyer deux fois la même alerte.
+/// Ici la seconde insertion échoue, et rien n'est envoyé.
+model ToumaMarketAlert {
+  id String @id @default(cuid())
+
+  signalId String
+  signal   ToumaMarketSignal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  watchId String
+  watch   ToumaMarketWatch @relation(fields: [watchId], references: [id], onDelete: Cascade)
+
+  /// Le destinataire, figé à l'émission : la surveillance peut changer de mains.
+  userId String
+
+  sentAt DateTime @default(now())
+
+  @@unique([signalId, watchId])
+  @@index([userId, sentAt])
+  @@map("touma_market_alerts")
 }

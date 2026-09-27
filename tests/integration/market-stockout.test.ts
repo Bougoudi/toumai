@@ -110,7 +110,17 @@ describe('Ruptures — la durée vient du journal', () => {
     assert.ok(ligne);
     assert.equal(ligne.unitsOrdered, 0, 'aucune commande sur cet article d’essai');
     assert.equal(ligne.signal, 'STOCKOUT', 'sans demande observée, pas d’alerte');
-    assert.match(ligne.statement, /ne justifie pas une alerte/);
+
+    // Le constat énonce le fait mesuré — une demande faible — et **ne décide
+    // pas** s'il faut alerter.
+    //
+    // Il disait « la demande observée ne justifie pas une alerte ». Cette
+    // phrase se retrouvait telle quelle dans le corps d'une alerte de marché à
+    // laquelle un vendeur s'était abonné (V29 §28) : l'alerte affirmait ne pas
+    // en être une. Décider d'alerter appartient à la surveillance ; le
+    // producteur du signal ne fournit que la mesure.
+    assert.match(ligne.statement, /la demande observée est faible/);
+    assert.doesNotMatch(ligne.statement, /alerte/i, 'le constat décide s’il faut alerter au lieu de constater');
   });
 
   it('chaque ligne porte le statut du marché de son vendeur', async () => {
