@@ -118,7 +118,7 @@ footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px soli
         <label>Sipariş başı reklam (₺)<input type="number" inputmode="decimal" id="ads" value="25" min="0"></label>
         <label>İade oranı (%)<input type="number" inputmode="decimal" id="ret" value="8" min="0" max="100"></label>
         <label>KDV oranı (%)<input type="number" inputmode="decimal" id="vat" value="20" min="0" max="100"></label>
-        <p class="hint">Komisyon oranı kategoriye göre değişir; kendi panelindeki oranı gir. Sonuçlar yaklaşık bir hesaplamadır.</p>
+        <p class="hint">Komisyon oranı kategoriye göre değişir; kendi panelindeki oranı gir. Stopaj (%1) gelir vergisinden mahsup edilebilir. Sonuçlar yaklaşık bir hesaplamadır.</p>
       </div>
     </div>
 
@@ -133,6 +133,7 @@ footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px soli
       <div class="row minus"><span class="l">– Reklam</span><span class="dots"></span><span class="v" id="r-ads"></span></div>
       <div class="row minus"><span class="l">– İade kaybı</span><span class="dots"></span><span class="v" id="r-ret"></span></div>
       <div class="row minus"><span class="l">– Ödenecek KDV</span><span class="dots"></span><span class="v" id="r-vat"></span></div>
+      <div class="row minus"><span class="l">– Stopaj (%1)</span><span class="dots"></span><span class="v" id="r-stop"></span></div>
       <hr class="cut">
       <div class="row total"><span class="l">NET KÂR</span><span class="dots"></span><span class="v" id="r-net"></span></div>
       <div class="row"><span class="l">Kâr marjı</span><span class="dots"></span><span class="v" id="r-margin"></span></div>
@@ -194,11 +195,12 @@ const num = id => { const v = parseFloat($(id).value); return isFinite(v) && v >
 function calc(){
   const price=num("price"), cost=num("cost"), commRate=num("comm")/100, ship=num("ship"),
         fee=num("fee"), ads=num("ads"), retRate=num("ret")/100, vatRate=num("vat")/100;
-  const comm = price*commRate;
+  const comm = price*commRate;           // commission HT + sa TVA (déductible) = prix TTC × taux
   const retLoss = retRate*ship;           // retour : frais de livraison perdus
   const deductible = cost+comm+ship+fee+ads+retLoss;
   const vat = Math.max(0,(price-deductible))*vatRate/(1+vatRate); // KDV nette à payer (approx.)
-  const net = price-deductible-vat;
+  const stop = price/(1+vatRate)*0.01;   // stopaj : %1 du prix HT, retenu par la marketplace
+  const net = price-deductible-vat-stop;
   const margin = price>0 ? net/price*100 : 0;
 
   $("r-price").textContent=fmt.format(price);
@@ -209,6 +211,7 @@ function calc(){
   $("r-ads").textContent=fmt.format(ads);
   $("r-ret").textContent=fmt.format(retLoss);
   $("r-vat").textContent=fmt.format(vat);
+  $("r-stop").textContent=fmt.format(stop);
   const n=$("r-net"); n.textContent=fmt.format(net); n.className="v "+(net<0?"neg":"pos");
   $("r-margin").textContent=margin.toLocaleString("tr-TR",{maximumFractionDigits:1})+" %";
 

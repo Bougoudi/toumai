@@ -51,7 +51,7 @@ label.f input,label.f select{width:100%;background:var(--field);border:1px solid
 .kpi .v{font:800 24px/1.2 var(--display);margin-top:4px}
 .neg{color:var(--red)} .pos{color:var(--green)} .warn{color:var(--amber)}
 .tablewrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:10px}
-table{width:100%;border-collapse:collapse;font:400 14px/1.4 var(--mono);min-width:980px}
+table{width:100%;border-collapse:collapse;font:400 14px/1.4 var(--mono);min-width:1060px}
 th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
 th{font:600 12px/1.2 var(--body);color:var(--muted);background:var(--field);position:sticky;top:0;cursor:pointer;user-select:none}
 th:first-child,td:first-child{text-align:left;white-space:normal;min-width:220px;font-family:var(--body)}
@@ -110,9 +110,10 @@ td input.missing{border-color:var(--amber)}
         <label class="f">Reklam / adet (₺)<input type="number" inputmode="decimal" id="s-ads" value="0" min="0"></label>
         <label class="f">İade oranı (%)<input type="number" inputmode="decimal" id="s-ret" value="8" min="0" max="100"></label>
         <label class="f">KDV (%)<input type="number" inputmode="decimal" id="s-vat" value="20" min="0" max="100"></label>
+        <label class="f">Stopaj (% KDV hariç)<input type="number" inputmode="decimal" id="s-stop" value="1" min="0" max="100"></label>
         <label class="f">Varsayılan maliyet (% fiyat)<input type="number" inputmode="decimal" id="s-costpct" value="40" min="0" max="100"></label>
       </div>
-      <p class="msg muted">Dosyada komisyon tutarı varsa o kullanılır. Maliyeti bilinmeyen ürünler için varsayılan oran uygulanır; tabloda ürün maliyetini düzeltebilirsin.</p>
+      <p class="msg muted">Dosyada komisyon tutarı varsa o kullanılır. Stopaj gelir vergisinden mahsup edilebilir. Maliyeti bilinmeyen ürünler için varsayılan oran uygulanır; tabloda ürün maliyetini düzeltebilirsin.</p>
     </div>
   </div>
 
@@ -146,7 +147,7 @@ td input.missing{border-color:var(--amber)}
           <th data-k="name">Ürün</th><th data-k="units">Adet</th><th data-k="revenue">Ciro</th>
           <th data-k="unitCost">Birim maliyet</th><th data-k="commission">Komisyon</th><th data-k="shipping">Kargo</th>
           <th data-k="fees">Hizmet</th><th data-k="ads">Reklam</th><th data-k="returns_loss">İade</th>
-          <th data-k="vat">KDV</th><th data-k="net_profit">Net kâr</th><th data-k="margin_pct">Marj</th>
+          <th data-k="vat">KDV</th><th data-k="stopaj">Stopaj</th><th data-k="net_profit">Net kâr</th><th data-k="margin_pct">Marj</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table></div>
@@ -167,9 +168,9 @@ const store = {
 };
 
 // ---------- Paramètres ----------
-const SETTINGS = ["market","comm","ship","fee","ads","ret","vat","costpct"];
+const SETTINGS = ["market","comm","ship","fee","ads","ret","vat","stop","costpct"];
 const saved = store.get("pp_settings",{});
-SETTINGS.forEach(k=>{ if(saved[k]!=null) $("s-"+k).value=saved[k]; $("s-"+k).addEventListener("input",()=>{saveSettings();compute();}); });
+SETTINGS.forEach(k=>{ if(saved[k]!=null&&saved[k]!=="") $("s-"+k).value=saved[k]; $("s-"+k).addEventListener("input",()=>{saveSettings();compute();}); });
 function saveSettings(){const o={};SETTINGS.forEach(k=>o[k]=$("s-"+k).value);store.set("pp_settings",o);}
 const sv = k => { const v=parseFloat($("s-"+k).value); return isFinite(v)&&v>0?v:0; };
 
@@ -271,7 +272,7 @@ function aggregate(){
 function compute(){
   if(!PRODUCTS.length) return;
   const costs=store.get("pp_costs",{});
-  const commRate=sv("comm")/100, ship=sv("ship"), fee=sv("fee"), ads=sv("ads"), retRate=sv("ret")/100, vatRate=sv("vat")/100, costPct=sv("costpct")/100;
+  const commRate=sv("comm")/100, ship=sv("ship"), fee=sv("fee"), ads=sv("ads"), retRate=sv("ret")/100, vatRate=sv("vat")/100, costPct=sv("costpct")/100, stopRate=sv("stop")/100;
   for(const p of PRODUCTS){
     const avgPrice=p.units?p.revenue/p.units:0;
     p.costKnown = costs[p.name]!=null || p.fileCost!=null;
@@ -282,7 +283,8 @@ function compute(){
     p.returns_loss=retRate*p.shipping;
     const ded=p.cost+p.commission+p.shipping+p.fees+p.ads+p.returns_loss;
     p.vat=Math.max(0,p.revenue-ded)*vatRate/(1+vatRate);
-    p.net_profit=p.revenue-ded-p.vat;
+    p.stopaj=p.revenue/(1+vatRate)*stopRate;
+    p.net_profit=p.revenue-ded-p.vat-p.stopaj;
     p.margin_pct=p.revenue>0?p.net_profit/p.revenue*100:0;
   }
   render();
@@ -301,7 +303,7 @@ function render(){
     <td>${esc(p.name)}</td><td>${p.units.toLocaleString("tr-TR")}</td><td>${fmt.format(p.revenue)}</td>
     <td><input type="number" inputmode="decimal" min="0" step="0.01" value="${p.unitCost}" data-name="${esc(p.name)}" class="${p.costKnown?"":"missing"}" title="${p.costKnown?"":"Tahmini maliyet – gerçek değeri gir"}" aria-label="Birim maliyet"></td>
     <td>${fmt.format(p.commission)}</td><td>${fmt.format(p.shipping)}</td><td>${fmt.format(p.fees)}</td>
-    <td>${fmt.format(p.ads)}</td><td>${fmt.format(p.returns_loss)}</td><td>${fmt.format(p.vat)}</td>
+    <td>${fmt.format(p.ads)}</td><td>${fmt.format(p.returns_loss)}</td><td>${fmt.format(p.vat)}</td><td>${fmt.format(p.stopaj)}</td>
     <td class="${p.net_profit<0?"neg":"pos"}"><strong>${fmt.format(p.net_profit)}</strong></td>
     <td class="${p.margin_pct<0?"neg":p.margin_pct<10?"warn":"pos"}">${pct(p.margin_pct)}</td></tr>`).join("");
   $("tbody").querySelectorAll("input").forEach(inp=>inp.addEventListener("change",()=>{
@@ -359,7 +361,7 @@ $("aiBtn").addEventListener("click",async()=>{
   $("aiMsg").textContent=""; $("aiOut").innerHTML="";
   const products=[...PRODUCTS].sort((a,b)=>b.revenue-a.revenue).slice(0,60).map(p=>({
     name:p.name.slice(0,200),units:r2(p.units),revenue:r2(p.revenue),cost:r2(p.cost),commission:r2(p.commission),
-    shipping:r2(p.shipping),fees:r2(p.fees),ads:r2(p.ads),returns_loss:r2(p.returns_loss),vat:r2(p.vat),
+    shipping:r2(p.shipping),fees:r2(p.fees),ads:r2(p.ads),returns_loss:r2(p.returns_loss),vat:r2(p.vat),stopaj:r2(p.stopaj),
     net_profit:r2(p.net_profit),margin_pct:r2(p.margin_pct)}));
   try{
     const res=await fetch(AI_API_URL+"/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},

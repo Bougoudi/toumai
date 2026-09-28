@@ -85,6 +85,7 @@ class Product(BaseModel):
     ads: float
     returns_loss: float
     vat: float
+    stopaj: float = 0
     net_profit: float
     margin_pct: float
 
@@ -122,7 +123,7 @@ RECO_SCHEMA = {
 }
 
 SYSTEM_PROMPT = """Sen Türk pazaryeri (Trendyol, Hepsiburada) satıcıları için çalışan bir kârlılık danışmanısın.
-Sana bir mağazanın ürün bazında gerçek rakamları verilecek (komisyon, kargo, iade, KDV ve reklam düşülmüş net kâr).
+Sana bir mağazanın ürün bazında gerçek rakamları verilecek (komisyon, kargo, iade, KDV, %1 stopaj ve reklam düşülmüş net kâr).
 Görevin: mağazanın kârını en çok artıracak TAM OLARAK 3 somut öneri vermek.
 
 Kurallar:
