@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ProfitPilot AI – Kâr Analizi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Onest:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<style>
+:root{
+  --bg:#E8ECF1;--ink:#16223A;--muted:#56637A;--paper:#FFFFFF;--line:#C7D0DB;
+  --red:#C8102E;--green:#0E7A5A;--field:#F4F6F9;--amber:#9A6700;
+  --display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --body:"Onest","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#0F1726;--ink:#E7ECF3;--muted:#9AA6BA;--paper:#18233A;--line:#2D3B56;--red:#FF5B6F;--green:#3DCB98;--field:#121C2F;--amber:#E3B341}
+}
+:root[data-theme="dark"]{--bg:#0F1726;--ink:#E7ECF3;--muted:#9AA6BA;--paper:#18233A;--line:#2D3B56;--red:#FF5B6F;--green:#3DCB98;--field:#121C2F;--amber:#E3B341}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.5 var(--body);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1200px;margin:0 auto;padding:0 16px 64px}
+header.top{display:flex;justify-content:space-between;align-items:center;padding:20px 0}
+.logo{font:800 20px/1 var(--display);letter-spacing:-.02em;text-decoration:none;color:inherit}
+.logo span{color:var(--green)}
+h1{font:800 clamp(28px,4vw,40px)/1.05 var(--display);letter-spacing:-.03em;margin:8px 0 6px}
+h2{font:600 18px/1.3 var(--body);margin:0 0 12px}
+.muted{color:var(--muted)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:20px;margin-top:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:var(--bg);border:0;border-radius:10px;padding:12px 18px;font:600 15px/1 var(--body);cursor:pointer;text-decoration:none}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.green{background:var(--green);color:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--green);outline-offset:2px}
+.drop{display:block;border:2px dashed var(--line);border-radius:12px;padding:28px 16px;text-align:center;cursor:pointer;background:var(--field)}
+.drop.over{border-color:var(--green)}
+.drop input{display:none}
+.row-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+.settings{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--muted)}
+label.f input,label.f select{width:100%;background:var(--field);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:500 15px/1.2 var(--mono);color:var(--ink)}
+.map{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px}
+.kpi{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi .l{font-size:13px;color:var(--muted)}
+.kpi .v{font:800 24px/1.2 var(--display);margin-top:4px}
+.neg{color:var(--red)} .pos{color:var(--green)} .warn{color:var(--amber)}
+.tablewrap{overflow-x:auto;margin-top:12px;border:1px solid var(--line);border-radius:10px}
+table{width:100%;border-collapse:collapse;font:400 14px/1.4 var(--mono);min-width:980px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font:600 12px/1.2 var(--body);color:var(--muted);background:var(--field);position:sticky;top:0;cursor:pointer;user-select:none}
+th:first-child,td:first-child{text-align:left;white-space:normal;min-width:220px;font-family:var(--body)}
+tr:last-child td{border-bottom:0}
+td input{width:90px;background:var(--field);border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:500 13px var(--mono);color:var(--ink);text-align:right}
+td input.missing{border-color:var(--amber)}
+.reco{border-left:4px solid var(--green);padding:12px 14px;background:var(--field);border-radius:8px;margin-top:12px}
+.reco h3{margin:0 0 4px;font:600 16px/1.35 var(--body)}
+.reco .meta{font-size:13px;color:var(--muted);margin-bottom:6px}
+.reco p{margin:0}
+.msg{margin:10px 0 0;font-size:14px}
+.hidden{display:none}
+.spinner{width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (max-width:860px){
+  .grid2{grid-template-columns:1fr}
+  .settings,.map{grid-template-columns:1fr 1fr}
+  .kpis{grid-template-columns:1fr 1fr}
+}
+@media (max-width:420px){.settings,.map,.kpis{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="logo" href="/">Profit<span>Pilot</span> AI</a>
+    <a class="btn ghost" href="/#katil">Erken erişim</a>
+  </header>
+
+  <h1>Mağazanın gerçek kârı</h1>
+  <p class="muted">Sipariş raporunu yükle, her ürünün komisyon, kargo, iade ve KDV sonrası net kârını gör. Dosyan tarayıcında işlenir, sunucuya yüklenmez.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h2>1. Sipariş raporunu yükle</h2>
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept=".csv,.txt,.xlsx,.xls">
+        <strong>CSV veya Excel dosyasını buraya bırak</strong><br>
+        <span class="muted">ya da seçmek için tıkla (Trendyol / Hepsiburada sipariş raporu)</span>
+      </label>
+      <div class="row-actions">
+        <button class="btn ghost" id="demoBtn" type="button">Örnek verilerle dene</button>
+        <button class="btn ghost" id="sampleBtn" type="button">Örnek CSV indir</button>
+      </div>
+      <p class="msg" id="fileMsg"></p>
+    </div>
+
+    <div class="card">
+      <h2>2. Mağaza ayarları</h2>
+      <div class="settings">
+        <label class="f">Pazaryeri
+          <select id="s-market"><option>Trendyol</option><option>Hepsiburada</option><option>Diğer</option></select></label>
+        <label class="f">Komisyon (%)<input type="number" inputmode="decimal" id="s-comm" value="18" min="0" max="100"></label>
+        <label class="f">Kargo / adet (₺)<input type="number" inputmode="decimal" id="s-ship" value="60" min="0"></label>
+        <label class="f">Hizmet bedeli / adet (₺)<input type="number" inputmode="decimal" id="s-fee" value="10" min="0"></label>
+        <label class="f">Reklam / adet (₺)<input type="number" inputmode="decimal" id="s-ads" value="0" min="0"></label>
+        <label class="f">İade oranı (%)<input type="number" inputmode="decimal" id="s-ret" value="8" min="0" max="100"></label>
+        <label class="f">KDV (%)<input type="number" inputmode="decimal" id="s-vat" value="20" min="0" max="100"></label>
+        <label class="f">Varsayılan maliyet (% fiyat)<input type="number" inputmode="decimal" id="s-costpct" value="40" min="0" max="100"></label>
+      </div>
+      <p class="msg muted">Dosyada komisyon tutarı varsa o kullanılır. Maliyeti bilinmeyen ürünler için varsayılan oran uygulanır; tabloda ürün maliyetini düzeltebilirsin.</p>
+    </div>
+  </div>
+
+  <div class="card hidden" id="mapCard">
+    <h2>Sütun eşleştirme</h2>
+    <p class="muted" style="margin-top:0">Sütunları otomatik tanıdık. Yanlışsa düzelt.</p>
+    <div class="map" id="map"></div>
+  </div>
+
+  <div id="results" class="hidden">
+    <div class="kpis">
+      <div class="kpi"><div class="l">Toplam ciro</div><div class="v" id="k-rev"></div></div>
+      <div class="kpi"><div class="l">Net kâr</div><div class="v" id="k-net"></div></div>
+      <div class="kpi"><div class="l">Kâr marjı</div><div class="v" id="k-margin"></div></div>
+      <div class="kpi"><div class="l">Zarar eden ürün</div><div class="v" id="k-loss"></div></div>
+    </div>
+
+    <div class="card">
+      <h2>3. Yapay zekâ önerileri</h2>
+      <p class="muted" style="margin-top:0">Rakamlarına göre kârını en çok artıracak 3 aksiyon.</p>
+      <button class="btn green" id="aiBtn" type="button">Önerileri al</button>
+      <p class="msg" id="aiMsg"></p>
+      <div id="aiOut"></div>
+    </div>
+
+    <div class="card">
+      <h2>Ürün bazında kârlılık</h2>
+      <p class="muted" style="margin-top:0">En çok zarar ettiren ürünler en üstte. Başlığa tıklayarak sırala.</p>
+      <div class="tablewrap"><table>
+        <thead><tr>
+          <th data-k="name">Ürün</th><th data-k="units">Adet</th><th data-k="revenue">Ciro</th>
+          <th data-k="unitCost">Birim maliyet</th><th data-k="commission">Komisyon</th><th data-k="shipping">Kargo</th>
+          <th data-k="fees">Hizmet</th><th data-k="ads">Reklam</th><th data-k="returns_loss">İade</th>
+          <th data-k="vat">KDV</th><th data-k="net_profit">Net kâr</th><th data-k="margin_pct">Marj</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const AI_API_URL = window.location.origin;
+const $ = id => document.getElementById(id);
+const fmt = new Intl.NumberFormat("tr-TR",{style:"currency",currency:"TRY",maximumFractionDigits:0});
+const pct = v => v.toLocaleString("tr-TR",{maximumFractionDigits:1})+" %";
+const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const store = {
+  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
+};
+
+// ---------- Paramètres ----------
+const SETTINGS = ["market","comm","ship","fee","ads","ret","vat","costpct"];
+const saved = store.get("pp_settings",{});
+SETTINGS.forEach(k=>{ if(saved[k]!=null) $("s-"+k).value=saved[k]; $("s-"+k).addEventListener("input",()=>{saveSettings();compute();}); });
+function saveSettings(){const o={};SETTINGS.forEach(k=>o[k]=$("s-"+k).value);store.set("pp_settings",o);}
+const sv = k => { const v=parseFloat($("s-"+k).value); return isFinite(v)&&v>0?v:0; };
+
+// ---------- Lecture de nombres (formats TR et EN) ----------
+function toNum(v){
+  if(typeof v==="number") return v;
+  if(v==null) return 0;
+  let s=String(v).replace(/[^\d,.\-]/g,"");
+  if(!s) return 0;
+  const lc=s.lastIndexOf(","), ld=s.lastIndexOf(".");
+  if(lc>ld) s=s.replace(/\./g,"").replace(",",".");       // 1.234,56
+  else if(ld>lc && lc>-1) s=s.replace(/,/g,"");           // 1,234.56
+  else if(lc>-1 && ld===-1) s=s.replace(",",".");         // 12,5
+  const n=parseFloat(s); return isFinite(n)?n:0;
+}
+
+// ---------- CSV ----------
+function parseCSV(text){
+  text=text.replace(/^﻿/,"");
+  const first=text.split(/\r?\n/)[0]||"";
+  const delim=[";","\t",","].map(d=>[d,first.split(d).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  const rows=[];let row=[],cur="",q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+    else if(c==='"') q=true;
+    else if(c===delim){row.push(cur);cur="";}
+    else if(c==="\n"||c==="\r"){ if(c==="\r"&&text[i+1]==="\n") i++; row.push(cur);cur=""; if(row.some(x=>x.trim()!=="")) rows.push(row); row=[]; }
+    else cur+=c;
+  }
+  row.push(cur); if(row.some(x=>x.trim()!=="")) rows.push(row);
+  return rows;
+}
+
+// ---------- Détection des colonnes ----------
+const norm = s => String(s||"").toLocaleLowerCase("tr-TR").replace(/ı/g,"i").replace(/ş/g,"s").replace(/ğ/g,"g").replace(/ü/g,"u").replace(/ö/g,"o").replace(/ç/g,"c").trim();
+const FIELDS = {
+  name:     {label:"Ürün adı *", keys:["urun adi","urun ismi","product name","urun","product","model"]},
+  units:    {label:"Adet", keys:["adet","miktar","quantity","qty"]},
+  amount:   {label:"Satış tutarı *", keys:["faturalanacak tutar","satis tutari","toplam tutar","tutar","birim fiyat","satis fiyati","fiyat","price","amount","total"]},
+  comm:     {label:"Komisyon tutarı", keys:["komisyon tutari","komisyon","commission"]},
+  cost:     {label:"Birim maliyet", keys:["maliyet","alis fiyati","cost"]},
+};
+let RAW={headers:[],rows:[]}, MAP={}, PRODUCTS=[], sortKey="net_profit", sortDir=1;
+
+function detect(headers){
+  const n=headers.map(norm), m={}, used=new Set();
+  for(const [f,def] of Object.entries(FIELDS)){
+    m[f]=-1;
+    for(const k of def.keys){
+      const i=n.findIndex((h,idx)=>!used.has(idx)&&h.includes(k)&&!(f==="comm"&&h.includes("oran"))&&!(f==="name"&&(h.includes("kod")||h.includes("no"))));
+      if(i>-1){m[f]=i;used.add(i);break;}
+    }
+  }
+  return m;
+}
+
+function renderMap(){
+  $("map").innerHTML=Object.entries(FIELDS).map(([f,def])=>
+    `<label class="f">${def.label}<select data-f="${f}"><option value="-1">— yok —</option>${
+      RAW.headers.map((h,i)=>`<option value="${i}" ${MAP[f]===i?"selected":""}>${esc(h||("Sütun "+(i+1)))}</option>`).join("")}</select></label>`).join("");
+  $("map").querySelectorAll("select").forEach(s=>s.addEventListener("change",()=>{MAP[s.dataset.f]=+s.value;aggregate();}));
+  $("mapCard").classList.remove("hidden");
+}
+
+function loadRows(rows,label){
+  // la ligne d'en-tête est la première ligne qui contient au moins 3 cellules non vides
+  const h=rows.findIndex(r=>r.filter(c=>String(c).trim()!=="").length>=3);
+  if(h<0){$("fileMsg").textContent="Dosyada tablo bulunamadı.";return;}
+  RAW={headers:rows[h].map(x=>String(x).trim()),rows:rows.slice(h+1)};
+  MAP=detect(RAW.headers);
+  renderMap();
+  aggregate();
+  $("fileMsg").textContent=label+": "+RAW.rows.length+" satır okundu.";
+}
+
+function aggregate(){
+  if(MAP.name<0||MAP.amount<0){
+    $("results").classList.add("hidden");
+    $("fileMsg").textContent="Ürün adı ve satış tutarı sütunlarını seç.";
+    return;
+  }
+  const isUnitPrice=/birim|fiyat|price/.test(norm(RAW.headers[MAP.amount]))&&!/tutar|toplam|total|amount/.test(norm(RAW.headers[MAP.amount]));
+  const agg=new Map();
+  for(const r of RAW.rows){
+    const name=String(r[MAP.name]??"").trim(); if(!name) continue;
+    const units=MAP.units>-1?(toNum(r[MAP.units])||1):1;
+    const amt=toNum(r[MAP.amount]); const revenue=isUnitPrice?amt*units:amt;
+    const p=agg.get(name)||{name,units:0,revenue:0,commAmt:0,hasComm:MAP.comm>-1,fileCost:null};
+    p.units+=units; p.revenue+=revenue;
+    if(MAP.comm>-1) p.commAmt+=Math.abs(toNum(r[MAP.comm]));
+    if(MAP.cost>-1){const c=toNum(r[MAP.cost]); if(c>0) p.fileCost=c;}
+    agg.set(name,p);
+  }
+  PRODUCTS=[...agg.values()];
+  compute();
+}
+
+function compute(){
+  if(!PRODUCTS.length) return;
+  const costs=store.get("pp_costs",{});
+  const commRate=sv("comm")/100, ship=sv("ship"), fee=sv("fee"), ads=sv("ads"), retRate=sv("ret")/100, vatRate=sv("vat")/100, costPct=sv("costpct")/100;
+  for(const p of PRODUCTS){
+    const avgPrice=p.units?p.revenue/p.units:0;
+    p.costKnown = costs[p.name]!=null || p.fileCost!=null;
+    p.unitCost = costs[p.name]!=null ? costs[p.name] : (p.fileCost!=null ? p.fileCost : Math.round(avgPrice*costPct*100)/100);
+    p.cost=p.unitCost*p.units;
+    p.commission=p.hasComm&&p.commAmt>0?p.commAmt:p.revenue*commRate;
+    p.shipping=ship*p.units; p.fees=fee*p.units; p.ads=ads*p.units;
+    p.returns_loss=retRate*p.shipping;
+    const ded=p.cost+p.commission+p.shipping+p.fees+p.ads+p.returns_loss;
+    p.vat=Math.max(0,p.revenue-ded)*vatRate/(1+vatRate);
+    p.net_profit=p.revenue-ded-p.vat;
+    p.margin_pct=p.revenue>0?p.net_profit/p.revenue*100:0;
+  }
+  render();
+}
+
+function render(){
+  const rev=PRODUCTS.reduce((s,p)=>s+p.revenue,0), net=PRODUCTS.reduce((s,p)=>s+p.net_profit,0);
+  const losers=PRODUCTS.filter(p=>p.net_profit<0).length;
+  $("k-rev").textContent=fmt.format(rev);
+  $("k-net").textContent=fmt.format(net); $("k-net").className="v "+(net<0?"neg":"pos");
+  const m=rev?net/rev*100:0; $("k-margin").textContent=pct(m); $("k-margin").className="v "+(m<0?"neg":m<10?"warn":"pos");
+  $("k-loss").textContent=losers+" / "+PRODUCTS.length; $("k-loss").className="v "+(losers?"neg":"pos");
+
+  const list=[...PRODUCTS].sort((a,b)=>{const x=a[sortKey],y=b[sortKey];return (typeof x==="string"?x.localeCompare(y,"tr"):x-y)*sortDir;});
+  $("tbody").innerHTML=list.map((p,i)=>`<tr>
+    <td>${esc(p.name)}</td><td>${p.units.toLocaleString("tr-TR")}</td><td>${fmt.format(p.revenue)}</td>
+    <td><input type="number" inputmode="decimal" min="0" step="0.01" value="${p.unitCost}" data-name="${esc(p.name)}" class="${p.costKnown?"":"missing"}" title="${p.costKnown?"":"Tahmini maliyet – gerçek değeri gir"}" aria-label="Birim maliyet"></td>
+    <td>${fmt.format(p.commission)}</td><td>${fmt.format(p.shipping)}</td><td>${fmt.format(p.fees)}</td>
+    <td>${fmt.format(p.ads)}</td><td>${fmt.format(p.returns_loss)}</td><td>${fmt.format(p.vat)}</td>
+    <td class="${p.net_profit<0?"neg":"pos"}"><strong>${fmt.format(p.net_profit)}</strong></td>
+    <td class="${p.margin_pct<0?"neg":p.margin_pct<10?"warn":"pos"}">${pct(p.margin_pct)}</td></tr>`).join("");
+  $("tbody").querySelectorAll("input").forEach(inp=>inp.addEventListener("change",()=>{
+    const c=store.get("pp_costs",{}); c[inp.dataset.name]=Math.max(0,toNum(inp.value)); store.set("pp_costs",c); compute();
+  }));
+  $("results").classList.remove("hidden");
+}
+
+document.querySelectorAll("th[data-k]").forEach(th=>th.addEventListener("click",()=>{
+  const k=th.dataset.k; sortDir = sortKey===k ? -sortDir : (k==="name"?1:(k==="net_profit"||k==="margin_pct"?1:-1)); sortKey=k; render();
+}));
+
+// ---------- Fichiers ----------
+async function handleFile(f){
+  if(!f) return;
+  $("fileMsg").textContent="Okunuyor…";
+  try{
+    if(/\.xlsx?$/i.test(f.name)){
+      if(!window.XLSX){$("fileMsg").textContent="Excel okuyucu yüklenemedi. Dosyayı CSV olarak kaydedip tekrar dene.";return;}
+      const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:""});
+      loadRows(rows,f.name);
+    } else {
+      loadRows(parseCSV(await f.text()),f.name);
+    }
+  }catch(e){ $("fileMsg").textContent="Dosya okunamadı: "+e.message; }
+}
+$("file").addEventListener("change",e=>handleFile(e.target.files[0]));
+const drop=$("drop");
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
+drop.addEventListener("drop",e=>handleFile(e.dataTransfer.files[0]));
+
+const SAMPLE=`Ürün Adı;Adet;Faturalanacak Tutar;Komisyon Tutarı;Maliyet
+Kadın Oversize Tişört Siyah;120;35.880,00;6.458,40;95
+Erkek Slim Fit Kot Pantolon;64;38.336,00;7.667,20;260
+Bebek Organik Zıbın 3'lü;85;16.915,00;2.706,40;110
+Silikon Telefon Kılıfı;310;24.490,00;5.387,80;22
+Bambu Mutfak Düzenleyici;42;13.398,00;2.411,64;135
+Seramik Kupa 2'li Set;150;22.350,00;4.023,00;58
+Spor Tayt Yüksek Bel;96;33.504,00;6.030,72;120
+Kablosuz Kulaklık TWS;58;40.542,00;4.865,04;430`;
+$("demoBtn").addEventListener("click",()=>loadRows(parseCSV(SAMPLE),"Örnek veri"));
+$("sampleBtn").addEventListener("click",()=>{
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob(["﻿"+SAMPLE],{type:"text/csv;charset=utf-8"}));
+  a.download="profitpilot-ornek.csv"; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+});
+
+// ---------- IA ----------
+const ACTIONS={fiyat_artir:"Fiyatı artır",reklami_azalt:"Reklamı azalt",maliyeti_dusur:"Maliyeti düşür",satistan_cek:"Satıştan çek",one_cikar:"Öne çıkar"};
+const r2 = v => Math.round(v*100)/100;
+$("aiBtn").addEventListener("click",async()=>{
+  const btn=$("aiBtn"); btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Analiz ediliyor…';
+  $("aiMsg").textContent=""; $("aiOut").innerHTML="";
+  const products=[...PRODUCTS].sort((a,b)=>b.revenue-a.revenue).slice(0,60).map(p=>({
+    name:p.name.slice(0,200),units:r2(p.units),revenue:r2(p.revenue),cost:r2(p.cost),commission:r2(p.commission),
+    shipping:r2(p.shipping),fees:r2(p.fees),ads:r2(p.ads),returns_loss:r2(p.returns_loss),vat:r2(p.vat),
+    net_profit:r2(p.net_profit),margin_pct:r2(p.margin_pct)}));
+  try{
+    const res=await fetch(AI_API_URL+"/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({marketplace:$("s-market").value,products})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(typeof data.detail==="string"?data.detail:"Sunucu hatası ("+res.status+")");
+    $("aiOut").innerHTML=(data.summary?`<p>${esc(data.summary)}</p>`:"")+(data.recommendations||[]).map((r,i)=>`
+      <div class="reco"><div class="meta">${i+1}. ${esc(ACTIONS[r.action]||r.action)} · ${esc(r.product)} · aylık etki ≈ <strong class="${r.monthly_impact_try<0?"neg":"pos"}">${fmt.format(r.monthly_impact_try||0)}</strong></div>
+      <h3>${esc(r.title)}</h3><p>${esc(r.detail)}</p></div>`).join("");
+  }catch(e){ $("aiMsg").innerHTML='<span class="neg">'+esc(e.message)+'</span>'; }
+  finally{ btn.disabled=false; btn.textContent="Önerileri tekrar al"; }
+});
+</script>
+</body>
+</html>

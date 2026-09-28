@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ProfitPilot AI – Hangi ürün sana gerçekten kazandırıyor?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Onest:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E8ECF1;--ink:#16223A;--muted:#56637A;--paper:#FFFFFF;--line:#C7D0DB;
+  --red:#C8102E;--green:#0E7A5A;--field:#F4F6F9;
+  --display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --body:"Onest","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#0F1726;--ink:#E7ECF3;--muted:#9AA6BA;--paper:#18233A;--line:#2D3B56;--red:#FF5B6F;--green:#3DCB98;--field:#121C2F}
+}
+:root[data-theme="dark"]{--bg:#0F1726;--ink:#E7ECF3;--muted:#9AA6BA;--paper:#18233A;--line:#2D3B56;--red:#FF5B6F;--green:#3DCB98;--field:#121C2F}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 17px/1.55 var(--body);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+header.top{display:flex;justify-content:space-between;align-items:center;padding:20px 0}
+.logo{font:800 20px/1 var(--display);letter-spacing:-.02em}
+.logo span{color:var(--green)}
+a{color:inherit}
+.btn{display:inline-block;background:var(--ink);color:var(--bg);border:0;border-radius:10px;padding:14px 22px;font:600 16px/1 var(--body);text-decoration:none;cursor:pointer}
+.btn:focus-visible,input:focus-visible{outline:3px solid var(--green);outline-offset:2px}
+.btn.small{padding:10px 16px;font-size:15px}
+
+.hero{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;padding:24px 0 72px;align-items:start}
+h1{font:800 clamp(38px,6vw,68px)/.98 var(--display);letter-spacing:-.035em;margin:12px 0 18px;max-width:14ch}
+.lede{color:var(--muted);max-width:46ch;margin:0 0 28px}
+.inputs{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;max-width:520px}
+.inputs label{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--muted)}
+.inputs input{width:100%;background:var(--field);border:1px solid var(--line);border-radius:8px;padding:11px 12px;font:500 17px/1 var(--mono);color:var(--ink)}
+.hint{grid-column:1/-1;font-size:13px;color:var(--muted);margin:2px 0 0}
+
+/* the receipt */
+.receipt{background:var(--paper);padding:28px 26px 36px;font:400 15px/1.5 var(--mono);position:relative;
+  box-shadow:0 1px 0 var(--line),0 24px 40px -28px rgba(22,34,58,.45);
+  -webkit-mask:linear-gradient(#000,#000) top/100% calc(100% - 12px) no-repeat,conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) bottom/16px 12px repeat-x;
+  mask:linear-gradient(#000,#000) top/100% calc(100% - 12px) no-repeat,conic-gradient(from -45deg at bottom,#0000,#000 1deg 89deg,#0000 90deg) bottom/16px 12px repeat-x;
+  transform:rotate(1.2deg);margin-top:16px}
+.receipt h2{font:500 15px/1.4 var(--mono);text-align:center;margin:0 0 4px}
+.receipt .sub{text-align:center;color:var(--muted);font-size:13px;margin:0 0 16px}
+.row{display:flex;gap:8px;align-items:baseline}
+.row .l{white-space:nowrap}
+.row .dots{flex:1;border-bottom:1px dotted var(--line);transform:translateY(-4px)}
+.row .v{white-space:nowrap}
+.minus .v{color:var(--muted)}
+hr.cut{border:0;border-top:1px dashed var(--line);margin:14px 0}
+.total{font-size:20px;font-weight:500}
+.total .v.neg{color:var(--red)} .total .v.pos{color:var(--green)}
+.verdict{margin:18px 0 0;padding-top:14px;border-top:1px dashed var(--line);font:500 15px/1.5 var(--body)}
+.verdict.neg{color:var(--red)} .verdict.pos{color:var(--green)}
+
+section{padding:64px 0;border-top:1px solid var(--line)}
+h3{font:800 clamp(28px,4vw,40px)/1.05 var(--display);letter-spacing:-.025em;margin:0 0 16px;max-width:22ch}
+.cols{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;margin-top:32px}
+.step b{display:block;font:800 44px/1 var(--display);color:var(--line);margin-bottom:10px}
+.step h4{margin:0 0 6px;font:600 18px/1.3 var(--body)}
+.step p,.plan p{margin:0;color:var(--muted);font-size:16px}
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:32px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--paper)}
+.plan{padding:26px 24px;border-right:1px solid var(--line)}
+.plan:last-child{border-right:0}
+.plan.pro{background:var(--ink);color:var(--bg)}
+.plan.pro p{color:inherit;opacity:.78}
+.plan h4{margin:0;font:600 18px/1.3 var(--body)}
+.price{font:800 34px/1.1 var(--display);margin:12px 0 4px}
+.price small{font:400 15px var(--body);opacity:.7}
+.plan ul{padding-left:18px;margin:14px 0 0;font-size:15px}
+.note{font-size:14px;color:var(--muted);margin-top:14px}
+.join{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center}
+.join form{display:grid;gap:12px}
+.join input{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px;font:400 16px var(--body);color:var(--ink)}
+.formmsg{font-size:14px;color:var(--green);min-height:1.2em;margin:0}
+footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px solid var(--line)}
+
+@media (max-width:860px){
+  .hero,.join{grid-template-columns:1fr;gap:32px}
+  .cols{grid-template-columns:1fr;gap:28px}
+  .plans{grid-template-columns:1fr}
+  .plan{border-right:0;border-bottom:1px solid var(--line)}
+  .plan:last-child{border-bottom:0}
+  .receipt{transform:none}
+}
+@media (max-width:420px){.inputs{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:no-preference){
+  .receipt{animation:print .7s ease-out both .15s}
+  @keyframes print{from{clip-path:inset(0 0 100% 0)}to{clip-path:inset(0 0 0 0)}}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="logo">Profit<span>Pilot</span> AI</div>
+    <a class="btn small" href="/app.html">Ücretsiz dene</a>
+  </header>
+
+  <div class="hero">
+    <div>
+      <h1>Hangi ürünün sana para kaybettirdiğini biliyor musun?</h1>
+      <p class="lede">Komisyon, kargo, iade ve KDV düştükten sonra geriye ne kalıyor? Bir ürününün rakamlarını gir, gerçek kârını hemen gör.</p>
+      <div class="inputs" id="calc">
+        <label>Satış fiyatı (₺, KDV dahil)<input type="number" inputmode="decimal" id="price" value="499" min="0"></label>
+        <label>Ürün maliyeti (₺)<input type="number" inputmode="decimal" id="cost" value="180" min="0"></label>
+        <label>Komisyon oranı (%)<input type="number" inputmode="decimal" id="comm" value="18" min="0" max="100"></label>
+        <label>Kargo ücreti (₺)<input type="number" inputmode="decimal" id="ship" value="60" min="0"></label>
+        <label>Hizmet / işlem bedeli (₺)<input type="number" inputmode="decimal" id="fee" value="10" min="0"></label>
+        <label>Sipariş başı reklam (₺)<input type="number" inputmode="decimal" id="ads" value="25" min="0"></label>
+        <label>İade oranı (%)<input type="number" inputmode="decimal" id="ret" value="8" min="0" max="100"></label>
+        <label>KDV oranı (%)<input type="number" inputmode="decimal" id="vat" value="20" min="0" max="100"></label>
+        <p class="hint">Komisyon oranı kategoriye göre değişir; kendi panelindeki oranı gir. Sonuçlar yaklaşık bir hesaplamadır.</p>
+      </div>
+    </div>
+
+    <div class="receipt" aria-live="polite">
+      <h2>SİPARİŞ BAŞI KÂR FİŞİ</h2>
+      <p class="sub">1 adet satış</p>
+      <div class="row"><span class="l">Satış fiyatı</span><span class="dots"></span><span class="v" id="r-price"></span></div>
+      <div class="row minus"><span class="l">– Ürün maliyeti</span><span class="dots"></span><span class="v" id="r-cost"></span></div>
+      <div class="row minus"><span class="l">– Komisyon</span><span class="dots"></span><span class="v" id="r-comm"></span></div>
+      <div class="row minus"><span class="l">– Kargo</span><span class="dots"></span><span class="v" id="r-ship"></span></div>
+      <div class="row minus"><span class="l">– Hizmet bedeli</span><span class="dots"></span><span class="v" id="r-fee"></span></div>
+      <div class="row minus"><span class="l">– Reklam</span><span class="dots"></span><span class="v" id="r-ads"></span></div>
+      <div class="row minus"><span class="l">– İade kaybı</span><span class="dots"></span><span class="v" id="r-ret"></span></div>
+      <div class="row minus"><span class="l">– Ödenecek KDV</span><span class="dots"></span><span class="v" id="r-vat"></span></div>
+      <hr class="cut">
+      <div class="row total"><span class="l">NET KÂR</span><span class="dots"></span><span class="v" id="r-net"></span></div>
+      <div class="row"><span class="l">Kâr marjı</span><span class="dots"></span><span class="v" id="r-margin"></span></div>
+      <p class="verdict" id="verdict"></p>
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h3>Bu hesabı tüm kataloğun için saniyeler içinde yap</h3>
+    <p class="lede">Tek ürünü elle hesaplamak kolay. Yüzlerce ürünü her ay kontrol etmek değil. ProfitPilot bunu senin yerine yapar.</p>
+    <div class="cols">
+      <div class="step"><b>1</b><h4>Dosyanı yükle</h4><p>Trendyol, Hepsiburada veya Shopify'dan aldığın sipariş raporunu (CSV / Excel) yükle.</p></div>
+      <div class="step"><b>2</b><h4>Gerçek kârı gör</h4><p>Her ürünün komisyon, kargo, iade ve KDV sonrası net kârı ve marjı tek tabloda.</p></div>
+      <div class="step"><b>3</b><h4>Ne yapacağını öğren</h4><p>Yapay zekâ hangi ürünün fiyatını artırman, reklamını kesmen veya satıştan çekmen gerektiğini söyler.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h3>Lansman fiyatları</h3>
+    <div class="plans">
+      <div class="plan"><h4>Başlangıç</h4><div class="price">999 ₺ <small>/ ay</small></div><p>Yeni büyüyen mağazalar için.</p><ul><li>1 mağaza</li><li>200 ürüne kadar</li><li>Aylık kâr raporu</li></ul></div>
+      <div class="plan pro"><h4>Pro</h4><div class="price">2.499 ₺ <small>/ ay</small></div><p>Birden fazla pazaryerinde satanlar için.</p><ul><li>3 mağaza</li><li>Sınırsız ürün</li><li>Yapay zekâ önerileri</li></ul></div>
+      <div class="plan"><h4>Ajans</h4><div class="price">7.999 ₺ <small>/ ay</small></div><p>Müşteri mağazalarını yöneten ajanslar için.</p><ul><li>Çoklu müşteri</li><li>Kendi logonla raporlar</li><li>Öncelikli destek</li></ul></div>
+    </div>
+    <p class="note">14 gün ücretsiz deneme, kredi kartı gerekmez. Yıllık ödemede 2 ay hediye.</p>
+  </div>
+</section>
+
+<section id="katil">
+  <div class="wrap join">
+    <div>
+      <h3>İlk 100 satıcıdan biri ol</h3>
+      <p class="lede">Erken erişim listesine katılanlar beta sürümü ücretsiz kullanır ve ömür boyu %50 indirim alır.</p>
+    </div>
+    <form id="joinForm" novalidate>
+      <input id="jName" placeholder="Adın" autocomplete="name" required>
+      <input id="jStore" placeholder="Mağaza adın (Trendyol, Hepsiburada…)" required>
+      <input id="jSales" placeholder="Aylık yaklaşık satış adedi">
+      <button class="btn" type="submit">WhatsApp ile listeye katıl</button>
+      <p class="formmsg" id="formMsg"></p>
+    </form>
+  </div>
+</section>
+
+<footer><div class="wrap">ProfitPilot AI · E-ticaret satıcıları için kârlılık analizi</div></footer>
+
+<script>
+// Remplace par ton numéro WhatsApp (format international, sans + ni espaces)
+const WHATSAPP_NUMBER = "905418624220";
+
+const $ = id => document.getElementById(id);
+const fmt = new Intl.NumberFormat("tr-TR",{style:"currency",currency:"TRY",maximumFractionDigits:2});
+const num = id => { const v = parseFloat($(id).value); return isFinite(v) && v > 0 ? v : 0; };
+
+function calc(){
+  const price=num("price"), cost=num("cost"), commRate=num("comm")/100, ship=num("ship"),
+        fee=num("fee"), ads=num("ads"), retRate=num("ret")/100, vatRate=num("vat")/100;
+  const comm = price*commRate;
+  const retLoss = retRate*ship;           // retour : frais de livraison perdus
+  const deductible = cost+comm+ship+fee+ads+retLoss;
+  const vat = Math.max(0,(price-deductible))*vatRate/(1+vatRate); // KDV nette à payer (approx.)
+  const net = price-deductible-vat;
+  const margin = price>0 ? net/price*100 : 0;
+
+  $("r-price").textContent=fmt.format(price);
+  $("r-cost").textContent=fmt.format(cost);
+  $("r-comm").textContent=fmt.format(comm);
+  $("r-ship").textContent=fmt.format(ship);
+  $("r-fee").textContent=fmt.format(fee);
+  $("r-ads").textContent=fmt.format(ads);
+  $("r-ret").textContent=fmt.format(retLoss);
+  $("r-vat").textContent=fmt.format(vat);
+  const n=$("r-net"); n.textContent=fmt.format(net); n.className="v "+(net<0?"neg":"pos");
+  $("r-margin").textContent=margin.toLocaleString("tr-TR",{maximumFractionDigits:1})+" %";
+
+  const v=$("verdict");
+  if(net<0){v.className="verdict neg";v.textContent="Bu ürün her satışta "+fmt.format(-net)+" kaybettiriyor. Ne kadar çok satarsan o kadar çok kaybedersin.";}
+  else if(margin<10){v.className="verdict";v.textContent="Kâr var ama çok ince. Birkaç iade ya da bir kampanya bunu sıfırlayabilir.";}
+  else{v.className="verdict pos";v.textContent="Bu ürün sağlıklı. Peki kataloğundaki diğer ürünler?";}
+}
+document.querySelectorAll("#calc input").forEach(i=>i.addEventListener("input",calc));
+calc();
+
+$("joinForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const name=$("jName").value.trim(), store=$("jStore").value.trim(), sales=$("jSales").value.trim();
+  if(!name||!store){$("formMsg").textContent="Adını ve mağaza adını yaz, sonra tekrar dene.";return;}
+  const text="Merhaba, ProfitPilot AI erken erişim listesine katılmak istiyorum.\nAd: "+name+"\nMağaza: "+store+(sales?"\nAylık satış: "+sales:"");
+  window.open("https://wa.me/"+WHATSAPP_NUMBER+"?text="+encodeURIComponent(text),"_blank","noopener");
+  $("formMsg").textContent="WhatsApp açıldı. Mesajı gönderdiğinde listeye eklenirsin.";
+});
+</script>
+</body>
+</html>
