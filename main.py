@@ -161,9 +161,13 @@ def _get_client() -> anthropic.AsyncAnthropic:
 # --------------------------------------------------------------------------- #
 @app.get("/health")
 def health():
+    key = os.getenv("ANTHROPIC_API_KEY", "")
     return {
         "status": "ok",
-        "ai_configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "ai_configured": bool(key),
+        # diagnostic sans exposer la clé : préfixe attendu et longueur
+        "key_format_ok": key.startswith("sk-ant-") and " " not in key,
+        "key_length": len(key),
         "model": ANTHROPIC_MODEL,
     }
 
