@@ -53,6 +53,7 @@ PER_IP_LIMIT = int(os.getenv("PER_IP_LIMIT", "5"))
 DAILY_CAP = int(os.getenv("DAILY_CAP", "200"))
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 WAITLIST_PER_IP = 10  # inscriptions max par heure et par IP (anti-spam)
+PLANS = {"baslangic", "pro", "ajans"}
 EVENTS_PER_IP = 60    # événements max par heure et par IP (anti-gonflage des compteurs)
 
 app = FastAPI(title="ProfitPilot AI", docs_url=None, redoc_url=None)
@@ -152,6 +153,7 @@ class WaitlistRequest(BaseModel):
     phone: str = Field(min_length=1, max_length=30)
     monthly_sales: str = Field(default="", max_length=50)
     source: str = Field(default="", max_length=50)
+    plan: str = Field(default="", max_length=20)
 
 
 RECO_SCHEMA = {
@@ -275,8 +277,9 @@ def join_waitlist(body: WaitlistRequest, request: Request):
         raise HTTPException(422, "Geçerli bir telefon numarası yaz (ör. 05xx xxx xx xx).")
     _check_waitlist_limit(_client_ip(request))
     try:
+        plan = body.plan if body.plan in PLANS else ""
         added = waitlist.add(body.name.strip(), body.store.strip(), phone,
-                             body.monthly_sales.strip(), body.source.strip())
+                             body.monthly_sales.strip(), body.source.strip(), plan)
     except Exception:
         log.exception("waitlist insert failed")
         raise HTTPException(503, "Kayıt şu an yapılamadı. Lütfen WhatsApp'tan yaz.")
@@ -400,8 +403,8 @@ th{{font-size:12px;color:var(--muted)}}
 {warn}
 {_funnel_html(rows)}
 <p><a href="/admin/waitlist.csv?token={e(token)}">Télécharger en CSV (Excel)</a></p>
-<div class="tw"><table><thead><tr><th>Date (UTC)</th><th>Nom</th><th>Boutique</th><th>Téléphone</th><th>Ventes/mois</th><th>Source</th><th></th></tr></thead>
-<tbody>{body_rows or '<tr><td colspan="7" class="muted">Aucun inscrit pour le moment.</td></tr>'}</tbody></table></div>
+<div class="tw"><table><thead><tr><th>Date (UTC)</th><th>Nom</th><th>Boutique</th><th>Téléphone</th><th>Ventes/mois</th><th>Plan</th><th>Source</th><th></th></tr></thead>
+<tbody>{body_rows or '<tr><td colspan="8" class="muted">Aucun inscrit pour le moment.</td></tr>'}</tbody></table></div>
 </div></body></html>"""
 
 

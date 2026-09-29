@@ -77,6 +77,11 @@ h3{font:800 clamp(28px,4vw,40px)/1.05 var(--display);letter-spacing:-.025em;marg
 .price small{font:400 15px var(--body);opacity:.7}
 .plan ul{padding-left:18px;margin:14px 0 0;font-size:15px}
 .note{font-size:14px;color:var(--muted);margin-top:14px}
+.plan{display:flex;flex-direction:column}
+.plan .btn{margin-top:auto;width:100%;text-align:center}
+.plan ul{margin-bottom:20px}
+.plan.pro .btn{background:var(--green);color:#fff}
+.join select{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px;font:400 16px var(--body);color:var(--ink)}
 .join{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center}
 .join form{display:grid;gap:12px}
 .join input{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px;font:400 16px var(--body);color:var(--ink)}
@@ -160,9 +165,9 @@ footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px soli
   <div class="wrap">
     <h3>Lansman fiyatları</h3>
     <div class="plans">
-      <div class="plan"><h4>Başlangıç</h4><div class="price">999 ₺ <small>/ ay</small></div><p>Yeni büyüyen mağazalar için.</p><ul><li>1 mağaza</li><li>200 ürüne kadar</li><li>Aylık kâr raporu</li></ul></div>
-      <div class="plan pro"><h4>Pro</h4><div class="price">2.499 ₺ <small>/ ay</small></div><p>Birden fazla pazaryerinde satanlar için.</p><ul><li>3 mağaza</li><li>Sınırsız ürün</li><li>Yapay zekâ önerileri</li></ul></div>
-      <div class="plan"><h4>Ajans</h4><div class="price">7.999 ₺ <small>/ ay</small></div><p>Müşteri mağazalarını yöneten ajanslar için.</p><ul><li>Çoklu müşteri</li><li>Kendi logonla raporlar</li><li>Öncelikli destek</li></ul></div>
+      <div class="plan"><h4>Başlangıç</h4><div class="price">999 ₺ <small>/ ay</small></div><p>Yeni büyüyen mağazalar için.</p><ul><li>1 mağaza</li><li>200 ürüne kadar</li><li>Aylık kâr raporu</li></ul><button class="btn plan-btn" type="button" data-plan="baslangic">14 gün ücretsiz başla</button></div>
+      <div class="plan pro"><h4>Pro</h4><div class="price">2.499 ₺ <small>/ ay</small></div><p>Birden fazla pazaryerinde satanlar için.</p><ul><li>3 mağaza</li><li>Sınırsız ürün</li><li>Yapay zekâ önerileri</li></ul><button class="btn plan-btn" type="button" data-plan="pro">14 gün ücretsiz başla</button></div>
+      <div class="plan"><h4>Ajans</h4><div class="price">7.999 ₺ <small>/ ay</small></div><p>Müşteri mağazalarını yöneten ajanslar için.</p><ul><li>Çoklu müşteri</li><li>Kendi logonla raporlar</li><li>Öncelikli destek</li></ul><button class="btn plan-btn" type="button" data-plan="ajans">Demo iste</button></div>
     </div>
     <p class="note">14 gün ücretsiz deneme, kredi kartı gerekmez. Yıllık ödemede 2 ay hediye.</p>
   </div>
@@ -179,6 +184,12 @@ footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px soli
       <input id="jStore" placeholder="Mağaza adın (Trendyol, Hepsiburada…)" required>
       <input id="jPhone" type="tel" inputmode="tel" placeholder="WhatsApp numaran (05xx xxx xx xx)" autocomplete="tel" required>
       <input id="jSales" placeholder="Aylık yaklaşık satış adedi">
+      <select id="jPlan" aria-label="İlgilendiğin plan">
+        <option value="">İlgilendiğin plan (isteğe bağlı)</option>
+        <option value="baslangic">Başlangıç – 999 ₺ / ay</option>
+        <option value="pro">Pro – 2.499 ₺ / ay</option>
+        <option value="ajans">Ajans – 7.999 ₺ / ay</option>
+      </select>
       <button class="btn" type="submit" id="jBtn">Listeye katıl</button>
       <p class="formmsg" id="formMsg" role="status"></p>
     </form>
@@ -241,26 +252,34 @@ function track(name){
 }
 track("landing_view");
 
+// Boutons des plans : pré-remplissent le plan et descendent au formulaire
+document.querySelectorAll(".plan-btn").forEach(b=>b.addEventListener("click",()=>{
+  $("jPlan").value=b.dataset.plan;
+  $("katil").scrollIntoView({behavior:"smooth",block:"start"});
+  setTimeout(()=>$("jName").focus({preventScroll:true}),450);
+}));
+
 $("joinForm").addEventListener("submit",async e=>{
   e.preventDefault();
   const msg=$("formMsg"), btn=$("jBtn");
-  const name=$("jName").value.trim(), store=$("jStore").value.trim(), phone=$("jPhone").value.trim(), sales=$("jSales").value.trim();
+  const name=$("jName").value.trim(), store=$("jStore").value.trim(), phone=$("jPhone").value.trim(), sales=$("jSales").value.trim(), plan=$("jPlan").value;
   msg.className="formmsg";
   if(!name||!store||!phone){msg.className="formmsg err";msg.textContent="Adını, mağaza adını ve WhatsApp numaranı yaz.";return;}
   btn.disabled=true; msg.textContent="Kaydediliyor…";
   try{
     const res=await fetch("/api/waitlist",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({name,store,phone,monthly_sales:sales,source:SOURCE})});
+      body:JSON.stringify({name,store,phone,monthly_sales:sales,plan,source:SOURCE})});
     const data=await res.json().catch(()=>({}));
     if(!res.ok){
       const d=data.detail;
       throw new Error(typeof d==="string"?d:(Array.isArray(d)?"Bilgileri kontrol et ve tekrar dene.":"Bir hata oldu, tekrar dene."));
     }
-    const text="Merhaba, ProfitPilot AI erken erişim listesine katıldım.\nAd: "+name+"\nMağaza: "+store;
+    const planLabel=plan?$("jPlan").selectedOptions[0].textContent:"";
+    const text="Merhaba, ProfitPilot AI erken erişim listesine katıldım.\nAd: "+name+"\nMağaza: "+store+(planLabel?"\nPlan: "+planLabel:"");
     const wa="https://wa.me/"+WHATSAPP_NUMBER+"?text="+encodeURIComponent(text);
     msg.innerHTML=(data.already?"Zaten listedesin 🙌 ":"Listeye eklendin 🎉 ")+
       "Seninle WhatsApp'tan iletişime geçeceğiz. Beklemek istemezsen <a href=\""+wa+"\" target=\"_blank\" rel=\"noopener\">hemen yaz</a>.";
-    $("joinForm").querySelectorAll("input").forEach(i=>i.value="");
+    $("joinForm").querySelectorAll("input,select").forEach(i=>i.value="");
   }catch(err){
     msg.className="formmsg err"; msg.textContent=err.message;
   }finally{ btn.disabled=false; }

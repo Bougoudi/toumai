@@ -12,7 +12,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-FIELDS = ["created_at", "name", "store", "phone", "monthly_sales", "source"]
+FIELDS = ["created_at", "name", "store", "phone", "monthly_sales", "plan", "source"]
 _LOCAL_FILE = Path(__file__).resolve().parent / "waitlist.jsonl"
 _lock = threading.Lock()
 _table_ready = False
@@ -60,21 +60,26 @@ def _ensure_table(conn) -> None:
             source TEXT NOT NULL DEFAULT ''
         )"""
     )
+    conn.execute("ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT ''")
     conn.commit()
     _table_ready = True
 
 
-def add(name: str, store: str, phone: str, monthly_sales: str, source: str) -> bool:
-    """Ajoute un inscrit. Retourne False si ce numéro est déjà inscrit."""
+def add(name: str, store: str, phone: str, monthly_sales: str, source: str, plan: str = "") -> bool:
+    """Ajoute un inscrit. Retourne False si ce numéro est déjà inscrit
+    (son plan est alors mis à jour s'il en choisit un)."""
     if _db_url():
         with _connect() as conn:
             _ensure_table(conn)
             exists = conn.execute("SELECT 1 FROM waitlist WHERE phone = %s LIMIT 1", (phone,)).fetchone()
             if exists:
+                if plan:
+                    conn.execute("UPDATE waitlist SET plan = %s WHERE phone = %s", (plan, phone))
+                    conn.commit()
                 return False
             conn.execute(
-                "INSERT INTO waitlist (name, store, phone, monthly_sales, source) VALUES (%s, %s, %s, %s, %s)",
-                (name, store, phone, monthly_sales, source),
+                "INSERT INTO waitlist (name, store, phone, monthly_sales, plan, source) VALUES (%s, %s, %s, %s, %s, %s)",
+                (name, store, phone, monthly_sales, plan, source),
             )
             conn.commit()
             return True
@@ -84,7 +89,7 @@ def add(name: str, store: str, phone: str, monthly_sales: str, source: str) -> b
         row = {
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "name": name, "store": store, "phone": phone,
-            "monthly_sales": monthly_sales, "source": source,
+            "monthly_sales": monthly_sales, "plan": plan, "source": source,
         }
         with _LOCAL_FILE.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -94,7 +99,8 @@ def add(name: str, store: str, phone: str, monthly_sales: str, source: str) -> b
 def _read_local() -> list[dict]:
     if not _LOCAL_FILE.exists():
         return []
-    return [json.loads(line) for line in _LOCAL_FILE.read_text(encoding="utf-8").splitlines() if line.strip()]
+    rows = [json.loads(line) for line in _LOCAL_FILE.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [{**{k: "" for k in FIELDS}, **r} for r in rows]
 
 
 def all_rows() -> list[dict]:
@@ -103,7 +109,7 @@ def all_rows() -> list[dict]:
         with _connect() as conn:
             _ensure_table(conn)
             cur = conn.execute(
-                "SELECT created_at, name, store, phone, monthly_sales, source FROM waitlist ORDER BY id DESC"
+                "SELECT created_at, name, store, phone, monthly_sales, plan, source FROM waitlist ORDER BY id DESC"
             )
             return [
                 dict(zip(FIELDS, (r[0].isoformat(timespec="seconds"), *r[1:])))
