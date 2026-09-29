@@ -8,6 +8,9 @@
 - POST /api/trial    -> démarre l'essai gratuit (nom, boutique, WhatsApp) ; GET /api/trial/{jeton}
 - POST /api/support  -> assistant d'aide ; ce qu'il ne résout pas devient un ticket + message WhatsApp
 - POST /api/trendyol/sync -> commandes + commissions réelles via l'API Trendyol (identifiants non stockés)
+- POST /api/trendyol/connect | GET /api/trendyol/connection | POST /api/trendyol/disconnect
+                     -> connexion enregistrée (chiffrée) pour la synchronisation de nuit
+- POST /api/cron/sync -> synchronisation de nuit de toutes les connexions (en-tête X-Cron-Secret)
 - POST /api/event    -> compteur anonyme de l'entonnoir (visites, imports, analyses)
 - GET  /admin        -> entonnoir + liste des inscrits (protégée par ADMIN_TOKEN), export CSV
 
@@ -32,6 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
+import connections
 import metrics
 import trendyol
 import waitlist
@@ -40,7 +44,7 @@ BASE_DIR = Path(__file__).resolve().parent
 log = logging.getLogger("profitpilot")
 
 # Secrets : variable d'environnement, ou « Secret File » Render (/etc/secrets/<NOM>)
-for _name in ("ANTHROPIC_API_KEY", "DATABASE_URL"):
+for _name in ("ANTHROPIC_API_KEY", "DATABASE_URL", "SYNC_ENC_KEY", "CRON_SECRET"):
     if os.getenv(_name):
         continue
     _secret = Path("/etc/secrets") / _name
@@ -56,6 +60,7 @@ ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",
 PER_IP_LIMIT = int(os.getenv("PER_IP_LIMIT", "5"))
 DAILY_CAP = int(os.getenv("DAILY_CAP", "200"))
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+CRON_SECRET = os.getenv("CRON_SECRET", "")
 WAITLIST_PER_IP = 10  # inscriptions max par heure et par IP (anti-spam)
 PLANS = {"deneme": "Essai (sans plan choisi)", "baslangic": "Başlangıç 249 ₺/mois", "pro": "Pro 499 ₺/mois",
          "isletme": "İşletme 999 ₺/mois", "denetim": "Audit 1 990 ₺", "takip": "Suivi (ancien)",
@@ -169,6 +174,7 @@ class TrialRequest(BaseModel):
 
 class TrendyolSyncRequest(BaseModel):
     token: str = Field(default="", max_length=64)
+    store: str = Field(default="Mağazam", min_length=1, max_length=40)
     seller_id: str = Field(min_length=1, max_length=20)
     api_key: str = Field(min_length=4, max_length=100)
     api_secret: str = Field(min_length=4, max_length=100)
@@ -178,6 +184,11 @@ class TrendyolSyncRequest(BaseModel):
         return f"TrendyolSyncRequest(seller_id={self.seller_id!r}, days={self.days})"
 
     __str__ = __repr__
+
+
+class StoreRef(BaseModel):
+    token: str = Field(max_length=64)
+    store: str = Field(default="Mağazam", min_length=1, max_length=40)
 
 
 class SupportRequest(BaseModel):
@@ -268,7 +279,9 @@ Aracın nasıl çalıştığı (yalnızca bunlara dayan):
 - Hedef fiyat: ayarlardaki hedef marja ulaşmak için gereken satış fiyatı.
 - Trendyol'dan otomatik çek: Satıcı ID, API Key, API Secret (Satıcı Paneli → Hesap Bilgilerim → Entegrasyon
   Bilgileri, yalnızca ana kullanıcı görür) ile son 30 güne kadar siparişler ve cari hesaptaki gerçek komisyonlar gelir.
-  Bilgiler sunucuda saklanmaz; salt okunurdur. Henüz cari hesaba düşmemiş siparişlerde komisyon ayarlardaki oranla tamamlanır.
+  Salt okunurdur. "Her gece otomatik güncelle" işaretliyse API bilgileri şifrelenerek saklanır ve mağaza her gece
+  (Türkiye saatiyle 03:00) otomatik güncellenir; "Şimdi güncelle" ile anında, "Bağlantıyı kaldır" ile bilgiler silinir.
+  İşaretli değilse bilgiler hiç saklanmaz. Henüz cari hesaba düşmemiş siparişlerde komisyon ayarlardaki oranla tamamlanır.
 - Kampanya simülatörü: tüm ürünlerde % indirim yapılırsa aynı adetle net kârın ne olacağını ve kârı korumak için
   satışın ne kadar artması gerektiğini gösterir.
 - Birden fazla mağaza: "Mağaza ekle" ile her mağazanın ayarları, maliyetleri ve Trendyol bilgileri ayrı tutulur.
@@ -492,6 +505,124 @@ def trendyol_sync(body: TrendyolSyncRequest, request: Request):
         raise HTTPException(502, "Trendyol verisi alınamadı. Biraz sonra tekrar dene.")
 
 
+@app.post("/api/trendyol/connect")
+def trendyol_connect(body: TrendyolSyncRequest, request: Request):
+    """Vérifie les identifiants par une vraie synchronisation, puis les enregistre chiffrés."""
+    _require_trial(body.token)
+    if not connections.available():
+        raise HTTPException(503, "Otomatik güncelleme şu an kullanılamıyor. Siparişleri elle çekebilirsin.")
+    if not _under_hourly_limit(_sy_hits, _client_ip(request), SYNC_PER_IP):
+        raise HTTPException(429, "Saatlik senkronizasyon sınırına ulaştın. Biraz sonra tekrar dene.")
+    try:
+        data = trendyol.sync(body.seller_id, body.api_key, body.api_secret, body.days)
+        connections.save(body.token, body.store, body.seller_id.strip(), body.api_key.strip(),
+                         body.api_secret.strip(), data)
+    except trendyol.TrendyolError as e:
+        raise HTTPException(502, str(e))
+    except Exception as e:
+        log.error("trendyol connect failed: %s", type(e).__name__)
+        raise HTTPException(502, "Bağlantı kaydedilemedi. Biraz sonra tekrar dene.")
+    return {**data, "connected": True, "last_sync_at": connections.now_iso()}
+
+
+@app.get("/api/trendyol/connection")
+def trendyol_connection(token: str = "", store: str = "Mağazam"):
+    if not connections.available():
+        return {"connected": False, "available": False}
+    try:
+        if not waitlist.trial_by_token(token[:64]):
+            raise HTTPException(401, "Önce ücretsiz denemeyi başlat.")
+        c = connections.get_snapshot(token[:64], store[:40])
+    except HTTPException:
+        raise
+    except Exception:
+        log.exception("connection lookup failed")
+        raise HTTPException(503, "Şu an okunamıyor.")
+    if not c:
+        return {"connected": False, "available": True}
+    return {"connected": True, "available": True, **c}
+
+
+@app.post("/api/trendyol/refresh")
+def trendyol_refresh(body: StoreRef, request: Request):
+    """Resynchronise tout de suite avec les identifiants enregistrés."""
+    _require_trial(body.token)
+    if not _under_hourly_limit(_sy_hits, _client_ip(request), SYNC_PER_IP):
+        raise HTTPException(429, "Saatlik senkronizasyon sınırına ulaştın. Biraz sonra tekrar dene.")
+    try:
+        c = connections.get_creds(body.token, body.store) if connections.available() else None
+    except Exception:
+        log.exception("refresh lookup failed")
+        raise HTTPException(503, "Şu an okunamıyor.")
+    if not c:
+        raise HTTPException(404, "Bu mağaza için kayıtlı Trendyol bağlantısı yok.")
+    if not c["creds"]:
+        raise HTTPException(409, "Bağlantıyı yeniden kurman gerekiyor.")
+    try:
+        data = trendyol.sync(c["seller_id"], c["creds"]["k"], c["creds"]["s"], 30)
+        connections.record_result(body.token, body.store, "ok", data)
+    except trendyol.TrendyolError as e:
+        connections.record_result(body.token, body.store,
+                                  "bilgiler reddedildi" if "reddedildi" in str(e) else "Trendyol hatası", None)
+        raise HTTPException(502, str(e))
+    return {**data, "connected": True, "last_sync_at": connections.now_iso()}
+
+
+@app.post("/api/trendyol/disconnect")
+def trendyol_disconnect(body: StoreRef):
+    if not waitlist.trial_by_token(body.token):
+        raise HTTPException(401, "Önce ücretsiz denemeyi başlat.")
+    try:
+        connections.remove(body.token, body.store)
+    except Exception:
+        log.exception("disconnect failed")
+        raise HTTPException(503, "Şu an kaldırılamadı.")
+    return {"connected": False}
+
+
+_cron_lock = threading.Lock()
+
+
+def _nightly_sync() -> None:
+    """Synchronise chaque connexion dont l'essai ou l'abonnement est actif. Une erreur n'arrête pas les autres."""
+    if not _cron_lock.acquire(blocking=False):
+        return                                   # une synchronisation tourne déjà
+    try:
+        done = 0
+        for c in connections.all_for_sync():
+            try:
+                t = waitlist.trial_by_token(c["token"])
+                if not t or not _trial_state(t)["active"]:
+                    connections.record_result(c["token"], c["store"], "abonelik yok", None)
+                    continue
+                if not c["creds"]:
+                    connections.record_result(c["token"], c["store"], "yeniden bağlan", None)
+                    continue
+                data = trendyol.sync(c["seller_id"], c["creds"]["k"], c["creds"]["s"], 30)
+                connections.record_result(c["token"], c["store"], "ok", data)
+                done += 1
+            except trendyol.TrendyolError as e:
+                status = "bilgiler reddedildi" if "reddedildi" in str(e) else "Trendyol hatası"
+                connections.record_result(c["token"], c["store"], status, None)
+            except Exception as e:
+                log.error("nightly sync failed for one store: %s", type(e).__name__)
+            time.sleep(1)                        # rester loin des limites de Trendyol
+        log.warning("nightly sync done: %s stores updated", done)
+    finally:
+        _cron_lock.release()
+
+
+@app.post("/api/cron/sync", status_code=202)
+def cron_sync(request: Request):
+    secret = request.headers.get("x-cron-secret", "")
+    if not CRON_SECRET or not hmac.compare_digest(secret.encode(), CRON_SECRET.encode()):
+        raise HTTPException(404, "Not Found")
+    if not connections.available():
+        raise HTTPException(503, "SYNC_ENC_KEY ou base de données manquant.")
+    threading.Thread(target=_nightly_sync, daemon=True).start()   # répond tout de suite, travaille en fond
+    return {"started": True}
+
+
 @app.post("/api/event", status_code=204)
 def track_event(body: EventRequest, request: Request):
     # un compteur ne doit jamais casser la page : erreurs silencieuses
@@ -622,6 +753,16 @@ def admin(token: str = ""):
         for t in tickets
     )
     trials = sum(1 for r in rows if r["trial_at"])
+    try:
+        conns = connections.overview() if connections.available() else []
+    except Exception:
+        log.exception("connections overview failed")
+        conns = []
+    conn_rows = "".join(
+        f"<tr><td>{e(c['name'] or '–')}</td><td>{e(c['store'])}</td><td>{e(c['seller_id'])}</td>"
+        f"<td>{e(c['last_sync_at'])}</td><td class='{'' if c['last_status'] == 'ok' else 'warn'}'>{e(c['last_status'] or '–')}</td></tr>"
+        for c in conns
+    )
     storage = waitlist.storage_kind()
     warn = "" if storage == "postgres" else (
         '<p class="warn">⚠ Base de données non connectée (DATABASE_URL manquant) : '
@@ -648,6 +789,9 @@ th{{font-size:12px;color:var(--muted)}} td.wrapc{{white-space:normal;min-width:2
 <p><a href="/admin/waitlist.csv?token={e(token)}">Télécharger en CSV (Excel)</a></p>
 <div class="tw"><table><thead><tr><th>Date (UTC)</th><th>Nom</th><th>Boutique</th><th>Téléphone</th><th>Commandes/mois</th><th>Offre</th><th>Essai</th><th>Abonnement</th><th>Source</th><th></th><th>Paiement reçu</th></tr></thead>
 <tbody>{body_rows or '<tr><td colspan="11" class="muted">Aucune demande pour le moment.</td></tr>'}</tbody></table></div>
+<h2>Connexions Trendyol (synchronisation de nuit)</h2>
+<div class="tw"><table><thead><tr><th>Client</th><th>Magasin</th><th>ID vendeur</th><th>Dernière synchro</th><th>État</th></tr></thead>
+<tbody>{conn_rows or '<tr><td colspan="5" class="muted">Aucune connexion enregistrée.</td></tr>'}</tbody></table></div>
 <h2>Tickets d'aide (non résolus par l'assistant)</h2>
 <div class="tw"><table><thead><tr><th>N°</th><th>Date (UTC)</th><th>Client</th><th>Problème</th><th>Réponse de l'assistant</th><th></th></tr></thead>
 <tbody>{ticket_rows or '<tr><td colspan="6" class="muted">Aucun ticket.</td></tr>'}</tbody></table></div>

@@ -67,7 +67,11 @@ td input.missing{border-color:var(--amber)}
 .tyform{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .tyform p,.tyform .btn,.tyform .check{grid-column:1/-1}
 .tyform input,.tyform select{width:100%;background:var(--field);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:500 15px/1.2 var(--mono);color:var(--ink)}
-.check{display:flex;gap:8px;align-items:center;font-size:14px}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:14px}
+.tystatus{border:1px solid var(--green);border-radius:10px;padding:12px;margin-bottom:10px;font-size:14px}
+.tystatus.warn-box{border-color:var(--amber)}
+.tystatus .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.tystatus .btn{padding:9px 12px;font-size:14px}
 .storebar{display:flex;gap:10px;align-items:flex-end;margin-bottom:12px}
 .storebar select{width:100%;background:var(--field);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:500 15px/1.2 var(--mono);color:var(--ink)}
 .simsum{margin:12px 0 4px;font-size:15px}
@@ -137,6 +141,7 @@ table.simtable{min-width:640px}
       </label>
       <p class="msg muted">Satıcı panelinden sipariş raporunu Excel veya CSV olarak indir ve buraya yükle. Gerekli sütunlar: <strong>ürün adı</strong>, <strong>adet</strong> ve <strong>satış tutarı</strong>. Komisyon tutarı ve maliyet sütunları varsa otomatik kullanılır.</p>
       <div class="or"><span>veya</span></div>
+      <div id="tyStatus" class="tystatus hidden" role="status"></div>
       <button class="btn ghost" id="tyToggle" type="button" aria-expanded="false" aria-controls="tyForm">🔗 Trendyol'dan otomatik çek</button>
       <form id="tyForm" class="tyform hidden" autocomplete="off">
         <p class="msg muted" style="margin-top:0">Son 30 güne kadar siparişlerin ve Trendyol cari hesabındaki <strong>gerçek komisyonlar</strong> otomatik gelir. Bilgiler: Satıcı Paneli → Hesap Bilgilerim → Entegrasyon Bilgileri (yalnızca ana kullanıcı görür).</p>
@@ -144,9 +149,9 @@ table.simtable{min-width:640px}
         <label class="f">API Key<input id="tyKey" required spellcheck="false"></label>
         <label class="f">API Secret<input id="tySecret" type="password" required spellcheck="false"></label>
         <label class="f">Dönem<select id="tyDays"><option value="7">Son 7 gün</option><option value="14">Son 14 gün</option><option value="30" selected>Son 30 gün</option></select></label>
-        <label class="check"><input type="checkbox" id="tyRemember"> Bu cihazda hatırla</label>
+        <label class="check"><input type="checkbox" id="tyAuto" checked> Her gece otomatik güncelle (API bilgilerin şifrelenerek saklanır, istediğin zaman kaldırabilirsin)</label>
         <button class="btn green" id="tyBtn" type="submit">Siparişleri çek</button>
-        <p class="msg muted" style="margin:0">🔒 API bilgilerin sunucumuzda saklanmaz ve kaydedilmez; sadece bu çekim için Trendyol'a iletilir. Salt okunur: hiçbir ürün, fiyat veya stok değiştirilmez.</p>
+        <p class="msg muted" style="margin:0">🔒 Otomatik güncelleme kapalıysa API bilgilerin hiç saklanmaz. Açıksa şifrelenerek saklanır ve yalnızca gece güncellemesi için kullanılır. Salt okunur: hiçbir ürün, fiyat veya stok değiştirilmez.</p>
       </form>
       <p class="msg" id="fileMsg"></p>
     </div>
@@ -323,6 +328,7 @@ async function checkTrial(){
     if(!r.ok) return;                       // serveur indisponible : on ne bloque pas le vendeur
     TRIAL={token:tok,...await r.json()};
     TRIAL.active?showTrialBar():showGate("expired");
+    if(TRIAL.active) loadConnection(true);
   }catch(e){ /* hors ligne : on ne bloque pas */ }
 }
 $("gateForm").addEventListener("submit",async e=>{
@@ -337,7 +343,7 @@ $("gateForm").addEventListener("submit",async e=>{
     if(!res.ok){ const d=data.detail; throw new Error(typeof d==="string"?d:"Bilgileri kontrol et ve tekrar dene."); }
     try{ localStorage.setItem(TRIAL_KEY,data.token); }catch(e){}
     TRIAL=data;
-    if(data.active){ showTrialBar(); track("trial_started"); } else showGate("expired");
+    if(data.active){ showTrialBar(); track("trial_started"); loadConnection(true); } else showGate("expired");
   }catch(err){ msg.className="msg bad"; msg.textContent=err.message; }
   finally{ btn.disabled=false; }
 });
@@ -370,12 +376,13 @@ $("storeSel").addEventListener("change",e=>{
   CUR_STORE=e.target.value; store.set("pp_store_current",CUR_STORE); loadSettings(); loadTyCreds();
   PRODUCTS=[]; $("results").classList.add("hidden"); $("mapCard").classList.add("hidden");
   fileStatus("","\""+CUR_STORE+"\" seçildi. Bu mağazanın raporunu yükle veya Trendyol'dan çek.");
+  loadConnection(true);
 });
 $("storeAdd").addEventListener("click",()=>{
   const n=(prompt("Yeni mağazanın adı:")||"").trim().slice(0,40);
   if(!n||STORES.includes(n)) return;
   STORES.push(n); store.set("pp_stores",STORES);
-  CUR_STORE=n; store.set("pp_store_current",n); renderStores(); loadSettings(); loadTyCreds();
+  CUR_STORE=n; store.set("pp_store_current",n); renderStores(); loadSettings(); loadTyCreds(); loadConnection(false);
   PRODUCTS=[]; $("results").classList.add("hidden"); $("mapCard").classList.add("hidden");
   fileStatus("","\""+n+"\" mağazası eklendi. Bu mağazanın raporunu yükle veya Trendyol'dan çek.");
 });
@@ -804,11 +811,70 @@ $("aiBtn").addEventListener("click",async()=>{
   finally{ btn.disabled=false; btn.textContent="Önerileri tekrar al"; }
 });
 
-// ---------- Connexion Trendyol (identifiants envoyés pour la seule requête, jamais stockés côté serveur) ----------
+// ---------- Connexion Trendyol ----------
+// Sans « otomatik güncelle » : identifiants utilisés pour une seule requête, jamais stockés.
+// Avec : ils sont enregistrés chiffrés côté serveur et le magasin est resynchronisé chaque nuit.
+let TY_CONN=null;
+const fmtDate=iso=>{ try{ return new Date(iso).toLocaleString("tr-TR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}); }catch(e){ return iso; } };
+
 function loadTyCreds(){
-  const c=store.get(skey("pp_ty"),null);
-  $("tySeller").value=c?c.seller:""; $("tyKey").value=c?c.key:""; $("tySecret").value=c?c.secret:"";
-  $("tyRemember").checked=!!c;
+  // on ne garde localement que l'ID vendeur ; les anciennes versions pouvaient garder la clé : on l'efface
+  try{ localStorage.removeItem(skey("pp_ty")); }catch(e){}
+  $("tySeller").value=store.get(skey("pp_ty_seller"),""); $("tyKey").value=""; $("tySecret").value="";
+}
+function showSyncData(data,label){
+  if(!data||!data.rows||!data.rows.length){ fileStatus("bad","⚠️ Son "+(data&&data.days||30)+" günde sipariş bulunamadı."); return false; }
+  $("dropText").innerHTML="<strong>🔗 Trendyol · "+esc(label)+"</strong><br><span class=\"muted\">Dosya yüklemek için tıkla</span>";
+  loadRows([data.headers,...data.rows]);
+  if(!PRODUCTS.length){ fileStatus("bad","⚠️ Siparişlerden ürün çıkarılamadı."); return false; }
+  track("file_loaded");
+  const note=data.commission_source==="ok"
+    ? data.lines_with_commission+" satırda gerçek komisyon (cari hesaptan)"
+    : "komisyonlar alınamadı, ayarlardaki oran kullanıldı";
+  fileStatus("ok","✅ Trendyol ("+label+"): "+data.orders+" sipariş, "+PRODUCTS.length+" ürün · "+note+". Maliyetlerini girmeyi unutma.");
+  return true;
+}
+function renderTyStatus(){
+  const box=$("tyStatus");
+  if(!TY_CONN||!TY_CONN.connected){ box.classList.add("hidden"); $("tyToggle").textContent="🔗 Trendyol'dan otomatik çek"; return; }
+  const ok=TY_CONN.last_status==="ok";
+  box.className="tystatus"+(ok?"":" warn-box");
+  box.innerHTML="<strong>✅ Trendyol bağlı</strong> · Satıcı "+esc(TY_CONN.seller_id)+"<br>Son güncelleme: "+esc(fmtDate(TY_CONN.last_sync_at))+
+    (ok?" · Her gece otomatik güncellenir.":" · <span class=\"warn\">Son deneme: "+esc(TY_CONN.last_status)+"</span>")+
+    "<div class=\"acts\"><button class=\"btn green\" type=\"button\" id=\"tyRefresh\">Şimdi güncelle</button>"+
+    "<button class=\"btn ghost\" type=\"button\" id=\"tyDisconnect\">Bağlantıyı kaldır</button></div>";
+  $("tyToggle").textContent="🔗 Bağlantı bilgilerini değiştir";
+  $("tyRefresh").onclick=refreshConnection; $("tyDisconnect").onclick=disconnectTy;
+}
+async function loadConnection(autoload){
+  TY_CONN=null; renderTyStatus();
+  const tok=trialToken(); if(!tok) return;
+  try{
+    const r=await fetch("/api/trendyol/connection?token="+encodeURIComponent(tok)+"&store="+encodeURIComponent(CUR_STORE));
+    if(!r.ok) return;
+    const c=await r.json(); if(!c.connected) return;
+    TY_CONN=c; renderTyStatus();
+    if(autoload&&!PRODUCTS.length&&c.snapshot) showSyncData(c.snapshot,"son güncelleme "+fmtDate(c.last_sync_at));
+  }catch(e){}
+}
+async function refreshConnection(){
+  const b=$("tyRefresh"); b.disabled=true; b.textContent="Güncelleniyor…";
+  fileStatus("","Trendyol'dan güncel siparişler alınıyor, bu 10–60 saniye sürebilir…");
+  try{
+    const res=await fetch("/api/trendyol/refresh",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:trialToken(),store:CUR_STORE})});
+    const data=await res.json().catch(()=>({}));
+    if(res.status===402) showGate("expired");
+    if(!res.ok) throw new Error(typeof data.detail==="string"?data.detail:"Güncellenemedi ("+res.status+").");
+    TY_CONN={...TY_CONN,last_sync_at:data.last_sync_at,last_status:"ok"}; renderTyStatus();
+    if(showSyncData(data,"şimdi güncellendi")) $("results").scrollIntoView({behavior:"smooth",block:"start"});
+  }catch(err){ fileStatus("bad","⚠️ "+err.message); loadConnection(false); }
+}
+async function disconnectTy(){
+  if(!confirm("Trendyol bağlantısı ve kayıtlı API bilgilerin silinsin mi?")) return;
+  try{
+    await fetch("/api/trendyol/disconnect",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:trialToken(),store:CUR_STORE})});
+    TY_CONN=null; renderTyStatus(); fileStatus("","Trendyol bağlantısı kaldırıldı, API bilgilerin silindi.");
+  }catch(e){ fileStatus("bad","⚠️ Bağlantı kaldırılamadı, tekrar dene."); }
 }
 loadTyCreds();
 $("tyToggle").addEventListener("click",()=>{
@@ -819,25 +885,20 @@ $("tyForm").addEventListener("submit",async e=>{
   e.preventDefault();
   const seller=$("tySeller").value.trim(), key=$("tyKey").value.trim(), secret=$("tySecret").value.trim(), btn=$("tyBtn");
   if(!seller||!key||!secret){ fileStatus("bad","⚠️ Satıcı ID, API Key ve API Secret gerekli."); return; }
-  if($("tyRemember").checked) store.set(skey("pp_ty"),{seller,key,secret}); else { try{localStorage.removeItem(skey("pp_ty"));}catch(e){} }
+  store.set(skey("pp_ty_seller"),seller);
+  const auto=$("tyAuto").checked;
   btn.disabled=true; btn.textContent="Trendyol'dan çekiliyor…"; fileStatus("","Siparişler ve komisyonlar Trendyol'dan alınıyor, bu 10–60 saniye sürebilir…");
   try{
-    const res=await fetch("/api/trendyol/sync",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({token:trialToken(),seller_id:seller,api_key:key,api_secret:secret,days:+$("tyDays").value})});
+    const res=await fetch(auto?"/api/trendyol/connect":"/api/trendyol/sync",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({token:trialToken(),store:CUR_STORE,seller_id:seller,api_key:key,api_secret:secret,days:+$("tyDays").value})});
     const data=await res.json().catch(()=>({}));
     if(res.status===401) showGate("new");
     if(res.status===402) showGate("expired");
     if(!res.ok) throw new Error(typeof data.detail==="string"?data.detail:"Trendyol verisi alınamadı ("+res.status+").");
-    if(!data.rows.length) throw new Error("Son "+data.days+" günde sipariş bulunamadı.");
-    $("dropText").innerHTML="<strong>🔗 Trendyol · son "+data.days+" gün</strong><br><span class=\"muted\">Dosya yüklemek için tıkla</span>";
-    loadRows([data.headers,...data.rows]);
-    if(!PRODUCTS.length) throw new Error("Siparişlerden ürün çıkarılamadı.");
-    track("file_loaded");
-    const note=data.commission_source==="ok"
-      ? data.lines_with_commission+" satırda gerçek komisyon (cari hesaptan)"
-      : "komisyonlar alınamadı, ayarlardaki oran kullanıldı";
-    fileStatus("ok","✅ Trendyol: "+data.orders+" sipariş, "+PRODUCTS.length+" ürün · "+note+". Maliyetlerini girmeyi unutma.");
-    $("results").scrollIntoView({behavior:"smooth",block:"start"});
+    $("tyKey").value=""; $("tySecret").value="";
+    if(auto){ TY_CONN={connected:true,seller_id:seller,last_sync_at:data.last_sync_at,last_status:"ok"}; renderTyStatus();
+      $("tyForm").classList.add("hidden"); $("tyToggle").setAttribute("aria-expanded","false"); }
+    if(showSyncData(data,"son "+data.days+" gün")) $("results").scrollIntoView({behavior:"smooth",block:"start"});
   }catch(err){ fileStatus("bad","⚠️ "+err.message); }
   finally{ btn.disabled=false; btn.textContent="Siparişleri çek"; }
 });
