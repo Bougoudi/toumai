@@ -22,23 +22,27 @@ EVENTS = {
 _lock = threading.Lock()
 _memory: dict[tuple[str, str, str], int] = defaultdict(int)
 _table_ready = False
+_schema_lock = threading.Lock()  # deux requêtes simultanées ne doivent pas créer la table en même temps
 
 
 def _ensure_table(conn) -> None:
     global _table_ready
     if _table_ready:
         return
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS events (
-            day DATE NOT NULL,
-            name TEXT NOT NULL,
-            source TEXT NOT NULL,
-            count INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (day, name, source)
-        )"""
-    )
-    conn.commit()
-    _table_ready = True
+    with _schema_lock:
+        if _table_ready:
+            return
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS events (
+                day DATE NOT NULL,
+                name TEXT NOT NULL,
+                source TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (day, name, source)
+            )"""
+        )
+        conn.commit()
+        _table_ready = True
 
 
 def record(name: str, source: str) -> None:

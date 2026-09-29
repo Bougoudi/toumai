@@ -61,6 +61,7 @@ th:first-child,td:first-child{text-align:left;white-space:normal;min-width:220px
 tr:last-child td{border-bottom:0}
 td input{width:90px;background:var(--field);border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:500 13px var(--mono);color:var(--ink);text-align:right}
 td input.missing{border-color:var(--amber)}
+.card.cta{border-color:var(--green)}
 .reco{border-left:4px solid var(--green);padding:12px 14px;background:var(--field);border-radius:8px;margin-top:12px}
 .reco h3{margin:0 0 4px;font:600 16px/1.35 var(--body)}
 .reco .meta{font-size:13px;color:var(--muted);margin-bottom:6px}
@@ -83,7 +84,7 @@ td input.missing{border-color:var(--amber)}
 <div class="wrap">
   <header class="top">
     <a class="logo" href="/">Profit<span>Pilot</span> AI</a>
-    <a class="btn ghost" href="/#katil">Erken erişim</a>
+    <a class="btn ghost" href="/#denetim">Denetim iste</a>
   </header>
 
   <h1>Mağazanın gerçek kârı</h1>
@@ -139,6 +140,12 @@ td input.missing{border-color:var(--amber)}
       <button class="btn green" id="aiBtn" type="button">Önerileri al</button>
       <p class="msg" id="aiMsg"></p>
       <div id="aiOut"></div>
+    </div>
+
+    <div class="card cta">
+      <h2>Bu rakamları bir uzmanla yorumlamak ister misin?</h2>
+      <p class="muted" style="margin-top:0">Kârlılık denetimi: tüm mağazanın 24 saatte analizi, zarar eden ürünlerin nedenleri ve 20 dakikalık görüşmede 3 net aksiyon. <strong>1.990 ₺</strong>, ödeme rapor hazır olunca.</p>
+      <a class="btn green" href="/#denetim" id="auditCta">Denetim iste</a>
     </div>
 
     <div class="card">

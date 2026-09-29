@@ -45,24 +45,30 @@ def _connect():
     return psycopg.connect(_db_url(), connect_timeout=10)
 
 
+_schema_lock = threading.Lock()  # deux requêtes simultanées ne doivent pas créer la table en même temps
+
+
 def _ensure_table(conn) -> None:
     global _table_ready
     if _table_ready:
         return
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS waitlist (
-            id SERIAL PRIMARY KEY,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            name TEXT NOT NULL,
-            store TEXT NOT NULL,
-            phone TEXT NOT NULL,
-            monthly_sales TEXT NOT NULL DEFAULT '',
-            source TEXT NOT NULL DEFAULT ''
-        )"""
-    )
-    conn.execute("ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT ''")
-    conn.commit()
-    _table_ready = True
+    with _schema_lock:
+        if _table_ready:
+            return
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS waitlist (
+                id SERIAL PRIMARY KEY,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                name TEXT NOT NULL,
+                store TEXT NOT NULL,
+                phone TEXT NOT NULL,
+                monthly_sales TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT ''
+            )"""
+        )
+        conn.execute("ALTER TABLE waitlist ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT ''")
+        conn.commit()
+        _table_ready = True
 
 
 def add(name: str, store: str, phone: str, monthly_sales: str, source: str, plan: str = "") -> bool:

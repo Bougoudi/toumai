@@ -53,7 +53,8 @@ PER_IP_LIMIT = int(os.getenv("PER_IP_LIMIT", "5"))
 DAILY_CAP = int(os.getenv("DAILY_CAP", "200"))
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 WAITLIST_PER_IP = 10  # inscriptions max par heure et par IP (anti-spam)
-PLANS = {"baslangic", "pro", "ajans"}
+PLANS = {"denetim": "Audit 1 990 ₺", "takip": "Suivi 990 ₺/mois", "ajans": "Agence (devis)",
+         "baslangic": "Başlangıç (ancien)", "pro": "Pro (ancien)"}
 EVENTS_PER_IP = 60    # événements max par heure et par IP (anti-gonflage des compteurs)
 
 app = FastAPI(title="ProfitPilot AI", docs_url=None, redoc_url=None)
@@ -319,7 +320,7 @@ def _funnel_html(rows: list[dict], days: int = 30) -> str:
         ("Rapports importés (activation)", t["file_loaded"], t["app_view"], "cible > 60 %"),
         ("Analyses IA demandées", t["ai_requested"], t["file_loaded"], ""),
         ("Rapports Excel téléchargés", t["report_downloaded"], t["file_loaded"], ""),
-        ("Inscrits liste d'attente", sum(signups.values()), t["landing_view"], ""),
+        ("Demandes (audit, suivi, agence)", sum(signups.values()), t["landing_view"], ""),
     ]
     e = html.escape
     lines = "".join(
@@ -339,10 +340,10 @@ def _funnel_html(rows: list[dict], days: int = 30) -> str:
 <div class="tw"><table class="small"><thead><tr><th>Étape</th><th>Nombre</th><th>Conversion</th><th>Objectif du plan</th></tr></thead>
 <tbody>{lines}</tbody></table></div>
 <h2>Par source (?src=…)</h2>
-<div class="tw"><table class="small"><thead><tr><th>Source</th><th>Landing</th><th>App</th><th>Imports</th><th>IA</th><th>Rapports</th><th>Inscrits</th></tr></thead>
+<div class="tw"><table class="small"><thead><tr><th>Source</th><th>Landing</th><th>App</th><th>Imports</th><th>IA</th><th>Rapports</th><th>Demandes</th></tr></thead>
 <tbody>{src_lines or '<tr><td colspan="7" class="muted">Pas encore de données.</td></tr>'}</tbody></table></div>
 <p class="muted">Compteurs anonymes, une fois par visite et par onglet. Les pourcentages comparent chaque étape à la précédente.</p>
-<h2>Inscrits</h2>"""
+<h2>Demandes</h2>"""
 
 
 def _wa_number(phone: str) -> str:
@@ -376,7 +377,7 @@ def admin(token: str = ""):
     rows = waitlist.all_rows()
     e = html.escape
     body_rows = "".join(
-        "<tr>" + "".join(f"<td>{e(str(r[k]))}</td>" for k in waitlist.FIELDS)
+        "<tr>" + "".join(f"<td>{e(PLANS.get(r[k], r[k]) if k == 'plan' else str(r[k]))}</td>" for k in waitlist.FIELDS)
         + f'<td><a href="https://wa.me/{_wa_number(r["phone"])}">WhatsApp</a></td></tr>'
         for r in rows
     )
@@ -387,7 +388,7 @@ def admin(token: str = ""):
     )
     return f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
-<title>Liste d'attente</title>
+<title>Demandes ProfitPilot</title>
 <style>
 :root{{--bg:#E8ECF1;--ink:#16223A;--muted:#56637A;--paper:#fff;--line:#C7D0DB;--green:#0E7A5A;--red:#C8102E}}
 @media (prefers-color-scheme:dark){{:root{{--bg:#0F1726;--ink:#E7ECF3;--muted:#9AA6BA;--paper:#18233A;--line:#2D3B56;--green:#3DCB98;--red:#FF5B6F}}}}
@@ -399,13 +400,13 @@ a{{color:var(--green)}} .tw{{overflow-x:auto;border:1px solid var(--line);border
 table{{border-collapse:collapse;width:100%;min-width:760px}} table.small{{min-width:0}} td.n{{text-align:right;font-variant-numeric:tabular-nums}} h2{{font-size:18px;margin:22px 0 0}} th,td{{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}}
 th{{font-size:12px;color:var(--muted)}}
 </style></head><body><div class="wrap">
-<h1>Liste d'attente ProfitPilot</h1>
-<div class="big">{len(rows)} <span class="muted" style="font-size:16px;font-weight:400">inscrits · objectif 100</span></div>
+<h1>Demandes ProfitPilot</h1>
+<div class="big">{len(rows)} <span class="muted" style="font-size:16px;font-weight:400">demandes</span></div>
 {warn}
 {_funnel_html(rows)}
 <p><a href="/admin/waitlist.csv?token={e(token)}">Télécharger en CSV (Excel)</a></p>
-<div class="tw"><table><thead><tr><th>Date (UTC)</th><th>Nom</th><th>Boutique</th><th>Téléphone</th><th>Ventes/mois</th><th>Plan</th><th>Source</th><th></th></tr></thead>
-<tbody>{body_rows or '<tr><td colspan="8" class="muted">Aucun inscrit pour le moment.</td></tr>'}</tbody></table></div>
+<div class="tw"><table><thead><tr><th>Date (UTC)</th><th>Nom</th><th>Boutique</th><th>Téléphone</th><th>Commandes/mois</th><th>Offre</th><th>Source</th><th></th></tr></thead>
+<tbody>{body_rows or '<tr><td colspan="8" class="muted">Aucune demande pour le moment.</td></tr>'}</tbody></table></div>
 </div></body></html>"""
 
 
