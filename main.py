@@ -24,6 +24,16 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# Clé API : variable d'environnement, ou « Secret File » Render (/etc/secrets/ANTHROPIC_API_KEY)
+if not os.getenv("ANTHROPIC_API_KEY"):
+    _secret = Path("/etc/secrets/ANTHROPIC_API_KEY")
+    if _secret.is_file():
+        _key = _secret.read_text(encoding="utf-8").strip()
+        if _key.startswith("ANTHROPIC_API_KEY="):
+            _key = _key.split("=", 1)[1].strip()
+        if _key:
+            os.environ["ANTHROPIC_API_KEY"] = _key.strip("\"'")
+
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
 PER_IP_LIMIT = int(os.getenv("PER_IP_LIMIT", "5"))
