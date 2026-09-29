@@ -27,6 +27,7 @@ import { supplierRouter } from './modules/suppliers/supplier.routes.js';
 import { aliexpressRouter } from './modules/aliexpress/aliexpress.routes.js';
 import { aliexpressController } from './modules/aliexpress/aliexpress.controller.js';
 import { supportRouter } from './modules/support/support.routes.js';
+import { storefrontRouter } from './modules/storefront/storefront.routes.js';
 
 /**
  * Dossier des fichiers statiques (PWA). En développement (tsx) le module est
@@ -69,6 +70,9 @@ export function createApp() {
 
   // Limitation de débit sur toute l'API.
   app.use('/api', apiLimiter);
+
+  // Boutique en ligne publique (SEO) + robots.txt / sitemap.xml.
+  app.use(storefrontRouter);
 
   // Application web (PWA) : fichiers statiques servis à la racine.
   app.use(express.static(publicDir));

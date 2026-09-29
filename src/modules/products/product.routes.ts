@@ -9,6 +9,9 @@ productRouter.post('/generate', asyncHandler(productController.generate));
 productRouter.get('/generation-runs', asyncHandler(productController.listRuns));
 productRouter.get('/generation-runs/:id', asyncHandler(productController.getRun));
 
+// Import depuis un lien fournisseur (CJdropshipping)
+productRouter.post('/import/cj', asyncHandler(productController.importCj));
+
 // CRUD produits
 productRouter.get('/', asyncHandler(productController.list));
 productRouter.post('/', asyncHandler(productController.create));

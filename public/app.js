@@ -1313,6 +1313,7 @@ async function loadSettingsTab() {
     ).join('') +
       `<div class="field"><label>Demande simulée (démo)</label><select class="input set-f" data-key="simulateDemand"><option value="true" ${s.simulateDemand ? 'selected' : ''}>Activée</option><option value="false" ${!s.simulateDemand ? 'selected' : ''}>Désactivée</option></select></div>`;
   } catch (e) { toast(e.message); }
+  loadShopForm();
   loadSecurityPanel();
   loadAliexpressStatus();
   loadAiStatus();
@@ -1377,6 +1378,73 @@ $('#ali-connect')?.addEventListener('click', async (ev) => {
     toast(i18n.t('ali_opening'));
   } catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
 });
+// ── Boutique en ligne (SEO) + import CJdropshipping ─────────
+const SHOP_FIELDS = [
+  { key: 'shopName', label: 'Nom de la boutique' },
+  { key: 'shopTagline', label: 'Slogan (apparaît dans le titre Google)' },
+  { key: 'shopDescription', label: 'Description (meta description de l’accueil)' },
+  { key: 'shopEmail', label: 'E-mail de contact', type: 'email' },
+  { key: 'shopPhone', label: 'Téléphone', type: 'tel' },
+  { key: 'shopAddress', label: 'Adresse (même que la fiche Google Business)' },
+  { key: 'shopCity', label: 'Ville' },
+  { key: 'shopZip', label: 'Code postal' },
+  { key: 'shopCountry', label: 'Pays (code à 2 lettres : FR, TR, BE…)' },
+  { key: 'shopDeliveryMinDays', label: 'Livraison min. (jours)', type: 'number' },
+  { key: 'shopDeliveryMaxDays', label: 'Livraison max. (jours)', type: 'number' },
+  { key: 'shopReturnDays', label: 'Retours acceptés (jours, 0 = non)', type: 'number' },
+  { key: 'googleSiteVerification', label: 'Code Google Search Console (balise meta, content="…")' },
+  { key: 'googleBusinessUrl', label: 'Lien de ta fiche Google Business Profile', type: 'url' },
+];
+async function loadShopForm() {
+  const box = $('#shop-form');
+  if (!box) return;
+  try {
+    const s = await api('/api/settings');
+    box.innerHTML = SHOP_FIELDS.map((f) =>
+      `<div class="field"><label>${esc(f.label)}</label><input class="input shop-f" data-key="${f.key}" type="${f.type || 'text'}" value="${esc(s[f.key])}"/></div>`,
+    ).join('');
+    const lbl = $('#cj-rate-label');
+    if (lbl) lbl.textContent = s.currency === 'USD'
+      ? 'Taux de change (inutile : boutique en USD)'
+      : `Taux de change (1 USD = ? ${s.currency})`;
+  } catch (e) { toast(e.message); }
+}
+$('#shop-save')?.addEventListener('click', async (ev) => {
+  const patch = {};
+  document.querySelectorAll('#shop-form .shop-f').forEach((i) => {
+    patch[i.dataset.key] = i.type === 'number' ? Number(i.value) : i.value.trim();
+  });
+  if (!patch.shopName) return toast('Le nom de la boutique est requis');
+  busy(ev.currentTarget, true, '...');
+  try { await api('/api/settings', { method: 'PATCH', body: patch }); toast('Boutique enregistrée'); }
+  catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+$('#cj-key-save')?.addEventListener('click', async (ev) => {
+  const apiKey = $('#cj-key').value.trim();
+  if (!apiKey) return toast('Colle ta clé API CJ');
+  busy(ev.currentTarget, true, '...');
+  try { await api('/api/settings/cj', { method: 'POST', body: { apiKey } }); $('#cj-key').value = ''; toast('Clé CJ enregistrée'); }
+  catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+$('#cj-import')?.addEventListener('click', async (ev) => {
+  const url = $('#cj-url').value.trim();
+  if (!url) return toast('Colle le lien du produit CJ');
+  const body = { url };
+  const rate = Number($('#cj-rate').value);
+  const price = Number($('#cj-price').value);
+  if (rate > 0) body.exchangeRate = rate;
+  if (price > 0) body.salePrice = price;
+  busy(ev.currentTarget, true, 'Import...');
+  try {
+    const p = await api('/api/products/import/cj', { method: 'POST', body });
+    const slug = p.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/, '') || 'produit';
+    $('#cj-result').innerHTML = `✅ <b>${esc(p.name)}</b> — ${money(p.salePrice, p.currency)} (achat ${money(p.costPrice, p.currency)}) · ` +
+      `<a href="/boutique/produit/${slug}-${esc(p.id)}" target="_blank" rel="noopener">voir sur la boutique</a>`;
+    toast('Produit importé et publié');
+  } catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+
 $('#settings-save').addEventListener('click', async (ev) => {
   const patch = {};
   document.querySelectorAll('#settings-form .set-f').forEach((i) => {

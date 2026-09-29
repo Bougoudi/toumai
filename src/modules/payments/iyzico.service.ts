@@ -100,7 +100,7 @@ export const iyzicoService = {
    * remonte dans le portefeuille.
    * Renvoie le numéro de commande + statut pour la redirection navigateur.
    */
-  async handleCallback(token: string | undefined): Promise<{ orderNumber?: string; paid: boolean }> {
+  async handleCallback(token: string | undefined): Promise<{ orderNumber?: string; channel?: string; paid: boolean }> {
     if (!token) throw new HttpError(400, 'Jeton iyzico manquant.');
     const result = await retrieveCheckoutForm(token);
     if (result.status !== 'success') {
@@ -111,14 +111,16 @@ export const iyzicoService = {
     const paid = result.paymentStatus === 'SUCCESS';
 
     let orderNumber: string | undefined;
+    let channel: string | undefined;
     if (orderId) {
-      const order = await prisma.order.findUnique({ where: { id: orderId }, select: { orderNumber: true } });
+      const order = await prisma.order.findUnique({ where: { id: orderId }, select: { orderNumber: true, channel: true } });
       orderNumber = order?.orderNumber;
+      channel = order?.channel;
       if (paid) {
         await prisma.order.updateMany({ where: { id: orderId, status: 'PENDING' }, data: { status: 'PAID' } });
         logger.info('Paiement iyzico confirmé, commande marquée PAID', { orderId, paymentId: result.paymentId });
       }
     }
-    return { orderNumber, paid };
+    return { orderNumber, channel, paid };
   },
 };

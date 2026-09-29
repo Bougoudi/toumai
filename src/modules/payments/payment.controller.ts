@@ -29,7 +29,11 @@ export const paymentController = {
   async iyzicoCallback(req: Request, res: Response) {
     const token = (req.body?.token as string | undefined) ?? (req.query.token as string | undefined);
     try {
-      const { orderNumber, paid } = await iyzicoService.handleCallback(token);
+      const { orderNumber, channel, paid } = await iyzicoService.handleCallback(token);
+      if (channel === 'boutique') {
+        const n = encodeURIComponent(orderNumber ?? '');
+        return res.redirect(`${env.publicUrl}/boutique/merci?${paid ? '' : 'annule=1&'}commande=${n}`);
+      }
       const q = paid
         ? `paid=${encodeURIComponent(orderNumber ?? '1')}`
         : `canceled=${encodeURIComponent(orderNumber ?? '1')}`;

@@ -2,6 +2,7 @@
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
+    <meta name="robots" content="noindex,nofollow" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Toumai — Automatisation e-commerce</title>
     <meta name="description" content="Analyse marché, génération de produits, sourcing, achat & expédition automatiques." />
@@ -351,6 +352,30 @@
             <button id="settings-reset" class="btn btn-ghost" data-i18n="reset_btn">Réinitialiser</button>
             <button id="settings-save" class="btn btn-primary" data-i18n="save_btn">Enregistrer</button>
           </div>
+        </div>
+        <div class="card">
+          <h3>🛍️ Boutique en ligne &amp; SEO</h3>
+          <p class="muted">Ta boutique publique : <a id="shop-link" href="/boutique" target="_blank" rel="noopener">/boutique</a>
+            · plan du site pour Google : <a href="/sitemap.xml" target="_blank" rel="noopener">/sitemap.xml</a>.
+            Ces informations apparaissent sur la boutique et dans les résultats Google (nom, adresse, livraison, retours).</p>
+          <div class="form-grid" id="shop-form"></div>
+          <div class="form-actions">
+            <button id="shop-save" class="btn btn-primary">Enregistrer la boutique</button>
+          </div>
+          <h3 style="margin-top:18px">📦 Importer un produit CJdropshipping</h3>
+          <p class="muted">Colle le lien d'un produit CJ : il est ajouté au catalogue et publié sur la boutique.
+            Nécessite ta clé API CJ (cjdropshipping.com → My CJ → Authorization → API).</p>
+          <div class="field"><label>Clé API CJ</label>
+            <input id="cj-key" class="input" type="password" placeholder="CJ…@api@…" autocomplete="off" /></div>
+          <div class="form-actions"><button id="cj-key-save" class="btn btn-ghost">Enregistrer la clé CJ</button></div>
+          <div class="field"><label>Lien du produit CJ</label>
+            <input id="cj-url" class="input" type="url" placeholder="https://www.cjdropshipping.com/product/…-p-….html" /></div>
+          <div class="field"><label id="cj-rate-label">Taux de change (1 USD = ? devise de la boutique)</label>
+            <input id="cj-rate" class="input" type="number" step="0.0001" min="0" placeholder="ex. 0.92" /></div>
+          <div class="field"><label>Prix de vente (facultatif — sinon prix CJ × coefficient)</label>
+            <input id="cj-price" class="input" type="number" step="0.01" min="0" /></div>
+          <div class="form-actions"><button id="cj-import" class="btn btn-primary">Importer et publier</button></div>
+          <div id="cj-result" class="muted"></div>
         </div>
         <div class="card">
           <h3 data-i18n="ali_connect_title">Connexion AliExpress</h3>
