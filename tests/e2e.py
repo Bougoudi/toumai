@@ -101,6 +101,30 @@ with sync_playwright() as p:
         heads = [c.value for c in wb["Ürünler"][1]]
         check("Excel : colonne prix cible présente", any(h and h.startswith("Hedef fiyat") for h in heads), heads)
 
+    def marketplaces():
+        files = {
+            # Amazon (rapport de commandes, tabulations, en anglais) : item-price = prix × quantité
+            "amazon.txt": "order-id\torder-item-id\tsku\tproduct-name\tquantity-purchased\tcurrency\titem-price\titem-tax\tshipping-price\torder-status\n"
+                          "111-1\ti1\tSKU1\tBlue Mug\t2\tTRY\t400\t0\t20\tShipped\n"
+                          "111-2\ti2\tSKU1\tBlue Mug\t1\tTRY\t200\t0\t0\tCancelled\n"
+                          "111-3\ti3\tSKU2\tRed Cup\t1\tTRY\t150\t0\t0\tShipped\n",
+            "hepsiburada.csv": "Sipariş Numarası;Ürün Adı;Adet;Satış Fiyatı;Komisyon;Sipariş Durumu\n"
+                               "H1;Kupa;2;250;90;Teslim Edildi\nH2;Kupa;1;250;45;İptal Edildi\nH3;Tabak;1;100;18;İade Edildi\n",
+            "n11.csv": "Sipariş No;Ürün Adı;Miktar;Toplam Tutar;n11 Komisyonu;Durum\nN1;Çanta;3;900;162;Tamamlandı\n",
+        }
+        expected = {
+            "amazon.txt": {"Blue Mug": [2, 400], "Red Cup": [1, 150]},
+            "hepsiburada.csv": {"Kupa": [2, 500], "Tabak": [0, 0]},
+            "n11.csv": {"Çanta": [3, 900]},
+        }
+        for fname, content in files.items():
+            open("/tmp/pp_e2e/" + fname, "w", encoding="utf-8").write(content)
+            pg.set_input_files("#file", "/tmp/pp_e2e/" + fname)
+            pg.wait_for_function("document.getElementById('fileMsg').textContent.startsWith('✅')||document.getElementById('fileMsg').textContent.startsWith('⚠️')")
+            got = pg.evaluate("Object.fromEntries(PRODUCTS.map(p=>[p.name,[p.units,p.revenue]]))")
+            check(f"places de marché : {fname} lu correctement", got == expected[fname], got)
+        check("places de marché : 14 choix dans la liste", pg.locator("#s-market option").count() == 14)
+
     def ai():
         pg.click("#aiBtn"); pg.wait_for_selector(".reco")
         check("IA : 3 recommandations affichées", pg.locator(".reco").count() == 3)
@@ -188,7 +212,7 @@ with sync_playwright() as p:
         log = open("/tmp/pp_e2e/srv.log").read()
         check("sécurité : aucune clé Trendyol dans les journaux", "SECRETXYZ" not in log and "KEYABCD" not in log)
 
-    for name, fn in [("Landing", landing), ("Essai + fichier", gate_and_file), ("IA", ai), ("Assistant", support),
+    for name, fn in [("Landing", landing), ("Essai + fichier", gate_and_file), ("Places de marché", marketplaces), ("IA", ai), ("Assistant", support),
                      ("Trendyol", trendyol_flow), ("Magasins", stores), ("Admin", admin),
                      ("Expiration", expiry), ("Sécurité", security)]:
         section(name, fn)

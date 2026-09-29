@@ -64,6 +64,9 @@ hr.cut{border:0;border-top:1px dashed var(--line);margin:14px 0}
 section{padding:64px 0;border-top:1px solid var(--line)}
 h3{font:800 clamp(28px,4vw,40px)/1.05 var(--display);letter-spacing:-.025em;margin:0 0 16px;max-width:22ch}
 .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;margin-top:32px}
+.mks{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.mk{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-weight:600;font-size:15px}
+.mk.api{border-color:var(--green);color:var(--green)}
 .feats .step{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:18px}
 .step b{display:block;font:800 44px/1 var(--display);color:var(--line);margin-bottom:10px}
 .step h4{margin:0 0 6px;font:600 18px/1.3 var(--body)}
@@ -152,6 +155,15 @@ footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px soli
     </div>
   </div>
 </div>
+
+<section id="pazaryerleri">
+  <div class="wrap">
+    <h3>Tüm pazaryerlerin tek yerde</h3>
+    <p class="lede">Satış raporunu (Excel/CSV) yükle, sütunları otomatik tanıyalım. Trendyol'da API ile her gece otomatik güncelleme.</p>
+    <div class="mks"><span class="mk api">Trendyol</span><span class="mk">Hepsiburada</span><span class="mk">Amazon</span><span class="mk">n11</span><span class="mk">Çiçeksepeti</span><span class="mk">Pazarama</span><span class="mk">PttAVM</span><span class="mk">Koçtaş</span><span class="mk">Teknosa</span><span class="mk">idefix</span><span class="mk">Farmazon</span><span class="mk">Trendruum</span><span class="mk">Temu</span></div>
+    <p class="note"><span class="mk api" style="font-size:12px">API</span> otomatik bağlantı · diğerleri rapor yükleyerek. Yeni API bağlantıları sırayla ekleniyor.</p>
+  </div>
+</section>
 
 <section id="neden">
   <div class="wrap">

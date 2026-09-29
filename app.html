@@ -137,7 +137,7 @@ table.simtable{min-width:640px}
       <label class="drop" id="drop">
         <input type="file" id="file" accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
         <span id="dropText"><strong>CSV veya Excel dosyasını buraya bırak</strong><br>
-        <span class="muted">ya da seçmek için tıkla (Trendyol / Hepsiburada sipariş raporu)</span></span>
+        <span class="muted">ya da seçmek için tıkla (Trendyol, Hepsiburada, Amazon, n11, Çiçeksepeti, Pazarama, PttAVM, Temu… sipariş raporu)</span></span>
       </label>
       <p class="msg muted">Satıcı panelinden sipariş raporunu Excel veya CSV olarak indir ve buraya yükle. Gerekli sütunlar: <strong>ürün adı</strong>, <strong>adet</strong> ve <strong>satış tutarı</strong>. Komisyon tutarı ve maliyet sütunları varsa otomatik kullanılır.</p>
       <div class="or"><span>veya</span></div>
@@ -164,7 +164,7 @@ table.simtable{min-width:640px}
       </div>
       <div class="settings">
         <label class="f">Pazaryeri
-          <select id="s-market"><option>Trendyol</option><option>Hepsiburada</option><option>Diğer</option></select></label>
+          <select id="s-market"><option>Trendyol</option><option>Hepsiburada</option><option>Amazon</option><option>n11</option><option>Çiçeksepeti</option><option>Pazarama</option><option>PttAVM</option><option>Koçtaş</option><option>Teknosa</option><option>idefix</option><option>Farmazon</option><option>Trendruum</option><option>Temu</option><option>Diğer</option></select></label>
         <label class="f">Komisyon (%)<input type="number" inputmode="decimal" id="s-comm" value="18" min="0" max="100"></label>
         <label class="f">Kargo / sipariş (₺)<input type="number" inputmode="decimal" id="s-ship" value="60" min="0"></label>
         <label class="f">Hizmet bedeli / sipariş (₺)<input type="number" inputmode="decimal" id="s-fee" value="10" min="0"></label>
@@ -423,25 +423,25 @@ function parseCSV(text){
 // ---------- Détection des colonnes ----------
 const norm = s => String(s||"").toLocaleLowerCase("tr-TR").replace(/ı/g,"i").replace(/ş/g,"s").replace(/ğ/g,"g").replace(/ü/g,"u").replace(/ö/g,"o").replace(/ç/g,"c").trim();
 const FIELDS = {
-  name:     {label:"Ürün adı *", keys:["urun adi","urun ismi","product name","urun","product","model"]},
-  units:    {label:"Adet", keys:["adet","miktar","quantity","qty"]},
-  amount:   {label:"Satış tutarı *", keys:["faturalanacak tutar","satis tutari","toplam tutar","tutar","birim fiyat","satis fiyati","fiyat","price","amount","total"]},
-  comm:     {label:"Komisyon tutarı", keys:["komisyon tutari","komisyon","commission"]},
+  name:     {label:"Ürün adı *", keys:["urun adi","urun ismi","product name","product-name","product title","item name","urun","product","title","model"]},
+  units:    {label:"Adet", keys:["adet","miktar","quantity","qty","units"]},
+  amount:   {label:"Satış tutarı *", keys:["faturalanacak tutar","satis tutari","toplam tutar","tutar","birim fiyat","satis fiyati","fiyat","item-price","item price","price","amount","total"]},
+  comm:     {label:"Komisyon tutarı", keys:["komisyon tutari","komisyon","commission","referral fee"]},
   cost:     {label:"Maliyet", keys:["maliyet","alis fiyati","cost"]},
-  order:    {label:"Sipariş / paket no", keys:["siparis numarasi","siparis no","paket no","paket numarasi","order number","order id","order"]},
-  status:   {label:"Sipariş durumu", keys:["siparis durumu","durum","status"]},
+  order:    {label:"Sipariş / paket no", keys:["siparis numarasi","siparis no","paket no","paket numarasi","order number","order id","order-id","order"]},
+  status:   {label:"Sipariş durumu", keys:["siparis durumu","durum","order-status","order status","item-status","status"]},
   ship:     {label:"Kargo tutarı", keys:["kargo tutari","kargo ucreti","kargo bedeli","shipping cost","shipping fee"]},
   fee:      {label:"Hizmet bedeli", keys:["hizmet bedeli","islem bedeli","service fee"]},
 };
-let RAW={headers:[],rows:[]}, MAP={}, PRODUCTS=[], INFO={}, COST_MODE="auto", sortKey="net_profit", sortDir=1;
+let RAW={headers:[],rows:[]}, MAP={}, PRODUCTS=[], INFO={}, COST_MODE="auto", AMOUNT_MODE="auto", sortKey="net_profit", sortDir=1;
 
 function detect(headers){
   const n=headers.map(norm), m={}, used=new Set();
   for(const [f,def] of Object.entries(FIELDS)){
     m[f]=-1;
     for(const k of def.keys){
-      const i=n.findIndex((h,idx)=>!used.has(idx)&&h.includes(k)&&!(f==="comm"&&h.includes("oran"))&&!(f==="name"&&(h.includes("kod")||/\bno\b|numara|barkod|durum/.test(h)))
-        &&!(f==="amount"&&/komisyon|kargo|indirim|hizmet|alis|maliyet|kdv|iade/.test(h)));
+      const i=n.findIndex((h,idx)=>!used.has(idx)&&h.includes(k)&&!(f==="comm"&&h.includes("oran"))&&!(f==="name"&&(h.includes("kod")||/\bno\b|numara|barkod|durum|\bid\b|sku|asin|barcode/.test(h)))
+        &&!(f==="amount"&&/komisyon|kargo|indirim|hizmet|alis|maliyet|kdv|iade|shipping|tax|vergi|fee|discount|promotion/.test(h)));
       if(i>-1){m[f]=i;used.add(i);break;}
     }
   }
@@ -455,8 +455,13 @@ function renderMap(){
     +`<label class="f">Maliyet sütunu ne gösteriyor?<select id="costMode">
         <option value="auto" ${COST_MODE==="auto"?"selected":""}>Otomatik algıla</option>
         <option value="unit" ${COST_MODE==="unit"?"selected":""}>Birim maliyet (1 adet)</option>
-        <option value="line" ${COST_MODE==="line"?"selected":""}>Satır toplamı (adet × birim)</option></select></label>`;
+        <option value="line" ${COST_MODE==="line"?"selected":""}>Satır toplamı (adet × birim)</option></select></label>`
+    +`<label class="f">Satış tutarı sütunu ne gösteriyor?<select id="amountMode">
+        <option value="auto" ${AMOUNT_MODE==="auto"?"selected":""}>Otomatik algıla</option>
+        <option value="unit" ${AMOUNT_MODE==="unit"?"selected":""}>Birim fiyat (1 adet)</option>
+        <option value="line" ${AMOUNT_MODE==="line"?"selected":""}>Satır toplamı (adet × fiyat)</option></select></label>`;
   $("costMode").addEventListener("change",e=>{COST_MODE=e.target.value; aggregate();});
+  $("amountMode").addEventListener("change",e=>{AMOUNT_MODE=e.target.value; aggregate();});
   $("map").querySelectorAll("select[data-f]").forEach(s=>s.addEventListener("change",()=>{
     MAP[s.dataset.f]=+s.value; aggregate();
     if(PRODUCTS.length) fileStatus("ok","✅ "+PRODUCTS.length+" ürün hesaplandı. Sonuçlar aşağıda.");
@@ -482,7 +487,9 @@ function aggregate(){
     return;
   }
   const hAmount=norm(RAW.headers[MAP.amount]);
-  const isUnitPrice=/birim|fiyat|price/.test(hAmount)&&!/tutar|toplam|total|amount/.test(hAmount);
+  // Amazon « item-price » = prix × quantité ; « Birim Fiyatı » = prix d'une unité
+  const isUnitPrice=AMOUNT_MODE==="unit"||(AMOUNT_MODE==="auto"&&!/item-price|item price/.test(hAmount)
+    &&/birim|fiyat|price/.test(hAmount)&&!/tutar|toplam|total|amount/.test(hAmount));
   const col=(r,f)=>MAP[f]>-1?r[MAP[f]]:undefined;
 
   // 1) lignes valides, sans les commandes annulées
@@ -490,12 +497,12 @@ function aggregate(){
   for(const r of RAW.rows){
     const name=String(r[MAP.name]??"").trim(); if(!name) continue;
     const st=norm(col(r,"status")??"");
-    if(/iptal|cancel/.test(st)){cancelled++;continue;}
+    if(/iptal|cancel|tedarik edilemedi|unsupplied/.test(st)){cancelled++;continue;}
     const units=MAP.units>-1?(toNum(r[MAP.units])||1):1;
     const amt=toNum(r[MAP.amount]);
-    if(!(amt>0)&&!/iade|return/.test(st)){zeroRevenue++;continue;}
+    if(!(amt>0)&&!/iade|return|refund/.test(st)){zeroRevenue++;continue;}
     lines.push({name,units,revenue:isUnitPrice?amt*units:amt,
-      returned:/iade|return/.test(st),
+      returned:/iade|return|refund/.test(st),
       order:String(col(r,"order")??"").trim(),
       comm:MAP.comm>-1?Math.abs(toNum(r[MAP.comm])):0,
       cost:MAP.cost>-1?toNum(r[MAP.cost]):0,
@@ -548,7 +555,7 @@ function aggregate(){
   }));
   const soldKeys=new Set(lines.filter(l=>!l.returned).map((l,i)=>l.order||"#"+i));
   const retKeys=new Set(lines.filter(l=>l.returned).map((l,i)=>l.order||"#r"+i));
-  INFO={cancelled,zeroRevenue,costMode,hasStatus:MAP.status>-1,hasOrder:MAP.order>-1,
+  INFO={cancelled,zeroRevenue,costMode,unitPrice:isUnitPrice,hasStatus:MAP.status>-1,hasOrder:MAP.order>-1,
         orderCount:soldKeys.size,returnsTotal:retKeys.size};
   compute();
 }
@@ -660,6 +667,7 @@ function renderSources(){
     ? "Maliyet: dosyadan ("+(INFO.costMode==="line"?"satır toplamı → birime bölündü":"birim maliyet")+")"+(est?", "+est+" üründe tahmini":"")
     : "Maliyet: dosyada yok, fiyatın %"+sv("costpct")+"'i tahmin edildi. Turuncu kutulara gerçek maliyeti gir");
   const missC=PRODUCTS.reduce((a,p)=>a+p.commMissingLines,0);
+  S.push("Satış tutarı: "+(INFO.unitPrice?"birim fiyat × adet":"satır toplamı"));
   S.push(MAP.comm>-1?"Komisyon: dosyadan"+(missC?" ("+missC+" satırda yok, %"+sv("comm")+" ile tamamlandı)":""):"Komisyon: ayarlardan (%"+sv("comm")+")");
   S.push(MAP.ship>-1?"Kargo: dosyadan":"Kargo: sipariş başı "+sv("ship")+" ₺ × "+orders+" sipariş"+(INFO.hasOrder?", aynı paketteki ürünler kargoyu paylaşır":" (her satır 1 sipariş sayıldı)"));
   S.push(MAP.fee>-1?"Hizmet bedeli: dosyadan":"Hizmet bedeli: sipariş başı "+sv("fee")+" ₺");
