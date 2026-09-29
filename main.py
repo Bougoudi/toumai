@@ -9,6 +9,7 @@ Limites : PER_IP_LIMIT requêtes par heure et par IP, DAILY_CAP requêtes par jo
 """
 
 import json
+import logging
 import os
 import threading
 import time
@@ -23,6 +24,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
+log = logging.getLogger("profitpilot")
 
 # Clé API : variable d'environnement, ou « Secret File » Render (/etc/secrets/ANTHROPIC_API_KEY)
 if not os.getenv("ANTHROPIC_API_KEY"):
@@ -199,6 +201,9 @@ async def analyze(body: AnalyzeRequest, request: Request):
     except anthropic.AuthenticationError:
         raise HTTPException(503, "Yapay zekâ anahtarı geçersiz. Yönetici ile iletişime geç.")
     except anthropic.APIStatusError as e:
+        log.error("Anthropic API %s: %s", e.status_code, e.message)
+        if "credit balance" in str(e.message).lower():
+            raise HTTPException(503, "Yapay zekâ hesabında kredi yok. Yönetici bakiye eklemeli.")
         raise HTTPException(502, f"Yapay zekâ servisi hata verdi ({e.status_code}).")
     except anthropic.APIConnectionError:
         raise HTTPException(502, "Yapay zekâ servisine ulaşılamadı.")
