@@ -81,6 +81,8 @@ h3{font:800 clamp(28px,4vw,40px)/1.05 var(--display);letter-spacing:-.025em;marg
 .join form{display:grid;gap:12px}
 .join input{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px;font:400 16px var(--body);color:var(--ink)}
 .formmsg{font-size:14px;color:var(--green);min-height:1.2em;margin:0}
+.formmsg.err{color:var(--red)}
+.btn:disabled{opacity:.6;cursor:wait}
 footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px solid var(--line)}
 
 @media (max-width:860px){
@@ -175,9 +177,10 @@ footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px soli
     <form id="joinForm" novalidate>
       <input id="jName" placeholder="Adın" autocomplete="name" required>
       <input id="jStore" placeholder="Mağaza adın (Trendyol, Hepsiburada…)" required>
+      <input id="jPhone" type="tel" inputmode="tel" placeholder="WhatsApp numaran (05xx xxx xx xx)" autocomplete="tel" required>
       <input id="jSales" placeholder="Aylık yaklaşık satış adedi">
-      <button class="btn" type="submit">WhatsApp ile listeye katıl</button>
-      <p class="formmsg" id="formMsg"></p>
+      <button class="btn" type="submit" id="jBtn">Listeye katıl</button>
+      <p class="formmsg" id="formMsg" role="status"></p>
     </form>
   </div>
 </section>
@@ -223,13 +226,33 @@ function calc(){
 document.querySelectorAll("#calc input").forEach(i=>i.addEventListener("input",calc));
 calc();
 
-$("joinForm").addEventListener("submit",e=>{
+// Source de l'inscription : lien partagé avec ?src=telegram, ?src=instagram, etc.
+const params=new URLSearchParams(location.search);
+const SOURCE=(params.get("src")||params.get("utm_source")||"site").slice(0,50);
+
+$("joinForm").addEventListener("submit",async e=>{
   e.preventDefault();
-  const name=$("jName").value.trim(), store=$("jStore").value.trim(), sales=$("jSales").value.trim();
-  if(!name||!store){$("formMsg").textContent="Adını ve mağaza adını yaz, sonra tekrar dene.";return;}
-  const text="Merhaba, ProfitPilot AI erken erişim listesine katılmak istiyorum.\nAd: "+name+"\nMağaza: "+store+(sales?"\nAylık satış: "+sales:"");
-  window.open("https://wa.me/"+WHATSAPP_NUMBER+"?text="+encodeURIComponent(text),"_blank","noopener");
-  $("formMsg").textContent="WhatsApp açıldı. Mesajı gönderdiğinde listeye eklenirsin.";
+  const msg=$("formMsg"), btn=$("jBtn");
+  const name=$("jName").value.trim(), store=$("jStore").value.trim(), phone=$("jPhone").value.trim(), sales=$("jSales").value.trim();
+  msg.className="formmsg";
+  if(!name||!store||!phone){msg.className="formmsg err";msg.textContent="Adını, mağaza adını ve WhatsApp numaranı yaz.";return;}
+  btn.disabled=true; msg.textContent="Kaydediliyor…";
+  try{
+    const res=await fetch("/api/waitlist",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({name,store,phone,monthly_sales:sales,source:SOURCE})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok){
+      const d=data.detail;
+      throw new Error(typeof d==="string"?d:(Array.isArray(d)?"Bilgileri kontrol et ve tekrar dene.":"Bir hata oldu, tekrar dene."));
+    }
+    const text="Merhaba, ProfitPilot AI erken erişim listesine katıldım.\nAd: "+name+"\nMağaza: "+store;
+    const wa="https://wa.me/"+WHATSAPP_NUMBER+"?text="+encodeURIComponent(text);
+    msg.innerHTML=(data.already?"Zaten listedesin 🙌 ":"Listeye eklendin 🎉 ")+
+      "Seninle WhatsApp'tan iletişime geçeceğiz. Beklemek istemezsen <a href=\""+wa+"\" target=\"_blank\" rel=\"noopener\">hemen yaz</a>.";
+    $("joinForm").querySelectorAll("input").forEach(i=>i.value="");
+  }catch(err){
+    msg.className="formmsg err"; msg.textContent=err.message;
+  }finally{ btn.disabled=false; }
 });
 </script>
 </body>
