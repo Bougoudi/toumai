@@ -162,6 +162,22 @@ const fmt = new Intl.NumberFormat("tr-TR",{style:"currency",currency:"TRY",maxim
 const pct = v => v.toLocaleString("tr-TR",{maximumFractionDigits:1})+" %";
 const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
+const SOURCE=(()=>{
+  const q=new URLSearchParams(location.search), u=q.get("src")||q.get("utm_source");
+  if(u) return u.slice(0,50);
+  try{ return sessionStorage.getItem("pp_src")||"site"; }catch(e){ return "site"; }
+})();
+// Compteur anonyme de l'entonnoir : un signal par étape et par onglet, sans cookie
+function track(name){
+  try{ const k="pp_ev_"+name; if(sessionStorage.getItem(k)) return; sessionStorage.setItem(k,"1"); }catch(e){}
+  const body=JSON.stringify({name,source:SOURCE});
+  try{
+    if(navigator.sendBeacon&&navigator.sendBeacon("/api/event",new Blob([body],{type:"application/json"}))) return;
+  }catch(e){}
+  fetch("/api/event",{method:"POST",headers:{"Content-Type":"application/json"},body,keepalive:true}).catch(()=>{});
+}
+track("app_view");
+
 const store = {
   get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}},
   set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
@@ -348,6 +364,7 @@ async function handleFile(f){
     loadRows(rows);
     if(!PRODUCTS.length) throw new Error("Ürün bulunamadı. Aşağıdaki sütun eşleştirmesinde ürün adı ve satış tutarını seç.");
     const lines=RAW.rows.filter(r=>r.some(c=>String(c).trim()!=="")).length;
+    track("file_loaded");
     fileStatus("ok","✅ Dosya yüklendi: "+lines+" satır, "+PRODUCTS.length+" ürün. Sonuçlar aşağıda.");
     $("results").scrollIntoView({behavior:"smooth",block:"start"});
   }catch(e){
@@ -369,6 +386,7 @@ drop.addEventListener("drop",e=>handleFile(e.dataTransfer.files[0]));
 const ACTIONS={fiyat_artir:"Fiyatı artır",reklami_azalt:"Reklamı azalt",maliyeti_dusur:"Maliyeti düşür",satistan_cek:"Satıştan çek",one_cikar:"Öne çıkar"};
 const r2 = v => Math.round(v*100)/100;
 $("aiBtn").addEventListener("click",async()=>{
+  track("ai_requested");
   const btn=$("aiBtn"); btn.disabled=true; btn.innerHTML='<span class="spinner"></span> Analiz ediliyor…';
   $("aiMsg").textContent=""; $("aiOut").innerHTML="";
   const products=[...PRODUCTS].sort((a,b)=>b.revenue-a.revenue).slice(0,60).map(p=>({

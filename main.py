@@ -5,7 +5,8 @@
 - GET  /health      -> état du service
 - POST /api/analyze -> 3 recommandations IA (Claude) à partir des chiffres par produit
 - POST /api/waitlist -> inscription à la liste d'attente
-- GET  /admin        -> liste des inscrits (protégée par ADMIN_TOKEN), export CSV
+- POST /api/event    -> compteur anonyme de l'entonnoir (visites, imports, analyses)
+- GET  /admin        -> entonnoir + liste des inscrits (protégée par ADMIN_TOKEN), export CSV
 
 Limites : PER_IP_LIMIT requêtes par heure et par IP, DAILY_CAP requêtes par jour au total.
 """
@@ -19,7 +20,7 @@ import re
 import threading
 import time
 from collections import defaultdict, deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import anthropic
@@ -28,6 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 
+import metrics
 import waitlist
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -51,6 +53,7 @@ PER_IP_LIMIT = int(os.getenv("PER_IP_LIMIT", "5"))
 DAILY_CAP = int(os.getenv("DAILY_CAP", "200"))
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 WAITLIST_PER_IP = 10  # inscriptions max par heure et par IP (anti-spam)
+EVENTS_PER_IP = 60    # événements max par heure et par IP (anti-gonflage des compteurs)
 
 app = FastAPI(title="ProfitPilot AI", docs_url=None, redoc_url=None)
 app.add_middleware(
@@ -67,6 +70,7 @@ _lock = threading.Lock()
 _ip_hits: dict[str, deque] = defaultdict(deque)
 _daily = {"day": "", "count": 0}
 _wl_hits: dict[str, deque] = defaultdict(deque)
+_ev_hits: dict[str, deque] = defaultdict(deque)
 
 
 def _client_ip(request: Request) -> str:
@@ -95,15 +99,22 @@ def _check_limits(ip: str) -> None:
         _daily["count"] += 1
 
 
-def _check_waitlist_limit(ip: str) -> None:
+def _under_hourly_limit(store: dict[str, deque], ip: str, limit: int) -> bool:
+    """Enregistre un passage et indique s'il reste sous `limit` par heure pour cette IP."""
     now = time.time()
     with _lock:
-        hits = _wl_hits[ip]
+        hits = store[ip]
         while hits and now - hits[0] > 3600:
             hits.popleft()
-        if len(hits) >= WAITLIST_PER_IP:
-            raise HTTPException(429, "Çok fazla deneme. Biraz sonra tekrar dene.")
+        if len(hits) >= limit:
+            return False
         hits.append(now)
+        return True
+
+
+def _check_waitlist_limit(ip: str) -> None:
+    if not _under_hourly_limit(_wl_hits, ip, WAITLIST_PER_IP):
+        raise HTTPException(429, "Çok fazla deneme. Biraz sonra tekrar dene.")
 
 
 # --------------------------------------------------------------------------- #
@@ -128,6 +139,11 @@ class Product(BaseModel):
 class AnalyzeRequest(BaseModel):
     marketplace: str = Field(default="Trendyol", max_length=40)
     products: list[Product] = Field(min_length=1, max_length=60)
+
+
+class EventRequest(BaseModel):
+    name: str = Field(max_length=40)
+    source: str = Field(default="site", max_length=50)
 
 
 class WaitlistRequest(BaseModel):
@@ -267,6 +283,64 @@ def join_waitlist(body: WaitlistRequest, request: Request):
     return {"ok": True, "already": not added}
 
 
+@app.post("/api/event", status_code=204)
+def track_event(body: EventRequest, request: Request):
+    # un compteur ne doit jamais casser la page : erreurs silencieuses
+    if _under_hourly_limit(_ev_hits, _client_ip(request), EVENTS_PER_IP):
+        try:
+            metrics.record(body.name, body.source)
+        except Exception:
+            log.exception("event record failed")
+    return Response(status_code=204)
+
+
+def _pct(a: int, b: int) -> str:
+    return f"{a / b * 100:.1f} %" if b else "–"
+
+
+def _funnel_html(rows: list[dict], days: int = 30) -> str:
+    try:
+        m = metrics.summary(days)
+    except Exception:
+        log.exception("metrics summary failed")
+        return '<p class="warn">Statistiques indisponibles pour le moment.</p>'
+    since = (datetime.now(timezone.utc).date() - timedelta(days=days - 1)).isoformat()
+    signups: dict[str, int] = defaultdict(int)
+    for r in rows:
+        if r["created_at"][:10] >= since:
+            signups[r["source"] or "site"] += 1
+    t = m["totals"]
+    steps = [
+        ("Visites de la landing", t["landing_view"], None, ""),
+        ("Essais (ouverture de l'app)", t["app_view"], t["landing_view"], "cible > 5 %"),
+        ("Rapports importés (activation)", t["file_loaded"], t["app_view"], "cible > 60 %"),
+        ("Analyses IA demandées", t["ai_requested"], t["file_loaded"], ""),
+        ("Inscrits liste d'attente", sum(signups.values()), t["landing_view"], ""),
+    ]
+    e = html.escape
+    lines = "".join(
+        f"<tr><td>{e(label)}</td><td class='n'>{n}</td><td class='n'>{_pct(n, base) if base is not None else ''}</td>"
+        f"<td class='muted'>{e(goal)}</td></tr>"
+        for label, n, base, goal in steps
+    )
+    sources = sorted(set(m["by_source"]) | set(signups),
+                     key=lambda s: -(m["by_source"].get(s, {}).get("landing_view", 0) + signups.get(s, 0)))
+    src_lines = "".join(
+        f"<tr><td>{e(s)}</td>"
+        + "".join(f"<td class='n'>{m['by_source'].get(s, {}).get(k, 0)}</td>" for k in metrics.EVENTS)
+        + f"<td class='n'>{signups.get(s, 0)}</td></tr>"
+        for s in sources
+    )
+    return f"""<h2>Entonnoir · {days} derniers jours</h2>
+<div class="tw"><table class="small"><thead><tr><th>Étape</th><th>Nombre</th><th>Conversion</th><th>Objectif du plan</th></tr></thead>
+<tbody>{lines}</tbody></table></div>
+<h2>Par source (?src=…)</h2>
+<div class="tw"><table class="small"><thead><tr><th>Source</th><th>Landing</th><th>App</th><th>Imports</th><th>IA</th><th>Inscrits</th></tr></thead>
+<tbody>{src_lines or '<tr><td colspan="6" class="muted">Pas encore de données.</td></tr>'}</tbody></table></div>
+<p class="muted">Compteurs anonymes, une fois par visite et par onglet. Les pourcentages comparent chaque étape à la précédente.</p>
+<h2>Inscrits</h2>"""
+
+
 def _wa_number(phone: str) -> str:
     """Numéro au format international sans + pour wa.me (05xx… → 905xx…)."""
     digits = re.sub(r"\D", "", phone)
@@ -318,12 +392,13 @@ body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,san
 h1{{margin:0 0 4px;font-size:26px}} .big{{font-size:40px;font-weight:800;color:var(--green)}}
 .muted{{color:var(--muted)}} .warn{{color:var(--red);font-weight:600}}
 a{{color:var(--green)}} .tw{{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--paper);margin-top:14px}}
-table{{border-collapse:collapse;width:100%;min-width:760px}} th,td{{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}}
+table{{border-collapse:collapse;width:100%;min-width:760px}} table.small{{min-width:0}} td.n{{text-align:right;font-variant-numeric:tabular-nums}} h2{{font-size:18px;margin:22px 0 0}} th,td{{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}}
 th{{font-size:12px;color:var(--muted)}}
 </style></head><body><div class="wrap">
 <h1>Liste d'attente ProfitPilot</h1>
 <div class="big">{len(rows)} <span class="muted" style="font-size:16px;font-weight:400">inscrits · objectif 100</span></div>
 {warn}
+{_funnel_html(rows)}
 <p><a href="/admin/waitlist.csv?token={e(token)}">Télécharger en CSV (Excel)</a></p>
 <div class="tw"><table><thead><tr><th>Date (UTC)</th><th>Nom</th><th>Boutique</th><th>Téléphone</th><th>Ventes/mois</th><th>Source</th><th></th></tr></thead>
 <tbody>{body_rows or '<tr><td colspan="7" class="muted">Aucun inscrit pour le moment.</td></tr>'}</tbody></table></div>

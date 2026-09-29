@@ -229,6 +229,17 @@ calc();
 // Source de l'inscription : lien partagé avec ?src=telegram, ?src=instagram, etc.
 const params=new URLSearchParams(location.search);
 const SOURCE=(params.get("src")||params.get("utm_source")||"site").slice(0,50);
+try{ if(SOURCE!=="site"||!sessionStorage.getItem("pp_src")) sessionStorage.setItem("pp_src",SOURCE); }catch(e){}
+// Compteur anonyme de l'entonnoir : un signal par étape et par onglet, sans cookie
+function track(name){
+  try{ const k="pp_ev_"+name; if(sessionStorage.getItem(k)) return; sessionStorage.setItem(k,"1"); }catch(e){}
+  const body=JSON.stringify({name,source:SOURCE});
+  try{
+    if(navigator.sendBeacon&&navigator.sendBeacon("/api/event",new Blob([body],{type:"application/json"}))) return;
+  }catch(e){}
+  fetch("/api/event",{method:"POST",headers:{"Content-Type":"application/json"},body,keepalive:true}).catch(()=>{});
+}
+track("landing_view");
 
 $("joinForm").addEventListener("submit",async e=>{
   e.preventDefault();

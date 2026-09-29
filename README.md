@@ -6,6 +6,7 @@ Trendyol / Hepsiburada satıcıları için ürün bazında kârlılık analizi.
 - `app.html` — uygulama: CSV/Excel sipariş raporu içe aktarma, ürün bazında net kâr, 3 yapay zekâ önerisi
 - `main.py` — FastAPI: `/`, `/app.html`, `/health`, `POST /api/analyze` (Claude), `POST /api/waitlist`, `/admin?token=…`
 - `waitlist.py` — bekleme listesi (Postgres, yoksa yerel dosya)
+- `metrics.py` — anonim dönüşüm hunisi sayaçları (ziyaret → deneme → aktivasyon), admin sayfasında görünür
 
 ## Çalıştırma
 
