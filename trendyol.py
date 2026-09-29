@@ -127,6 +127,7 @@ def fetch_orders(client: httpx.Client, seller_id: str, start_ms: int, end_ms: in
 def fetch_commissions(client: httpx.Client, seller_id: str, start_ms: int, end_ms: int) -> dict[tuple[str, str], float]:
     """Commission réelle par (n° de commande, code-barres), depuis le relevé de compte (ventes)."""
     out: dict[tuple[str, str], float] = defaultdict(float)
+    seen: set[str] = set()   # une transaction n'est comptée qu'une fois, même si Trendyol la renvoie deux fois
     for w_start, w_end in _windows(start_ms, end_ms, 15):
         page = 0
         while page < MAX_PAGES:
@@ -134,6 +135,11 @@ def fetch_commissions(client: httpx.Client, seller_id: str, start_ms: int, end_m
                 "startDate": w_start, "endDate": w_end, "transactionType": "Sale", "page": page, "size": 1000,
             })
             for item in data.get("content") or []:
+                tid = str(item.get("id") or "")
+                if tid:
+                    if tid in seen:
+                        continue
+                    seen.add(tid)
                 amount = abs(_num(item.get("commissionAmount")))
                 if amount:
                     out[(str(item.get("orderNumber") or ""), str(item.get("barcode") or ""))] += amount

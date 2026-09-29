@@ -31,3 +31,9 @@ uvicorn main:app --reload
 Sınırlar bellekte tutulur; servis yeniden başlayınca sıfırlanır.
 
 Kayıt linklerine `?src=instagram` gibi bir parametre eklersen, admin sayfasında kaydın hangi kanaldan geldiği görünür.
+
+## Testler
+
+`sh tests/run.sh` — uçtan uca test: yerel Postgres, sahte Trendyol API'si, sahte Anthropic API'si ve mobil tarayıcı
+(Playwright). Landing, deneme kaydı, dosya içe aktarma, hesaplamalar, Excel, yapay zekâ, destek asistanı,
+Trendyol bağlantısı ve gece senkronizasyonu, mağazalar, admin, deneme bitişi ve güvenlik kontrollerini çalıştırır.
