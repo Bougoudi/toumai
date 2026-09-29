@@ -33,15 +33,17 @@ import waitlist
 BASE_DIR = Path(__file__).resolve().parent
 log = logging.getLogger("profitpilot")
 
-# Clé API : variable d'environnement, ou « Secret File » Render (/etc/secrets/ANTHROPIC_API_KEY)
-if not os.getenv("ANTHROPIC_API_KEY"):
-    _secret = Path("/etc/secrets/ANTHROPIC_API_KEY")
+# Secrets : variable d'environnement, ou « Secret File » Render (/etc/secrets/<NOM>)
+for _name in ("ANTHROPIC_API_KEY", "DATABASE_URL"):
+    if os.getenv(_name):
+        continue
+    _secret = Path("/etc/secrets") / _name
     if _secret.is_file():
-        _key = _secret.read_text(encoding="utf-8").strip()
-        if _key.startswith("ANTHROPIC_API_KEY="):
-            _key = _key.split("=", 1)[1].strip()
-        if _key:
-            os.environ["ANTHROPIC_API_KEY"] = _key.strip("\"'")
+        _val = _secret.read_text(encoding="utf-8").strip()
+        if _val.startswith(_name + "="):
+            _val = _val.split("=", 1)[1].strip()
+        if _val:
+            os.environ[_name] = _val.strip("\"'")
 
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
