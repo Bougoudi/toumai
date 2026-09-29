@@ -62,6 +62,17 @@ tr:last-child td{border-bottom:0}
 td input{width:90px;background:var(--field);border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:500 13px var(--mono);color:var(--ink);text-align:right}
 td input.missing{border-color:var(--amber)}
 .card.cta{border-color:var(--green)}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:14px 0 10px}
+.or::before,.or::after{content:"";flex:1;border-top:1px solid var(--line)}
+.tyform{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.tyform p,.tyform .btn,.tyform .check{grid-column:1/-1}
+.tyform input,.tyform select{width:100%;background:var(--field);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:500 15px/1.2 var(--mono);color:var(--ink)}
+.check{display:flex;gap:8px;align-items:center;font-size:14px}
+.storebar{display:flex;gap:10px;align-items:flex-end;margin-bottom:12px}
+.storebar select{width:100%;background:var(--field);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:500 15px/1.2 var(--mono);color:var(--ink)}
+.simsum{margin:12px 0 4px;font-size:15px}
+table.simtable{min-width:640px}
+@media (max-width:420px){.tyform{grid-template-columns:1fr}}
 .trialbar{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:14px;margin-bottom:8px}
 .trialbar a{color:var(--green);font-weight:600}
 .gate{position:fixed;inset:0;background:rgba(10,16,28,.72);display:flex;align-items:flex-start;justify-content:center;z-index:50;overflow:auto;padding:24px 16px}
@@ -125,11 +136,27 @@ td input.missing{border-color:var(--amber)}
         <span class="muted">ya da seçmek için tıkla (Trendyol / Hepsiburada sipariş raporu)</span></span>
       </label>
       <p class="msg muted">Satıcı panelinden sipariş raporunu Excel veya CSV olarak indir ve buraya yükle. Gerekli sütunlar: <strong>ürün adı</strong>, <strong>adet</strong> ve <strong>satış tutarı</strong>. Komisyon tutarı ve maliyet sütunları varsa otomatik kullanılır.</p>
+      <div class="or"><span>veya</span></div>
+      <button class="btn ghost" id="tyToggle" type="button" aria-expanded="false" aria-controls="tyForm">🔗 Trendyol'dan otomatik çek</button>
+      <form id="tyForm" class="tyform hidden" autocomplete="off">
+        <p class="msg muted" style="margin-top:0">Son 30 güne kadar siparişlerin ve Trendyol cari hesabındaki <strong>gerçek komisyonlar</strong> otomatik gelir. Bilgiler: Satıcı Paneli → Hesap Bilgilerim → Entegrasyon Bilgileri (yalnızca ana kullanıcı görür).</p>
+        <label class="f">Satıcı ID<input id="tySeller" inputmode="numeric" required></label>
+        <label class="f">API Key<input id="tyKey" required spellcheck="false"></label>
+        <label class="f">API Secret<input id="tySecret" type="password" required spellcheck="false"></label>
+        <label class="f">Dönem<select id="tyDays"><option value="7">Son 7 gün</option><option value="14">Son 14 gün</option><option value="30" selected>Son 30 gün</option></select></label>
+        <label class="check"><input type="checkbox" id="tyRemember"> Bu cihazda hatırla</label>
+        <button class="btn green" id="tyBtn" type="submit">Siparişleri çek</button>
+        <p class="msg muted" style="margin:0">🔒 API bilgilerin sunucumuzda saklanmaz ve kaydedilmez; sadece bu çekim için Trendyol'a iletilir. Salt okunur: hiçbir ürün, fiyat veya stok değiştirilmez.</p>
+      </form>
       <p class="msg" id="fileMsg"></p>
     </div>
 
     <div class="card">
       <h2>2. Mağaza ayarları</h2>
+      <div class="storebar">
+        <label class="f" style="flex:1">Mağaza<select id="storeSel" aria-label="Mağaza"></select></label>
+        <button class="btn ghost" id="storeAdd" type="button">+ Mağaza ekle</button>
+      </div>
       <div class="settings">
         <label class="f">Pazaryeri
           <select id="s-market"><option>Trendyol</option><option>Hepsiburada</option><option>Diğer</option></select></label>
@@ -173,6 +200,16 @@ td input.missing{border-color:var(--amber)}
       <h2>Bu rakamları bir uzmanla yorumlamak ister misin?</h2>
       <p class="muted" style="margin-top:0">Kârlılık denetimi: tüm mağazanın 24 saatte analizi, zarar eden ürünlerin nedenleri ve 20 dakikalık görüşmede 3 net aksiyon. <strong>1.990 ₺</strong>, ödeme rapor hazır olunca.</p>
       <a class="btn green" href="/#denetim" id="auditCta">Denetim iste</a>
+    </div>
+
+    <div class="card" id="simCard">
+      <div class="head-row"><h2>Kampanya simülatörü</h2>
+        <label class="f" style="flex-direction:row;align-items:center;gap:8px">İndirim %<input type="number" inputmode="decimal" id="simDisc" value="10" min="0" max="90" style="width:80px"></label></div>
+      <p class="muted" style="margin:0">Tüm ürünlerde bu kadar indirim yaparsan, aynı satış adediyle kârın ne olur? Komisyon ve KDV yeni fiyata göre, kargo ve maliyet aynı kalır.</p>
+      <div id="simSummary" class="simsum"></div>
+      <div class="tablewrap"><table class="simtable">
+        <thead><tr><th>Ürün</th><th>Fiyat</th><th>Kampanya fiyatı</th><th>Net / adet</th><th>Kampanyada net / adet</th><th>Toplam fark</th></tr></thead>
+        <tbody id="simBody"></tbody></table></div>
     </div>
 
     <div class="card quality" id="qualityCard">
@@ -311,11 +348,38 @@ const store = {
   set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 };
 
+// ---------- Magasins : réglages, coûts et accès Trendyol séparés par magasin ----------
+const DEFAULT_STORE="Mağazam";
+let STORES=store.get("pp_stores",[DEFAULT_STORE]); if(!STORES.length) STORES=[DEFAULT_STORE];
+let CUR_STORE=store.get("pp_store_current",STORES[0]); if(!STORES.includes(CUR_STORE)) CUR_STORE=STORES[0];
+const skey=base=>CUR_STORE===DEFAULT_STORE?base:base+":"+CUR_STORE;   // le 1er magasin garde les anciennes clés
+
 // ---------- Paramètres ----------
 const SETTINGS = ["market","comm","ship","fee","ads","ret","vat","stop","costpct","target"];
-const saved = store.get("pp_settings",{});
-SETTINGS.forEach(k=>{ if(saved[k]!=null&&saved[k]!=="") $("s-"+k).value=saved[k]; $("s-"+k).addEventListener("input",()=>{saveSettings();compute();}); });
-function saveSettings(){const o={};SETTINGS.forEach(k=>o[k]=$("s-"+k).value);store.set("pp_settings",o);}
+const DEFAULTS={}; SETTINGS.forEach(k=>DEFAULTS[k]=$("s-"+k).value);
+function loadSettings(){
+  const saved=store.get(skey("pp_settings"),{});
+  SETTINGS.forEach(k=>{ $("s-"+k).value=(saved[k]!=null&&saved[k]!=="")?saved[k]:DEFAULTS[k]; });
+}
+function saveSettings(){const o={};SETTINGS.forEach(k=>o[k]=$("s-"+k).value);store.set(skey("pp_settings"),o);}
+SETTINGS.forEach(k=>$("s-"+k).addEventListener("input",()=>{saveSettings();compute();}));
+function renderStores(){
+  $("storeSel").innerHTML=STORES.map(n=>`<option ${n===CUR_STORE?"selected":""}>${esc(n)}</option>`).join("");
+}
+$("storeSel").addEventListener("change",e=>{
+  CUR_STORE=e.target.value; store.set("pp_store_current",CUR_STORE); loadSettings(); loadTyCreds();
+  PRODUCTS=[]; $("results").classList.add("hidden"); $("mapCard").classList.add("hidden");
+  fileStatus("","\""+CUR_STORE+"\" seçildi. Bu mağazanın raporunu yükle veya Trendyol'dan çek.");
+});
+$("storeAdd").addEventListener("click",()=>{
+  const n=(prompt("Yeni mağazanın adı:")||"").trim().slice(0,40);
+  if(!n||STORES.includes(n)) return;
+  STORES.push(n); store.set("pp_stores",STORES);
+  CUR_STORE=n; store.set("pp_store_current",n); renderStores(); loadSettings(); loadTyCreds();
+  PRODUCTS=[]; $("results").classList.add("hidden"); $("mapCard").classList.add("hidden");
+  fileStatus("","\""+n+"\" mağazası eklendi. Bu mağazanın raporunu yükle veya Trendyol'dan çek.");
+});
+renderStores(); loadSettings();
 const sv = k => { const v=parseFloat($("s-"+k).value); return isFinite(v)&&v>0?v:0; };
 
 // ---------- Lecture de nombres (formats TR et EN) ----------
@@ -460,10 +524,12 @@ function aggregate(){
   const agg=new Map();
   for(const l of lines){
     const p=agg.get(l.name)||{name:l.name,units:0,revenue:0,orders:0,returns:0,
-      commAmt:0,costTotal:0,costUnits:0,fileShip:0,fileFee:0};
+      commAmt:0,commMissingRev:0,commMissingLines:0,costTotal:0,costUnits:0,fileShip:0,fileFee:0};
     if(l.returned) p.returns+=share(l);
     else{
       p.units+=l.units; p.revenue+=l.revenue; p.commAmt+=l.comm;
+      // ligne sans commission (ex. commande pas encore passée au relevé Trendyol) : complétée au taux des réglages
+      if(!(l.comm>0)){ p.commMissingRev+=l.revenue; p.commMissingLines++; }
       p.orders+=share(l);
     }
     if(l.cost>0&&!l.returned){ p.costTotal+=costMode==="line"?l.cost:l.cost*l.units; p.costUnits+=l.units; }
@@ -482,7 +548,7 @@ function aggregate(){
 
 function compute(){
   if(!PRODUCTS.length) return;
-  const costs=store.get("pp_costs",{});
+  const costs=store.get(skey("pp_costs"),{});
   const commRate=sv("comm")/100, ship=sv("ship"), fee=sv("fee"), ads=sv("ads"), retRate=sv("ret")/100, vatRate=sv("vat")/100, costPct=sv("costpct")/100, stopRate=sv("stop")/100;
   for(const p of PRODUCTS){
     const avgPrice=p.units?p.revenue/p.units:0;
@@ -491,7 +557,7 @@ function compute(){
                : (p.fileUnitCost!=null ? Math.round(p.fileUnitCost*100)/100 : Math.round(avgPrice*costPct*100)/100);
     p.cost=p.unitCost*p.units;
     // commission du fichier si présente (Trendyol la rembourse sur les retours), sinon taux × CA
-    p.commission=MAP.comm>-1&&p.commAmt>0?p.commAmt:p.revenue*commRate;
+    p.commission=MAP.comm>-1?p.commAmt+p.commMissingRev*commRate:p.revenue*commRate;
     // livraison et frais de service : par commande envoyée (y compris celles retournées)
     const shipped=p.orders+p.returns;
     p.shipping=MAP.ship>-1&&p.fileShip>0?p.fileShip:ship*shipped;
@@ -516,7 +582,38 @@ function compute(){
   render();
   renderSources();
   renderQuality();
+  renderSim();
 }
+
+// Net d'une unité vendue au prix P (TVA incluse), mêmes règles que compute()
+function netAt(p,P){
+  const v=sv("vat")/100, st=sv("stop")/100, r=p.revenue>0?p.commission/p.revenue:sv("comm")/100;
+  const fixed=p.units?(p.shipping+p.fees+p.ads+p.returns_loss)/p.units:0;
+  const D=p.unitCost+r*P+fixed;
+  return P-D-Math.max(0,P-D)*v/(1+v)-P/(1+v)*st;
+}
+function renderSim(){
+  const d=Math.min(90,Math.max(0,toNum($("simDisc").value)))/100;
+  const list=PRODUCTS.filter(p=>p.units>0).map(p=>{
+    const now=netAt(p,p.avg_price), camp=netAt(p,p.avg_price*(1-d));
+    return {p,now,camp,diff:(camp-now)*p.units};
+  }).sort((a,b)=>a.diff-b.diff);
+  const totNow=list.reduce((a,x)=>a+x.now*x.p.units,0), totCamp=list.reduce((a,x)=>a+x.camp*x.p.units,0);
+  const lossMakers=list.filter(x=>x.camp<0).length;
+  let msg="Aynı satış adediyle net kâr: <strong>"+fmt.format(totNow)+"</strong> → <strong class=\""+(totCamp<0?"neg":"pos")+"\">"+fmt.format(totCamp)+"</strong>";
+  if(totNow>0&&totCamp>0&&totCamp<totNow){
+    const k=totNow/totCamp;
+    msg+=k<=3?" · Aynı kârı korumak için satışların <strong>%"+Math.ceil((k-1)*100)+"</strong> artmalı"
+             :" · Aynı kârı korumak için <strong>"+Math.ceil(k)+" kat</strong> satış gerekir: <span class=\"neg\">bu indirim kârlı değil.</span>";
+  }
+  else if(totCamp<=0&&totNow>0) msg+=" · <span class=\"neg\">Bu indirimle ne kadar satarsan sat zarar edersin.</span>";
+  if(lossMakers) msg+=" · <span class=\"neg\">"+lossMakers+" ürün kampanyada zarara düşer.</span>";
+  $("simSummary").innerHTML=msg;
+  $("simBody").innerHTML=list.map(x=>`<tr><td>${esc(x.p.name)}</td><td>${fmt.format(x.p.avg_price)}</td><td>${fmt.format(x.p.avg_price*(1-d))}</td>
+    <td class="${x.now<0?"neg":""}">${fmt.format(x.now)}</td><td class="${x.camp<0?"neg":"pos"}">${fmt.format(x.camp)}</td>
+    <td class="${x.diff<0?"neg":"pos"}">${fmt.format(x.diff)}</td></tr>`).join("");
+}
+$("simDisc").addEventListener("input",()=>{ if(PRODUCTS.length) renderSim(); });
 
 function targetCell(p){
   if(p.target_price==null) return '<span class="muted">–</span>';
@@ -533,7 +630,9 @@ function renderQuality(){
   if(est.length) items.push([est.length>PRODUCTS.length/2?2:1,"⚠️ "+est.length+" / "+PRODUCTS.length+" üründe maliyet tahmini (fiyatın %"+sv("costpct")+"'i). Tablodaki turuncu kutulara gerçek maliyeti gir."]);
   else items.push([0,"✅ Tüm ürünlerin maliyeti gerçek (dosyadan veya senin girdiğin)."]);
   if(MAP.comm>-1){
-    const odd=PRODUCTS.filter(p=>p.revenue>0&&p.commAmt>0&&(p.commAmt/(p.revenue/(1+vatRate))<0.02||p.commAmt/(p.revenue/(1+vatRate))>0.40));
+    // taux réel = commission ÷ CA hors TVA des seules lignes qui ont une commission
+    const rate=p=>p.commAmt/((p.revenue-p.commMissingRev)/(1+vatRate));
+    const odd=PRODUCTS.filter(p=>p.commAmt>0&&p.revenue-p.commMissingRev>0&&(rate(p)<0.02||rate(p)>0.40));
     if(odd.length) items.push([1,"⚠️ "+odd.length+" üründe komisyon oranı olağan dışı (%2–%40 aralığı dışında). Komisyon sütununun doğru seçildiğini kontrol et."]);
     else items.push([0,"✅ Komisyonlar dosyadan alındı ve oranlar olağan aralıkta."]);
   } else items.push([1,"ℹ️ Dosyada komisyon tutarı yok: ayarlardaki %"+sv("comm")+" kullanıldı. Kategorine göre değişir, kontrol et."]);
@@ -553,7 +652,8 @@ function renderSources(){
   S.push(MAP.cost>-1
     ? "Maliyet: dosyadan ("+(INFO.costMode==="line"?"satır toplamı → birime bölündü":"birim maliyet")+")"+(est?", "+est+" üründe tahmini":"")
     : "Maliyet: dosyada yok, fiyatın %"+sv("costpct")+"'i tahmin edildi. Turuncu kutulara gerçek maliyeti gir");
-  S.push(MAP.comm>-1?"Komisyon: dosyadan":"Komisyon: ayarlardan (%"+sv("comm")+")");
+  const missC=PRODUCTS.reduce((a,p)=>a+p.commMissingLines,0);
+  S.push(MAP.comm>-1?"Komisyon: dosyadan"+(missC?" ("+missC+" satırda yok, %"+sv("comm")+" ile tamamlandı)":""):"Komisyon: ayarlardan (%"+sv("comm")+")");
   S.push(MAP.ship>-1?"Kargo: dosyadan":"Kargo: sipariş başı "+sv("ship")+" ₺ × "+orders+" sipariş"+(INFO.hasOrder?", aynı paketteki ürünler kargoyu paylaşır":" (her satır 1 sipariş sayıldı)"));
   S.push(MAP.fee>-1?"Hizmet bedeli: dosyadan":"Hizmet bedeli: sipariş başı "+sv("fee")+" ₺");
   S.push(INFO.hasStatus?"İade: dosyadaki durumdan ("+INFO.returnsTotal+" iade)":"İade: tahmini (%"+sv("ret")+"). Dosyada sipariş durumu sütunu yok");
@@ -579,7 +679,7 @@ function render(){
     <td class="${p.margin_pct<0?"neg":p.margin_pct<10?"warn":"pos"}">${pct(p.margin_pct)}</td>
     <td>${targetCell(p)}</td></tr>`).join("");
   $("tbody").querySelectorAll("input").forEach(inp=>inp.addEventListener("change",()=>{
-    const c=store.get("pp_costs",{}); c[inp.dataset.name]=Math.max(0,toNum(inp.value)); store.set("pp_costs",c); compute();
+    const c=store.get(skey("pp_costs"),{}); c[inp.dataset.name]=Math.max(0,toNum(inp.value)); store.set(skey("pp_costs"),c); compute();
   }));
   $("results").classList.remove("hidden");
 }
@@ -702,6 +802,44 @@ $("aiBtn").addEventListener("click",async()=>{
       <h3>${esc(r.title)}</h3><p>${esc(r.detail)}</p></div>`).join("");
   }catch(e){ $("aiMsg").innerHTML='<span class="neg">'+esc(e.message)+'</span>'; }
   finally{ btn.disabled=false; btn.textContent="Önerileri tekrar al"; }
+});
+
+// ---------- Connexion Trendyol (identifiants envoyés pour la seule requête, jamais stockés côté serveur) ----------
+function loadTyCreds(){
+  const c=store.get(skey("pp_ty"),null);
+  $("tySeller").value=c?c.seller:""; $("tyKey").value=c?c.key:""; $("tySecret").value=c?c.secret:"";
+  $("tyRemember").checked=!!c;
+}
+loadTyCreds();
+$("tyToggle").addEventListener("click",()=>{
+  const open=$("tyForm").classList.toggle("hidden")===false;
+  $("tyToggle").setAttribute("aria-expanded",String(open)); if(open) $("tySeller").focus();
+});
+$("tyForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const seller=$("tySeller").value.trim(), key=$("tyKey").value.trim(), secret=$("tySecret").value.trim(), btn=$("tyBtn");
+  if(!seller||!key||!secret){ fileStatus("bad","⚠️ Satıcı ID, API Key ve API Secret gerekli."); return; }
+  if($("tyRemember").checked) store.set(skey("pp_ty"),{seller,key,secret}); else { try{localStorage.removeItem(skey("pp_ty"));}catch(e){} }
+  btn.disabled=true; btn.textContent="Trendyol'dan çekiliyor…"; fileStatus("","Siparişler ve komisyonlar Trendyol'dan alınıyor, bu 10–60 saniye sürebilir…");
+  try{
+    const res=await fetch("/api/trendyol/sync",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({token:trialToken(),seller_id:seller,api_key:key,api_secret:secret,days:+$("tyDays").value})});
+    const data=await res.json().catch(()=>({}));
+    if(res.status===401) showGate("new");
+    if(res.status===402) showGate("expired");
+    if(!res.ok) throw new Error(typeof data.detail==="string"?data.detail:"Trendyol verisi alınamadı ("+res.status+").");
+    if(!data.rows.length) throw new Error("Son "+data.days+" günde sipariş bulunamadı.");
+    $("dropText").innerHTML="<strong>🔗 Trendyol · son "+data.days+" gün</strong><br><span class=\"muted\">Dosya yüklemek için tıkla</span>";
+    loadRows([data.headers,...data.rows]);
+    if(!PRODUCTS.length) throw new Error("Siparişlerden ürün çıkarılamadı.");
+    track("file_loaded");
+    const note=data.commission_source==="ok"
+      ? data.lines_with_commission+" satırda gerçek komisyon (cari hesaptan)"
+      : "komisyonlar alınamadı, ayarlardaki oran kullanıldı";
+    fileStatus("ok","✅ Trendyol: "+data.orders+" sipariş, "+PRODUCTS.length+" ürün · "+note+". Maliyetlerini girmeyi unutma.");
+    $("results").scrollIntoView({behavior:"smooth",block:"start"});
+  }catch(err){ fileStatus("bad","⚠️ "+err.message); }
+  finally{ btn.disabled=false; btn.textContent="Siparişleri çek"; }
 });
 
 // ---------- Assistant d'aide : ce qu'il ne résout pas part vers le WhatsApp du propriétaire ----------

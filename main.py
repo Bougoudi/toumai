@@ -7,6 +7,7 @@
 - POST /api/waitlist -> demande (audit, suivi, agence)
 - POST /api/trial    -> démarre l'essai gratuit (nom, boutique, WhatsApp) ; GET /api/trial/{jeton}
 - POST /api/support  -> assistant d'aide ; ce qu'il ne résout pas devient un ticket + message WhatsApp
+- POST /api/trendyol/sync -> commandes + commissions réelles via l'API Trendyol (identifiants non stockés)
 - POST /api/event    -> compteur anonyme de l'entonnoir (visites, imports, analyses)
 - GET  /admin        -> entonnoir + liste des inscrits (protégée par ADMIN_TOKEN), export CSV
 
@@ -32,6 +33,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Resp
 from pydantic import BaseModel, Field
 
 import metrics
+import trendyol
 import waitlist
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -60,6 +62,7 @@ PLANS = {"deneme": "Essai (sans plan choisi)", "baslangic": "Başlangıç 249 �
          "ajans": "Agence (devis)"}
 TRIAL_DAYS = 14
 SUPPORT_PER_IP = 12  # questions à l'assistant max par heure et par IP
+SYNC_PER_IP = 8      # synchronisations Trendyol max par heure et par IP
 EVENTS_PER_IP = 60    # événements max par heure et par IP (anti-gonflage des compteurs)
 
 app = FastAPI(title="ProfitPilot AI", docs_url=None, redoc_url=None)
@@ -79,6 +82,7 @@ _daily = {"day": "", "count": 0}
 _wl_hits: dict[str, deque] = defaultdict(deque)
 _ev_hits: dict[str, deque] = defaultdict(deque)
 _sp_hits: dict[str, deque] = defaultdict(deque)
+_sy_hits: dict[str, deque] = defaultdict(deque)
 
 
 def _client_ip(request: Request) -> str:
@@ -161,6 +165,19 @@ class TrialRequest(BaseModel):
     phone: str = Field(min_length=1, max_length=30)
     source: str = Field(default="", max_length=50)
     plan: str = Field(default="", max_length=20)   # plan choisi sur la landing (?plan=pro)
+
+
+class TrendyolSyncRequest(BaseModel):
+    token: str = Field(default="", max_length=64)
+    seller_id: str = Field(min_length=1, max_length=20)
+    api_key: str = Field(min_length=4, max_length=100)
+    api_secret: str = Field(min_length=4, max_length=100)
+    days: int = Field(default=30, ge=1, le=30)
+
+    def __repr__(self) -> str:  # ne jamais afficher les identifiants dans un journal
+        return f"TrendyolSyncRequest(seller_id={self.seller_id!r}, days={self.days})"
+
+    __str__ = __repr__
 
 
 class SupportRequest(BaseModel):
@@ -249,6 +266,12 @@ Aracın nasıl çalıştığı (yalnızca bunlara dayan):
 - "Hesaplama kaynakları" satırı hangi değerin dosyadan, hangisinin ayarlardan geldiğini gösterir.
   "Veri kontrolü" kartı şüpheli verileri ve güvenilirlik seviyesini gösterir.
 - Hedef fiyat: ayarlardaki hedef marja ulaşmak için gereken satış fiyatı.
+- Trendyol'dan otomatik çek: Satıcı ID, API Key, API Secret (Satıcı Paneli → Hesap Bilgilerim → Entegrasyon
+  Bilgileri, yalnızca ana kullanıcı görür) ile son 30 güne kadar siparişler ve cari hesaptaki gerçek komisyonlar gelir.
+  Bilgiler sunucuda saklanmaz; salt okunurdur. Henüz cari hesaba düşmemiş siparişlerde komisyon ayarlardaki oranla tamamlanır.
+- Kampanya simülatörü: tüm ürünlerde % indirim yapılırsa aynı adetle net kârın ne olacağını ve kârı korumak için
+  satışın ne kadar artması gerektiğini gösterir.
+- Birden fazla mağaza: "Mağaza ekle" ile her mağazanın ayarları, maliyetleri ve Trendyol bilgileri ayrı tutulur.
 - Excel olarak indir: özet + ürün tablosu. Yapay zekâ önerileri: kârı en çok artıracak 3 aksiyon.
 - Deneme 14 gün ücretsiz. Abonelik: Başlangıç 249 ₺/ay, Pro 499 ₺/ay, İşletme 999 ₺/ay. Uzman denetimi 1.990 ₺.
   Ödeme şu an WhatsApp üzerinden (IBAN veya ödeme linki) yapılır.
@@ -453,6 +476,20 @@ async def support(body: SupportRequest, request: Request):
                            f"Sorun: {body.question}"),
         )
     return result
+
+
+@app.post("/api/trendyol/sync")
+def trendyol_sync(body: TrendyolSyncRequest, request: Request):
+    _require_trial(body.token)
+    if not _under_hourly_limit(_sy_hits, _client_ip(request), SYNC_PER_IP):
+        raise HTTPException(429, "Saatlik senkronizasyon sınırına ulaştın. Biraz sonra tekrar dene.")
+    try:
+        return trendyol.sync(body.seller_id, body.api_key, body.api_secret, body.days)
+    except trendyol.TrendyolError as e:
+        raise HTTPException(502, str(e))
+    except Exception as e:
+        log.error("trendyol sync failed: %s", type(e).__name__)   # sans détail : pas d'identifiants dans les logs
+        raise HTTPException(502, "Trendyol verisi alınamadı. Biraz sonra tekrar dene.")
 
 
 @app.post("/api/event", status_code=204)
