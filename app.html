@@ -62,6 +62,31 @@ tr:last-child td{border-bottom:0}
 td input{width:90px;background:var(--field);border:1px solid var(--line);border-radius:6px;padding:5px 6px;font:500 13px var(--mono);color:var(--ink);text-align:right}
 td input.missing{border-color:var(--amber)}
 .card.cta{border-color:var(--green)}
+.trialbar{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:14px;margin-bottom:8px}
+.trialbar a{color:var(--green);font-weight:600}
+.gate{position:fixed;inset:0;background:rgba(10,16,28,.72);display:flex;align-items:flex-start;justify-content:center;z-index:50;overflow:auto;padding:24px 16px}
+.gate-card{background:var(--paper);color:var(--ink);border-radius:14px;max-width:440px;width:100%;padding:22px;margin-top:6vh}
+.gate-card h2{font:800 24px/1.2 var(--display);margin:0 0 6px}
+.gate-card form{display:grid;gap:10px;margin-top:14px}
+.gate-card input{width:100%;background:var(--field);border:1px solid var(--line);border-radius:8px;padding:12px;font:400 16px var(--body);color:var(--ink)}
+.gate-card .btn{justify-content:center}
+.quality ul{margin:8px 0 0;padding-left:0;list-style:none}
+.quality li{padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+.quality li:last-child{border-bottom:0}
+.badge{display:inline-block;padding:3px 10px;border-radius:99px;font-weight:700;font-size:13px}
+.badge.hi{background:var(--green);color:#fff} .badge.mid{background:var(--amber);color:#fff} .badge.lo{background:var(--red);color:#fff}
+.help-btn{position:fixed;right:16px;bottom:16px;z-index:40;background:var(--green);color:#fff;border:0;border-radius:99px;padding:13px 18px;font:600 15px var(--body);box-shadow:0 6px 20px rgba(0,0,0,.25);cursor:pointer}
+.help-panel{position:fixed;right:16px;bottom:74px;z-index:41;width:min(380px,calc(100vw - 32px));max-height:min(560px,calc(100vh - 110px));display:flex;flex-direction:column;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.help-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.help-head button{background:none;border:0;color:var(--ink);font-size:18px;cursor:pointer}
+.help-log{padding:12px 14px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:8px}
+.help-log .bot,.help-log .me{padding:9px 12px;border-radius:10px;font-size:14px;white-space:pre-wrap;max-width:92%}
+.help-log .bot{background:var(--field);align-self:flex-start}
+.help-log .me{background:var(--ink);color:var(--bg);align-self:flex-end}
+.help-log .acts{display:flex;flex-wrap:wrap;gap:8px}
+.help-log .acts .btn{padding:9px 12px;font-size:14px}
+.help-panel form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
+.help-panel textarea{flex:1;resize:none;background:var(--field);border:1px solid var(--line);border-radius:8px;padding:9px;font:400 15px var(--body);color:var(--ink)}
 .reco{border-left:4px solid var(--green);padding:12px 14px;background:var(--field);border-radius:8px;margin-top:12px}
 .reco h3{margin:0 0 4px;font:600 16px/1.35 var(--body)}
 .reco .meta{font-size:13px;color:var(--muted);margin-bottom:6px}
@@ -87,6 +112,7 @@ td input.missing{border-color:var(--amber)}
     <a class="btn ghost" href="/#denetim">Denetim iste</a>
   </header>
 
+  <div id="trialBar" class="trialbar hidden"></div>
   <h1>Mağazanın gerçek kârı</h1>
   <p class="muted">Sipariş raporunu yükle, her ürünün komisyon, kargo, iade ve KDV sonrası net kârını gör. Dosyan tarayıcında işlenir, sunucuya yüklenmez.</p>
 
@@ -115,6 +141,7 @@ td input.missing{border-color:var(--amber)}
         <label class="f">KDV (%)<input type="number" inputmode="decimal" id="s-vat" value="20" min="0" max="100"></label>
         <label class="f">Stopaj (% KDV hariç)<input type="number" inputmode="decimal" id="s-stop" value="1" min="0" max="100"></label>
         <label class="f">Varsayılan maliyet (% fiyat)<input type="number" inputmode="decimal" id="s-costpct" value="40" min="0" max="100"></label>
+        <label class="f">Hedef net marj (%)<input type="number" inputmode="decimal" id="s-target" value="15" min="0" max="60"></label>
       </div>
       <p class="msg muted">Dosyada komisyon tutarı varsa o kullanılır. Stopaj gelir vergisinden mahsup edilebilir. Maliyeti bilinmeyen ürünler için varsayılan oran uygulanır; tabloda ürün maliyetini düzeltebilirsin.</p>
     </div>
@@ -148,6 +175,12 @@ td input.missing{border-color:var(--amber)}
       <a class="btn green" href="/#denetim" id="auditCta">Denetim iste</a>
     </div>
 
+    <div class="card quality" id="qualityCard">
+      <div class="head-row"><h2>Veri kontrolü</h2><span id="qualityBadge" class="badge"></span></div>
+      <p class="muted" style="margin:0">Sonuçların ne kadar güvenilir olduğunu ve düzeltmen gereken yerleri gösterir.</p>
+      <ul id="qualityList"></ul>
+    </div>
+
     <div class="card">
       <div class="head-row"><h2>Ürün bazında kârlılık</h2>
         <button class="btn ghost" id="xlsBtn" type="button">⬇ Excel olarak indir</button></div>
@@ -158,12 +191,44 @@ td input.missing{border-color:var(--amber)}
           <th data-k="name">Ürün</th><th data-k="units">Adet</th><th data-k="revenue">Ciro</th>
           <th data-k="unitCost">Birim maliyet</th><th data-k="commission">Komisyon</th><th data-k="shipping">Kargo</th>
           <th data-k="fees">Hizmet</th><th data-k="ads">Reklam</th><th data-k="returns_loss">İade</th>
-          <th data-k="vat">KDV</th><th data-k="stopaj">Stopaj</th><th data-k="net_profit">Net kâr</th><th data-k="margin_pct">Marj</th>
+          <th data-k="vat">KDV</th><th data-k="stopaj">Stopaj</th><th data-k="net_profit">Net kâr</th><th data-k="margin_pct">Marj</th><th data-k="target_price" title="Hedef net marja ulaşmak için gereken satış fiyatı">Hedef fiyat</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
       </table></div>
     </div>
   </div>
+</div>
+
+<div id="gate" class="gate hidden" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+  <div class="gate-card" id="gateNew">
+    <h2 id="gateTitle">Ücretsiz denemeyi başlat</h2>
+    <p class="muted" style="margin:0">14 gün boyunca tüm özellikler ücretsiz, kredi kartı gerekmez. Kurulum için seni WhatsApp'tan arayıp ücretsiz yardımcı oluyoruz.</p>
+    <form id="gateForm" novalidate>
+      <input id="gName" placeholder="Adın" autocomplete="name" required>
+      <input id="gStore" placeholder="Mağaza adın (Trendyol, Hepsiburada…)" required>
+      <input id="gPhone" type="tel" inputmode="tel" placeholder="WhatsApp numaran (05xx xxx xx xx)" autocomplete="tel" required>
+      <button class="btn green" type="submit" id="gBtn">Denemeyi başlat</button>
+      <p class="msg" id="gMsg" role="status"></p>
+      <p class="msg muted" style="margin:0">Bilgilerin yalnızca seninle iletişim için kullanılır. Sipariş raporun sunucuya gönderilmez, tarayıcında işlenir.</p>
+    </form>
+  </div>
+  <div class="gate-card hidden" id="gateExpired">
+    <h2>Deneme süren doldu</h2>
+    <p class="muted">14 günlük ücretsiz deneme bitti. Devam etmek için bir plan seç; ödeme ve aktivasyonu WhatsApp'tan birlikte yapalım.</p>
+    <p><strong>Başlangıç 249 ₺/ay · Pro 499 ₺/ay · İşletme 999 ₺/ay</strong></p>
+    <a class="btn green" id="expiredWa" target="_blank" rel="noopener">WhatsApp'tan devam et</a>
+    <p class="msg"><a href="/#fiyatlar">Planları karşılaştır</a></p>
+  </div>
+</div>
+
+<button id="helpBtn" class="help-btn" type="button" aria-controls="helpPanel" aria-expanded="false">💬 Yardım</button>
+<div id="helpPanel" class="help-panel hidden" role="dialog" aria-label="ProfitPilot destek">
+  <div class="help-head"><strong>ProfitPilot destek</strong><button id="helpClose" type="button" aria-label="Kapat">✕</button></div>
+  <div id="helpLog" class="help-log" aria-live="polite">
+    <div class="bot">Merhaba! Rapor yükleme, hesaplama veya abonelikle ilgili sorunu yaz. Çözemezsem seni doğrudan ekibe bağlarım.</div>
+  </div>
+  <form id="helpForm"><textarea id="helpQ" rows="2" maxlength="1500" placeholder="Sorunu yaz…" aria-label="Sorun"></textarea>
+    <button class="btn green" id="helpSend" type="submit">Gönder</button></form>
 </div>
 
 <script>
@@ -189,13 +254,65 @@ function track(name){
 }
 track("app_view");
 
+// ---------- Essai gratuit : nom, boutique, WhatsApp avant d'utiliser l'outil ----------
+const WHATSAPP_NUMBER="905418624220";
+const TRIAL_KEY="pp_trial";
+let TRIAL=null;
+const wa=text=>"https://wa.me/"+WHATSAPP_NUMBER+"?text="+encodeURIComponent(text);
+function trialToken(){ if(TRIAL&&TRIAL.token) return TRIAL.token; try{return localStorage.getItem(TRIAL_KEY)||"";}catch(e){return "";} }
+
+function showGate(kind){
+  $("gate").classList.remove("hidden");
+  $("gateNew").classList.toggle("hidden",kind!=="new");
+  $("gateExpired").classList.toggle("hidden",kind!=="expired");
+  if(kind==="expired"){
+    $("expiredWa").href=wa("Merhaba, ProfitPilot denemem bitti, aboneliğe devam etmek istiyorum."+(TRIAL?"\nAd: "+TRIAL.name+"\nMağaza: "+TRIAL.store:""));
+  } else setTimeout(()=>$("gName").focus(),50);
+}
+function showTrialBar(){
+  $("gate").classList.add("hidden");
+  const t=TRIAL, bar=$("trialBar");
+  const status=t.paid?"Abonelik aktif: "+t.days_left+" gün":"Ücretsiz deneme: "+t.days_left+" gün kaldı";
+  bar.innerHTML="Merhaba "+esc(t.name)+" · <strong>"+status+"</strong> · <a target=\"_blank\" rel=\"noopener\" href=\""+
+    wa("Merhaba, ProfitPilot kurulumu için ücretsiz görüşme istiyorum.\nAd: "+t.name+"\nMağaza: "+t.store)+"\">Ücretsiz kurulum görüşmesi için WhatsApp'tan yaz →</a>";
+  bar.classList.remove("hidden");
+}
+async function checkTrial(){
+  const tok=trialToken();
+  if(!tok){ showGate("new"); return; }
+  try{
+    const r=await fetch("/api/trial/"+encodeURIComponent(tok));
+    if(r.status===404){ try{localStorage.removeItem(TRIAL_KEY);}catch(e){} showGate("new"); return; }
+    if(!r.ok) return;                       // serveur indisponible : on ne bloque pas le vendeur
+    TRIAL={token:tok,...await r.json()};
+    TRIAL.active?showTrialBar():showGate("expired");
+  }catch(e){ /* hors ligne : on ne bloque pas */ }
+}
+$("gateForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const name=$("gName").value.trim(), store=$("gStore").value.trim(), phone=$("gPhone").value.trim(), msg=$("gMsg"), btn=$("gBtn");
+  msg.className="msg";
+  if(!name||!store||!phone){ msg.className="msg bad"; msg.textContent="Adını, mağaza adını ve WhatsApp numaranı yaz."; return; }
+  btn.disabled=true; msg.textContent="Kaydediliyor…";
+  try{
+    const res=await fetch("/api/trial",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,store,phone,source:SOURCE,plan:new URLSearchParams(location.search).get("plan")||""})});
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok){ const d=data.detail; throw new Error(typeof d==="string"?d:"Bilgileri kontrol et ve tekrar dene."); }
+    try{ localStorage.setItem(TRIAL_KEY,data.token); }catch(e){}
+    TRIAL=data;
+    if(data.active){ showTrialBar(); track("trial_started"); } else showGate("expired");
+  }catch(err){ msg.className="msg bad"; msg.textContent=err.message; }
+  finally{ btn.disabled=false; }
+});
+checkTrial();
+
 const store = {
   get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}},
   set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
 };
 
 // ---------- Paramètres ----------
-const SETTINGS = ["market","comm","ship","fee","ads","ret","vat","stop","costpct"];
+const SETTINGS = ["market","comm","ship","fee","ads","ret","vat","stop","costpct","target"];
 const saved = store.get("pp_settings",{});
 SETTINGS.forEach(k=>{ if(saved[k]!=null&&saved[k]!=="") $("s-"+k).value=saved[k]; $("s-"+k).addEventListener("input",()=>{saveSettings();compute();}); });
 function saveSettings(){const o={};SETTINGS.forEach(k=>o[k]=$("s-"+k).value);store.set("pp_settings",o);}
@@ -298,13 +415,14 @@ function aggregate(){
   const col=(r,f)=>MAP[f]>-1?r[MAP[f]]:undefined;
 
   // 1) lignes valides, sans les commandes annulées
-  const lines=[]; let cancelled=0;
+  const lines=[]; let cancelled=0, zeroRevenue=0;
   for(const r of RAW.rows){
     const name=String(r[MAP.name]??"").trim(); if(!name) continue;
     const st=norm(col(r,"status")??"");
     if(/iptal|cancel/.test(st)){cancelled++;continue;}
     const units=MAP.units>-1?(toNum(r[MAP.units])||1):1;
     const amt=toNum(r[MAP.amount]);
+    if(!(amt>0)&&!/iade|return/.test(st)){zeroRevenue++;continue;}
     lines.push({name,units,revenue:isUnitPrice?amt*units:amt,
       returned:/iade|return/.test(st),
       order:String(col(r,"order")??"").trim(),
@@ -357,7 +475,7 @@ function aggregate(){
   }));
   const soldKeys=new Set(lines.filter(l=>!l.returned).map((l,i)=>l.order||"#"+i));
   const retKeys=new Set(lines.filter(l=>l.returned).map((l,i)=>l.order||"#r"+i));
-  INFO={cancelled,costMode,hasStatus:MAP.status>-1,hasOrder:MAP.order>-1,
+  INFO={cancelled,zeroRevenue,costMode,hasStatus:MAP.status>-1,hasOrder:MAP.order>-1,
         orderCount:soldKeys.size,returnsTotal:retKeys.size};
   compute();
 }
@@ -387,9 +505,46 @@ function compute(){
     p.stopaj=p.revenue/(1+vatRate)*stopRate;
     p.net_profit=p.revenue-ded-p.vat-p.stopaj;
     p.margin_pct=p.revenue>0?p.net_profit/p.revenue*100:0;
+    // Prix cible : net = (P − D(P) − P·stopaj)/(1+KDV) = marge·P, avec D(P) = coût + commission·P + frais fixes
+    //   ⇒ P = (coût + frais) / (1 − taux_commission − stopaj − marge·(1+KDV))
+    const m=sv("target")/100, r=p.revenue>0?p.commission/p.revenue:commRate;
+    const fixed=p.units?(p.shipping+p.fees+p.ads+p.returns_loss)/p.units:0;
+    const denom=1-r-stopRate-m*(1+vatRate);
+    p.avg_price=avgPrice;
+    p.target_price=p.units&&denom>0.02?(p.unitCost+fixed)/denom:null;
   }
   render();
   renderSources();
+  renderQuality();
+}
+
+function targetCell(p){
+  if(p.target_price==null) return '<span class="muted">–</span>';
+  const diff=p.avg_price?(p.target_price/p.avg_price-1)*100:0;
+  if(diff<=0.5) return '<span class="pos" title="Hedef marj zaten tutuyor">✓ '+fmt.format(p.avg_price)+'</span>';
+  return fmt.format(p.target_price)+' <span class="warn">(+'+diff.toLocaleString("tr-TR",{maximumFractionDigits:0})+' %)</span>';
+}
+
+function renderQuality(){
+  const items=[]; // [niveau, texte]  niveau : 2 = grave, 1 = à vérifier, 0 = ok
+  const est=PRODUCTS.filter(p=>!p.costKnown), vatRate=sv("vat")/100;
+  const above=PRODUCTS.filter(p=>p.costKnown&&p.units&&p.unitCost>=p.avg_price);
+  if(above.length) items.push([2,"⚠️ "+above.length+" üründe birim maliyet satış fiyatına eşit ya da yüksek ("+above.slice(0,3).map(p=>p.name).join(", ")+(above.length>3?"…":"")+"). Maliyet sütunu satır toplamı olabilir: \"Maliyet sütunu ne gösteriyor?\" ayarını kontrol et."]);
+  if(est.length) items.push([est.length>PRODUCTS.length/2?2:1,"⚠️ "+est.length+" / "+PRODUCTS.length+" üründe maliyet tahmini (fiyatın %"+sv("costpct")+"'i). Tablodaki turuncu kutulara gerçek maliyeti gir."]);
+  else items.push([0,"✅ Tüm ürünlerin maliyeti gerçek (dosyadan veya senin girdiğin)."]);
+  if(MAP.comm>-1){
+    const odd=PRODUCTS.filter(p=>p.revenue>0&&p.commAmt>0&&(p.commAmt/(p.revenue/(1+vatRate))<0.02||p.commAmt/(p.revenue/(1+vatRate))>0.40));
+    if(odd.length) items.push([1,"⚠️ "+odd.length+" üründe komisyon oranı olağan dışı (%2–%40 aralığı dışında). Komisyon sütununun doğru seçildiğini kontrol et."]);
+    else items.push([0,"✅ Komisyonlar dosyadan alındı ve oranlar olağan aralıkta."]);
+  } else items.push([1,"ℹ️ Dosyada komisyon tutarı yok: ayarlardaki %"+sv("comm")+" kullanıldı. Kategorine göre değişir, kontrol et."]);
+  items.push(INFO.hasStatus?[0,"✅ İadeler ve iptaller dosyadaki sipariş durumundan alındı."]:[1,"ℹ️ Sipariş durumu sütunu yok: iadeler %"+sv("ret")+" oranıyla tahmin edildi."]);
+  items.push(MAP.ship>-1?[0,"✅ Kargo tutarları dosyadan alındı."]:(INFO.hasOrder?[1,"ℹ️ Kargo: sipariş başı "+sv("ship")+" ₺ varsayıldı (paketler sipariş no ile ayrıldı). Gerçek kargo tarifeni gir."]:[1,"ℹ️ Kargo: her satır bir paket sayıldı, sipariş başı "+sv("ship")+" ₺. Sipariş no sütunu olan rapor daha doğru sonuç verir."]));
+  if(INFO.zeroRevenue) items.push([1,"ℹ️ Satış tutarı 0 veya boş olan "+INFO.zeroRevenue+" satır hesaba katılmadı."]);
+  if(INFO.cancelled) items.push([0,"✅ "+INFO.cancelled+" iptal edilen satır hariç tutuldu."]);
+  const worst=Math.max(...items.map(i=>i[0])), warns=items.filter(i=>i[0]===1).length;
+  const level=worst===2?["lo","Güvenilirlik: düşük"]:(warns>=3?["mid","Güvenilirlik: orta"]:(warns?["mid","Güvenilirlik: iyi"]:["hi","Güvenilirlik: yüksek"]));
+  $("qualityBadge").className="badge "+level[0]; $("qualityBadge").textContent=level[1];
+  $("qualityList").innerHTML=items.sort((a,b)=>b[0]-a[0]).map(i=>"<li>"+esc(i[1])+"</li>").join("");
 }
 
 function renderSources(){
@@ -421,7 +576,8 @@ function render(){
     <td>${fmt.format(p.commission)}</td><td>${fmt.format(p.shipping)}</td><td>${fmt.format(p.fees)}</td>
     <td>${fmt.format(p.ads)}</td><td>${fmt.format(p.returns_loss)}</td><td>${fmt.format(p.vat)}</td><td>${fmt.format(p.stopaj)}</td>
     <td class="${p.net_profit<0?"neg":"pos"}"><strong>${fmt.format(p.net_profit)}</strong></td>
-    <td class="${p.margin_pct<0?"neg":p.margin_pct<10?"warn":"pos"}">${pct(p.margin_pct)}</td></tr>`).join("");
+    <td class="${p.margin_pct<0?"neg":p.margin_pct<10?"warn":"pos"}">${pct(p.margin_pct)}</td>
+    <td>${targetCell(p)}</td></tr>`).join("");
   $("tbody").querySelectorAll("input").forEach(inp=>inp.addEventListener("change",()=>{
     const c=store.get("pp_costs",{}); c[inp.dataset.name]=Math.max(0,toNum(inp.value)); store.set("pp_costs",c); compute();
   }));
@@ -485,13 +641,13 @@ function exportExcel(){
   const TL='#,##0.00 "₺"', PCT='0.0"%"';
   const cols=[["Ürün","name"],["Adet","units"],["Ciro (KDV dahil)","revenue",TL],["Birim maliyet","unitCost",TL],["Toplam maliyet","cost",TL],
     ["Komisyon","commission",TL],["Kargo","shipping",TL],["Hizmet bedeli","fees",TL],["Reklam","ads",TL],["İade kaybı","returns_loss",TL],
-    ["Ödenecek KDV","vat",TL],["Stopaj","stopaj",TL],["Net kâr","net_profit",TL],["Marj %","margin_pct",PCT],["Maliyet kaynağı","_src"]];
+    ["Ödenecek KDV","vat",TL],["Stopaj","stopaj",TL],["Net kâr","net_profit",TL],["Marj %","margin_pct",PCT],["Hedef fiyat (%"+sv("target")+" marj)","target_price",TL],["Maliyet kaynağı","_src"]];
   const list=[...PRODUCTS].sort((a,b)=>a.net_profit-b.net_profit);
   const aoa=[cols.map(c=>c[0])].concat(list.map(p=>cols.map(([,k])=>
-    k==="_src"?(p.costKnown?"gerçek":"tahmini"):(typeof p[k]==="number"?Math.round(p[k]*100)/100:p[k]))));
+    k==="_src"?(p.costKnown?"gerçek":"tahmini"):(typeof p[k]==="number"?Math.round(p[k]*100)/100:(p[k]??"")))));
   const sum=k=>Math.round(PRODUCTS.reduce((a,p)=>a+p[k],0)*100)/100;
   const rev=sum("revenue"), net=sum("net_profit");
-  aoa.push(cols.map(([label,k],i)=>i===0?"TOPLAM":(k==="margin_pct"?(rev?Math.round(net/rev*1000)/10:0):(["units","unitCost","_src"].includes(k)?(k==="units"?sum("units"):""):sum(k)))));
+  aoa.push(cols.map(([label,k],i)=>i===0?"TOPLAM":(k==="margin_pct"?(rev?Math.round(net/rev*1000)/10:0):(["units","unitCost","_src","target_price"].includes(k)?(k==="units"?sum("units"):""):sum(k)))));
   const ws=XLSX.utils.aoa_to_sheet(aoa);
   cols.forEach(([,,z],c)=>{ if(!z) return; for(let r=1;r<aoa.length;r++){ const cell=ws[XLSX.utils.encode_cell({r,c})]; if(cell&&typeof cell.v==="number") cell.z=z; }});
   ws["!cols"]=cols.map((c,i)=>({wch:i===0?34:(i===cols.length-1?14:15)}));
@@ -535,8 +691,10 @@ $("aiBtn").addEventListener("click",async()=>{
     net_profit:r2(p.net_profit),margin_pct:r2(p.margin_pct)}));
   try{
     const res=await fetch(AI_API_URL+"/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({marketplace:$("s-market").value,products})});
+      body:JSON.stringify({token:trialToken(),marketplace:$("s-market").value,products})});
     const data=await res.json().catch(()=>({}));
+    if(res.status===401) showGate("new");
+    if(res.status===402) showGate("expired");
     if(!res.ok) throw new Error(typeof data.detail==="string"?data.detail:"Sunucu hatası ("+res.status+")");
     LAST_AI=data;
     $("aiOut").innerHTML=(data.summary?`<p>${esc(data.summary)}</p>`:"")+(data.recommendations||[]).map((r,i)=>`
@@ -545,6 +703,59 @@ $("aiBtn").addEventListener("click",async()=>{
   }catch(e){ $("aiMsg").innerHTML='<span class="neg">'+esc(e.message)+'</span>'; }
   finally{ btn.disabled=false; btn.textContent="Önerileri tekrar al"; }
 });
+
+// ---------- Assistant d'aide : ce qu'il ne résout pas part vers le WhatsApp du propriétaire ----------
+(()=>{
+  const btn=$("helpBtn"), panel=$("helpPanel"), log=$("helpLog"), form=$("helpForm"), q=$("helpQ"), send=$("helpSend");
+  const toggle=open=>{ panel.classList.toggle("hidden",!open); btn.setAttribute("aria-expanded",String(open)); if(open) q.focus(); };
+  btn.addEventListener("click",()=>toggle(panel.classList.contains("hidden")));
+  $("helpClose").addEventListener("click",()=>toggle(false));
+  const bubble=(cls,text)=>{ const d=document.createElement("div"); d.className=cls; d.textContent=text; log.appendChild(d); log.scrollTop=log.scrollHeight; return d; };
+  const context=()=>{
+    const parts=["Dosya: "+(PRODUCTS.length?PRODUCTS.length+" ürün yüklendi":"yüklenmedi")];
+    if($("fileMsg").textContent) parts.push("Durum: "+$("fileMsg").textContent);
+    if(RAW.headers.length) parts.push("Sütunlar: "+RAW.headers.slice(0,25).join(", "));
+    if(PRODUCTS.length) parts.push($("sources").textContent);
+    return parts.join(" | ").slice(0,1500);
+  };
+  const handoff=(data)=>{
+    const d=bubble("bot","Sorununu ekibimize iletiyorum"+(data.ticket_id?" (talep #"+data.ticket_id+")":"")+". WhatsApp'ta mesaj hazır, sadece Gönder'e bas; en kısa sürede dönelim.");
+    const a=document.createElement("a"); a.className="btn green"; a.target="_blank"; a.rel="noopener";
+    a.href=wa(data.whatsapp_text); a.textContent="WhatsApp'tan ekibe gönder";
+    const row=document.createElement("div"); row.className="acts"; row.appendChild(a); log.appendChild(row); log.scrollTop=log.scrollHeight;
+  };
+  async function ask(question, escalate, aiAnswer){
+    send.disabled=true;
+    const wait=bubble("bot","…");
+    try{
+      const res=await fetch("/api/support",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({token:trialToken(),question,context:context(),escalate:!!escalate,ai_answer:aiAnswer||""})});
+      const data=await res.json().catch(()=>({}));
+      wait.remove();
+      if(!res.ok){
+        bubble("bot",typeof data.detail==="string"?data.detail:"Şu an cevap veremiyorum.");
+        handoff({ticket_id:null,whatsapp_text:"ProfitPilot destek talebi\nSorun: "+question}); return;
+      }
+      if(data.answer&&!escalate) bubble("bot",data.answer);
+      if(data.needs_human){ handoff(data); return; }
+      const row=document.createElement("div"); row.className="acts";
+      const ok=document.createElement("button"); ok.type="button"; ok.className="btn ghost"; ok.textContent="✅ Çözüldü";
+      const no=document.createElement("button"); no.type="button"; no.className="btn ghost"; no.textContent="Çözülmedi, ekibe bağlan";
+      ok.onclick=()=>{ row.remove(); bubble("bot","Harika! Başka sorun olursa buradayım."); };
+      no.onclick=()=>{ row.remove(); ask(question,true,data.answer); };
+      row.append(ok,no); log.appendChild(row); log.scrollTop=log.scrollHeight;
+    }catch(e){
+      wait.remove(); bubble("bot","Bağlantı sorunu.");
+      handoff({ticket_id:null,whatsapp_text:"ProfitPilot destek talebi\nSorun: "+question});
+    }finally{ send.disabled=false; }
+  }
+  form.addEventListener("submit",e=>{
+    e.preventDefault();
+    const question=q.value.trim(); if(question.length<3) return;
+    bubble("me",question); q.value=""; ask(question,false,"");
+  });
+  q.addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); form.requestSubmit(); } });
+})();
 </script>
 </body>
 </html>

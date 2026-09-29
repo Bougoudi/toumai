@@ -4,7 +4,9 @@
 - GET  /app.html    -> app.html (application)
 - GET  /health      -> état du service
 - POST /api/analyze -> 3 recommandations IA (Claude) à partir des chiffres par produit
-- POST /api/waitlist -> inscription à la liste d'attente
+- POST /api/waitlist -> demande (audit, suivi, agence)
+- POST /api/trial    -> démarre l'essai gratuit (nom, boutique, WhatsApp) ; GET /api/trial/{jeton}
+- POST /api/support  -> assistant d'aide ; ce qu'il ne résout pas devient un ticket + message WhatsApp
 - POST /api/event    -> compteur anonyme de l'entonnoir (visites, imports, analyses)
 - GET  /admin        -> entonnoir + liste des inscrits (protégée par ADMIN_TOKEN), export CSV
 
@@ -26,7 +28,7 @@ from pathlib import Path
 import anthropic
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel, Field
 
 import metrics
@@ -53,8 +55,11 @@ PER_IP_LIMIT = int(os.getenv("PER_IP_LIMIT", "5"))
 DAILY_CAP = int(os.getenv("DAILY_CAP", "200"))
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 WAITLIST_PER_IP = 10  # inscriptions max par heure et par IP (anti-spam)
-PLANS = {"denetim": "Audit 1 990 ₺", "takip": "Suivi 990 ₺/mois", "ajans": "Agence (devis)",
-         "baslangic": "Başlangıç (ancien)", "pro": "Pro (ancien)"}
+PLANS = {"deneme": "Essai (sans plan choisi)", "baslangic": "Başlangıç 249 ₺/mois", "pro": "Pro 499 ₺/mois",
+         "isletme": "İşletme 999 ₺/mois", "denetim": "Audit 1 990 ₺", "takip": "Suivi (ancien)",
+         "ajans": "Agence (devis)"}
+TRIAL_DAYS = 14
+SUPPORT_PER_IP = 12  # questions à l'assistant max par heure et par IP
 EVENTS_PER_IP = 60    # événements max par heure et par IP (anti-gonflage des compteurs)
 
 app = FastAPI(title="ProfitPilot AI", docs_url=None, redoc_url=None)
@@ -73,6 +78,7 @@ _ip_hits: dict[str, deque] = defaultdict(deque)
 _daily = {"day": "", "count": 0}
 _wl_hits: dict[str, deque] = defaultdict(deque)
 _ev_hits: dict[str, deque] = defaultdict(deque)
+_sp_hits: dict[str, deque] = defaultdict(deque)
 
 
 def _client_ip(request: Request) -> str:
@@ -139,6 +145,7 @@ class Product(BaseModel):
 
 
 class AnalyzeRequest(BaseModel):
+    token: str = Field(default="", max_length=64)
     marketplace: str = Field(default="Trendyol", max_length=40)
     products: list[Product] = Field(min_length=1, max_length=60)
 
@@ -146,6 +153,22 @@ class AnalyzeRequest(BaseModel):
 class EventRequest(BaseModel):
     name: str = Field(max_length=40)
     source: str = Field(default="site", max_length=50)
+
+
+class TrialRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    store: str = Field(min_length=1, max_length=150)
+    phone: str = Field(min_length=1, max_length=30)
+    source: str = Field(default="", max_length=50)
+    plan: str = Field(default="", max_length=20)   # plan choisi sur la landing (?plan=pro)
+
+
+class SupportRequest(BaseModel):
+    token: str = Field(default="", max_length=64)
+    question: str = Field(min_length=3, max_length=1500)
+    context: str = Field(default="", max_length=1500)   # état de l'écran (fichier chargé, colonnes…)
+    escalate: bool = False                               # « pas résolu » : aller directement au ticket
+    ai_answer: str = Field(default="", max_length=4000)  # réponse déjà donnée, jointe au ticket
 
 
 class WaitlistRequest(BaseModel):
@@ -198,6 +221,45 @@ Kurallar:
 - Rakamları uydurma; yalnızca verilen verileri kullan."""
 
 
+SUPPORT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answer": {"type": "string"},
+        "needs_human": {"type": "boolean"},
+    },
+    "required": ["answer", "needs_human"],
+    "additionalProperties": False,
+}
+
+SUPPORT_PROMPT = """Sen ProfitPilot'un destek asistanısın. ProfitPilot, Trendyol ve Hepsiburada satıcılarının sipariş
+raporunu (Excel/CSV) tarayıcıda analiz edip ürün bazında net kârı hesaplayan bir araçtır. Kısa, net, Türkçe cevap ver.
+
+Aracın nasıl çalıştığı (yalnızca bunlara dayan):
+- Rapor yükleme: CSV veya Excel. Gerekli sütunlar: ürün adı, adet, satış tutarı. İsteğe bağlı: komisyon tutarı, maliyet,
+  sipariş/paket no, sipariş durumu, kargo tutarı, hizmet bedeli. Sütunlar otomatik tanınır; "Sütun eşleştirme" kartından
+  elle düzeltilebilir. Dosya sunucuya gönderilmez, tarayıcıda işlenir.
+- Maliyet sütunu birim maliyet ya da satır toplamı olabilir; araç otomatik algılar, "Maliyet sütunu ne gösteriyor?"
+  menüsünden değiştirilebilir. Maliyeti olmayan ürünlerde fiyatın ayarlardaki yüzdesi tahmin edilir (turuncu kutu);
+  tabloda gerçek birim maliyet yazılabilir.
+- Hesap: Net kâr = Ciro − maliyet − komisyon − kargo − hizmet bedeli − reklam − iade kaybı − ödenecek KDV − stopaj.
+  Komisyon dosyada yoksa ciro × komisyon oranı. Kargo ve hizmet bedeli sipariş (paket) başına; aynı paketteki ürünler
+  kargoyu fiyat oranında paylaşır. İptal edilen siparişler hariç tutulur; durum sütununda "iade" olanlar gerçek iade
+  sayılır (komisyon sayılmaz, kargo kaybı eklenir), yoksa iade oranıyla tahmin edilir. KDV: (ciro − giderler) × KDV/(1+KDV).
+  Stopaj: KDV hariç ciro × %1.
+- "Hesaplama kaynakları" satırı hangi değerin dosyadan, hangisinin ayarlardan geldiğini gösterir.
+  "Veri kontrolü" kartı şüpheli verileri ve güvenilirlik seviyesini gösterir.
+- Hedef fiyat: ayarlardaki hedef marja ulaşmak için gereken satış fiyatı.
+- Excel olarak indir: özet + ürün tablosu. Yapay zekâ önerileri: kârı en çok artıracak 3 aksiyon.
+- Deneme 14 gün ücretsiz. Abonelik: Başlangıç 249 ₺/ay, Pro 499 ₺/ay, İşletme 999 ₺/ay. Uzman denetimi 1.990 ₺.
+  Ödeme şu an WhatsApp üzerinden (IBAN veya ödeme linki) yapılır.
+
+Kurallar:
+- Emin olmadığın hiçbir şeyi uydurma. Trendyol/Hepsiburada panelindeki menü yollarını bilmiyorsan bilmediğini söyle.
+- needs_human = true: ödeme, abonelik, fatura, hesap sorunları; hata/bozukluk bildirimi; kullanıcının verisine özel
+  yorum isteyen veya senin çözemeyeceğin her şey. Bu durumda answer'da ekibin WhatsApp'tan döneceğini söyle.
+- needs_human = false: yalnızca yukarıdaki bilgilerle soruyu tam çözdüysen."""
+
+
 _client: anthropic.AsyncAnthropic | None = None
 
 
@@ -230,6 +292,7 @@ def health():
 async def analyze(body: AnalyzeRequest, request: Request):
     if not os.getenv("ANTHROPIC_API_KEY"):
         raise HTTPException(503, "Yapay zekâ analizi henüz yapılandırılmadı.")
+    _require_trial(body.token)
     _check_limits(_client_ip(request))
 
     data = {
@@ -287,6 +350,111 @@ def join_waitlist(body: WaitlistRequest, request: Request):
     return {"ok": True, "already": not added}
 
 
+def _trial_state(t: dict) -> dict:
+    started = t["trial_at"]
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    days_left = TRIAL_DAYS - (now - started).days
+    paid_until = t.get("paid_until")
+    if paid_until and paid_until.tzinfo is None:
+        paid_until = paid_until.replace(tzinfo=timezone.utc)
+    paid = bool(paid_until and paid_until > now)
+    return {"active": days_left > 0 or paid, "paid": paid,
+            "days_left": max(0, (paid_until - now).days + 1) if paid else max(0, days_left),
+            "name": t["name"], "store": t["store"]}
+
+
+def _require_trial(token: str) -> dict:
+    try:
+        t = waitlist.trial_by_token(token)
+    except Exception:
+        log.exception("trial lookup failed")
+        raise HTTPException(503, "Şu an doğrulama yapılamıyor. Biraz sonra tekrar dene.")
+    if not t:
+        raise HTTPException(401, "Önce ücretsiz denemeyi başlat.")
+    state = _trial_state(t)
+    if not state["active"]:
+        raise HTTPException(402, "Deneme süren doldu. Devam etmek için WhatsApp'tan bize yaz.")
+    return t
+
+
+@app.post("/api/trial")
+def start_trial(body: TrialRequest, request: Request):
+    phone = re.sub(r"[^\d+]", "", body.phone)
+    if len(re.sub(r"\D", "", phone)) < 10:
+        raise HTTPException(422, "Geçerli bir WhatsApp numarası yaz (ör. 05xx xxx xx xx).")
+    _check_waitlist_limit(_client_ip(request))
+    try:
+        plan = body.plan if body.plan in ("baslangic", "pro", "isletme") else "deneme"
+        token, _ = waitlist.start_trial(body.name.strip(), body.store.strip(), phone, body.source.strip(), plan)
+        state = _trial_state(waitlist.trial_by_token(token))
+    except Exception:
+        log.exception("trial start failed")
+        raise HTTPException(503, "Kayıt şu an yapılamadı. Lütfen WhatsApp'tan yaz.")
+    # on renvoie le nom saisi, jamais celui en base : un numéro ne doit pas révéler son propriétaire
+    return {"token": token, **state, "name": body.name.strip(), "store": body.store.strip()}
+
+
+@app.get("/api/trial/{token}")
+def trial_status(token: str):
+    try:
+        t = waitlist.trial_by_token(token[:64])
+    except Exception:
+        log.exception("trial lookup failed")
+        raise HTTPException(503, "Şu an doğrulama yapılamıyor.")
+    if not t:
+        raise HTTPException(404, "Deneme bulunamadı.")
+    return _trial_state(t)
+
+
+@app.post("/api/support")
+async def support(body: SupportRequest, request: Request):
+    """L'assistant répond ; s'il ne peut pas résoudre (ou si le client le demande), un ticket est créé
+    et le client reçoit un message WhatsApp prêt à envoyer au propriétaire."""
+    if not _under_hourly_limit(_sp_hits, _client_ip(request), SUPPORT_PER_IP):
+        raise HTTPException(429, "Çok fazla soru gönderildi. Biraz sonra tekrar dene ya da WhatsApp'tan yaz.")
+    who = None
+    try:
+        who = waitlist.trial_by_token(body.token)
+    except Exception:
+        log.exception("trial lookup failed")
+
+    answer, needs_human = body.ai_answer, True
+    if not body.escalate and os.getenv("ANTHROPIC_API_KEY"):
+        try:
+            response = await _get_client().messages.create(
+                model=ANTHROPIC_MODEL,
+                max_tokens=4000,
+                system=SUPPORT_PROMPT,
+                output_config={"effort": "low", "format": {"type": "json_schema", "schema": SUPPORT_SCHEMA}},
+                messages=[{"role": "user", "content":
+                           f"Kullanıcının ekran durumu: {body.context or '-'}\n\nSoru: {body.question}"}],
+            )
+            if response.stop_reason != "refusal":
+                text = next((b.text for b in response.content if b.type == "text"), "")
+                data = json.loads(text)
+                answer, needs_human = data["answer"], bool(data["needs_human"])
+        except (anthropic.APIError, json.JSONDecodeError, KeyError) as e:
+            log.error("support AI failed: %s", e)   # l'humain prend le relais
+
+    result = {"answer": answer, "needs_human": needs_human, "ticket_id": None, "whatsapp_text": ""}
+    if needs_human:
+        try:
+            tid = waitlist.add_ticket(body.token if who else "", body.question, answer)
+        except Exception:
+            log.exception("ticket insert failed")
+            tid = None
+        who_line = f"{who['name']} – {who['store']}" if who else "Deneme kaydı yok"
+        result.update(
+            ticket_id=tid,
+            answer=answer or "Sorunu ekibimize iletiyoruz. Aşağıdaki butonla WhatsApp'tan gönder, en kısa sürede dönelim.",
+            whatsapp_text=(f"ProfitPilot destek talebi{' #' + str(tid) if tid else ''}\n{who_line}\n"
+                           f"Sorun: {body.question}"),
+        )
+    return result
+
+
 @app.post("/api/event", status_code=204)
 def track_event(body: EventRequest, request: Request):
     # un compteur ne doit jamais casser la page : erreurs silencieuses
@@ -316,11 +484,12 @@ def _funnel_html(rows: list[dict], days: int = 30) -> str:
     t = m["totals"]
     steps = [
         ("Visites de la landing", t["landing_view"], None, ""),
-        ("Essais (ouverture de l'app)", t["app_view"], t["landing_view"], "cible > 5 %"),
-        ("Rapports importés (activation)", t["file_loaded"], t["app_view"], "cible > 60 %"),
+        ("Ouvertures de l'application", t["app_view"], t["landing_view"], ""),
+        ("Essais gratuits démarrés", t["trial_started"], t["app_view"], "cible > 5 % des visites"),
+        ("Rapports importés (activation)", t["file_loaded"], t["trial_started"], "cible > 60 %"),
         ("Analyses IA demandées", t["ai_requested"], t["file_loaded"], ""),
         ("Rapports Excel téléchargés", t["report_downloaded"], t["file_loaded"], ""),
-        ("Demandes (audit, suivi, agence)", sum(signups.values()), t["landing_view"], ""),
+        ("Contacts (essais + demandes)", sum(signups.values()), t["landing_view"], ""),
     ]
     e = html.escape
     lines = "".join(
@@ -340,8 +509,8 @@ def _funnel_html(rows: list[dict], days: int = 30) -> str:
 <div class="tw"><table class="small"><thead><tr><th>Étape</th><th>Nombre</th><th>Conversion</th><th>Objectif du plan</th></tr></thead>
 <tbody>{lines}</tbody></table></div>
 <h2>Par source (?src=…)</h2>
-<div class="tw"><table class="small"><thead><tr><th>Source</th><th>Landing</th><th>App</th><th>Imports</th><th>IA</th><th>Rapports</th><th>Demandes</th></tr></thead>
-<tbody>{src_lines or '<tr><td colspan="7" class="muted">Pas encore de données.</td></tr>'}</tbody></table></div>
+<div class="tw"><table class="small"><thead><tr><th>Source</th><th>Landing</th><th>App</th><th>Essais</th><th>Imports</th><th>IA</th><th>Rapports</th><th>Contacts</th></tr></thead>
+<tbody>{src_lines or '<tr><td colspan="8" class="muted">Pas encore de données.</td></tr>'}</tbody></table></div>
 <p class="muted">Compteurs anonymes, une fois par visite et par onglet. Les pourcentages comparent chaque étape à la précédente.</p>
 <h2>Demandes</h2>"""
 
@@ -376,11 +545,46 @@ def admin(token: str = ""):
     _require_admin(token)
     rows = waitlist.all_rows()
     e = html.escape
+
+    def cell(r: dict, k: str) -> str:
+        if k == "plan":
+            return PLANS.get(r[k], r[k])
+        if k == "trial_at":
+            if not r[k]:
+                return ""
+            left = TRIAL_DAYS - (datetime.now(timezone.utc) - datetime.fromisoformat(r[k])).days
+            return f"{left} j restants" if left > 0 else "terminé"
+        if k == "paid_until":
+            if not r[k]:
+                return ""
+            until = datetime.fromisoformat(r[k])
+            return ("payé jusqu'au " if until > datetime.now(timezone.utc) else "expiré le ") + until.strftime("%d/%m/%Y")
+        return str(r[k])
+
+    def extend_btn(r: dict) -> str:
+        return (f'<form method="post" action="/admin/extend" style="margin:0">'
+                f'<input type="hidden" name="token" value="{e(token)}"><input type="hidden" name="phone" value="{e(r["phone"])}">'
+                f'<button title="Le client a payé : +30 jours d\'accès">+30 j</button></form>')
+
     body_rows = "".join(
-        "<tr>" + "".join(f"<td>{e(PLANS.get(r[k], r[k]) if k == 'plan' else str(r[k]))}</td>" for k in waitlist.FIELDS)
-        + f'<td><a href="https://wa.me/{_wa_number(r["phone"])}">WhatsApp</a></td></tr>'
+        "<tr>" + "".join(f"<td>{e(cell(r, k))}</td>" for k in waitlist.FIELDS)
+        + f'<td><a href="https://wa.me/{_wa_number(r["phone"])}">WhatsApp</a></td><td>{extend_btn(r)}</td></tr>'
         for r in rows
     )
+    try:
+        tickets = waitlist.recent_tickets()
+    except Exception:
+        log.exception("tickets failed")
+        tickets = []
+    ticket_rows = "".join(
+        f"<tr><td>#{t['id']}</td><td>{e(t['created_at'][:16].replace('T', ' '))}</td>"
+        f"<td>{e(t['name'] or '–')}<br><span class='muted'>{e(t['store'])}</span></td>"
+        f"<td class='wrapc'>{e(t['question'])}</td><td class='wrapc muted'>{e(t['ai_answer'][:300])}</td>"
+        + (f'<td><a href="https://wa.me/{_wa_number(t["phone"])}">WhatsApp</a></td>' if t["phone"] else "<td></td>")
+        + "</tr>"
+        for t in tickets
+    )
+    trials = sum(1 for r in rows if r["trial_at"])
     storage = waitlist.storage_kind()
     warn = "" if storage == "postgres" else (
         '<p class="warn">⚠ Base de données non connectée (DATABASE_URL manquant) : '
@@ -398,16 +602,32 @@ h1{{margin:0 0 4px;font-size:26px}} .big{{font-size:40px;font-weight:800;color:v
 .muted{{color:var(--muted)}} .warn{{color:var(--red);font-weight:600}}
 a{{color:var(--green)}} .tw{{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--paper);margin-top:14px}}
 table{{border-collapse:collapse;width:100%;min-width:760px}} table.small{{min-width:0}} td.n{{text-align:right;font-variant-numeric:tabular-nums}} h2{{font-size:18px;margin:22px 0 0}} th,td{{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}}
-th{{font-size:12px;color:var(--muted)}}
+th{{font-size:12px;color:var(--muted)}} td.wrapc{{white-space:normal;min-width:220px}}
 </style></head><body><div class="wrap">
 <h1>Demandes ProfitPilot</h1>
-<div class="big">{len(rows)} <span class="muted" style="font-size:16px;font-weight:400">demandes</span></div>
+<div class="big">{len(rows)} <span class="muted" style="font-size:16px;font-weight:400">contacts · dont {trials} essais gratuits · {len(tickets)} tickets d'aide</span></div>
 {warn}
 {_funnel_html(rows)}
 <p><a href="/admin/waitlist.csv?token={e(token)}">Télécharger en CSV (Excel)</a></p>
-<div class="tw"><table><thead><tr><th>Date (UTC)</th><th>Nom</th><th>Boutique</th><th>Téléphone</th><th>Commandes/mois</th><th>Offre</th><th>Source</th><th></th></tr></thead>
-<tbody>{body_rows or '<tr><td colspan="8" class="muted">Aucune demande pour le moment.</td></tr>'}</tbody></table></div>
+<div class="tw"><table><thead><tr><th>Date (UTC)</th><th>Nom</th><th>Boutique</th><th>Téléphone</th><th>Commandes/mois</th><th>Offre</th><th>Essai</th><th>Abonnement</th><th>Source</th><th></th><th>Paiement reçu</th></tr></thead>
+<tbody>{body_rows or '<tr><td colspan="11" class="muted">Aucune demande pour le moment.</td></tr>'}</tbody></table></div>
+<h2>Tickets d'aide (non résolus par l'assistant)</h2>
+<div class="tw"><table><thead><tr><th>N°</th><th>Date (UTC)</th><th>Client</th><th>Problème</th><th>Réponse de l'assistant</th><th></th></tr></thead>
+<tbody>{ticket_rows or '<tr><td colspan="6" class="muted">Aucun ticket.</td></tr>'}</tbody></table></div>
 </div></body></html>"""
+
+
+@app.post("/admin/extend")
+async def admin_extend(request: Request):
+    form = await request.form()
+    token, phone = str(form.get("token", "")), str(form.get("phone", ""))
+    _require_admin(token)
+    try:
+        waitlist.extend_access(phone, 30)
+    except Exception:
+        log.exception("extend failed")
+        raise HTTPException(503, "Base de données indisponible.")
+    return RedirectResponse(f"/admin?token={token}", status_code=303)
 
 
 @app.get("/")

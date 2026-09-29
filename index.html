@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ProfitPilot – Trendyol Kârlılık Denetimi</title>
+<title>ProfitPilot – Trendyol ve Hepsiburada Kâr Analizi</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Onest:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -81,6 +81,8 @@ h3{font:800 clamp(28px,4vw,40px)/1.05 var(--display);letter-spacing:-.025em;marg
 .plan .btn{margin-top:auto;width:100%;text-align:center}
 .plan ul{margin-bottom:20px}
 .plan.pro .btn{background:var(--green);color:#fff}
+.plans.services{grid-template-columns:repeat(2,1fr)}
+@media (max-width:860px){.plans.services{grid-template-columns:1fr}}
 .join select{width:100%;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:14px;font:400 16px var(--body);color:var(--ink)}
 .join{display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center}
 .join form{display:grid;gap:12px}
@@ -109,7 +111,7 @@ footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px soli
 <div class="wrap">
   <header class="top">
     <div class="logo">Profit<span>Pilot</span> AI</div>
-    <a class="btn small" href="#denetim">Denetim iste</a>
+    <a class="btn small" href="/app.html">Ücretsiz dene</a>
   </header>
 
   <div class="hero">
@@ -125,6 +127,7 @@ footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px soli
         <label>Sipariş başı reklam (₺)<input type="number" inputmode="decimal" id="ads" value="25" min="0"></label>
         <label>İade oranı (%)<input type="number" inputmode="decimal" id="ret" value="8" min="0" max="100"></label>
         <label>KDV oranı (%)<input type="number" inputmode="decimal" id="vat" value="20" min="0" max="100"></label>
+        <p class="hint"><a class="btn small" href="/app.html" style="margin:6px 8px 6px 0">Tüm mağazanı ücretsiz analiz et</a></p>
         <p class="hint">Komisyon oranı kategoriye göre değişir; kendi panelindeki oranı gir. Stopaj (%1) gelir vergisinden mahsup edilebilir. Sonuçlar yaklaşık bir hesaplamadır.</p>
       </div>
     </div>
@@ -162,15 +165,22 @@ footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px soli
   </div>
 </section>
 
-<section>
+<section id="fiyatlar">
   <div class="wrap">
     <h3>Fiyatlar</h3>
+    <p class="lede">14 gün ücretsiz dene, kredi kartı gerekmez. Kurulum için WhatsApp'tan ücretsiz yardım.</p>
     <div class="plans">
-      <div class="plan pro"><h4>Kârlılık Denetimi</h4><div class="price">1.990 ₺ <small>tek seferlik</small></div><p>Mağazanın gerçek kâr fotoğrafı.</p><ul><li>Tüm ürünlerin net kâr analizi (Excel rapor)</li><li>Zarar eden ürünler ve nedenleri</li><li>3 öncelikli aksiyon</li><li>20 dk görüntülü görüşme</li><li>24 saatte teslim</li></ul><button class="btn plan-btn" type="button" data-plan="denetim">Denetim iste</button></div>
-      <div class="plan"><h4>Aylık Kâr Takibi</h4><div class="price">990 ₺ <small>/ ay</small></div><p>Kârını her ay kontrol altında tut.</p><ul><li>Her ay yeni denetim raporu</li><li>Önceki ayla karşılaştırma</li><li>Fiyat ve kampanya öncesi WhatsApp danışma</li></ul><button class="btn plan-btn" type="button" data-plan="takip">Takibe başla</button></div>
+      <div class="plan"><h4>Başlangıç</h4><div class="price">249 ₺ <small>/ ay</small></div><p>Tek mağazası olan satıcılar için.</p><ul><li>1 mağaza, sınırsız ürün</li><li>Gerçek net kâr: komisyon, kargo, iade, KDV, stopaj</li><li>Veri kontrolü ve güvenilirlik skoru</li><li>Excel rapor</li></ul><a class="btn plan-link" href="/app.html?plan=baslangic">14 gün ücretsiz dene</a></div>
+      <div class="plan pro"><h4>Pro</h4><div class="price">499 ₺ <small>/ ay</small></div><p>Kârını büyütmek isteyenler için.</p><ul><li>Başlangıç'taki her şey</li><li>Yapay zekâ önerileri</li><li>Ürün başına hedef fiyat hesaplayıcı</li><li>WhatsApp destek</li></ul><a class="btn plan-link" href="/app.html?plan=pro">14 gün ücretsiz dene</a></div>
+      <div class="plan"><h4>İşletme</h4><div class="price">999 ₺ <small>/ ay</small></div><p>Birden fazla mağaza yönetenler için.</p><ul><li>3 mağaza</li><li>Pro'daki her şey</li><li>Her ay 20 dk uzman görüşmesi</li><li>Öncelikli destek</li></ul><a class="btn plan-link" href="/app.html?plan=isletme">14 gün ücretsiz dene</a></div>
+    </div>
+    <p class="note">Ödeme WhatsApp üzerinden IBAN veya ödeme linkiyle alınır.</p>
+
+    <h3 style="margin-top:48px">Uzman hizmetleri</h3>
+    <div class="plans services">
+      <div class="plan"><h4>Kârlılık Denetimi</h4><div class="price">1.990 ₺ <small>tek seferlik</small></div><p>Raporunu gönder, gerisini biz yapalım.</p><ul><li>Tüm ürünlerin analizi, 24 saatte</li><li>Zarar eden ürünler ve nedenleri</li><li>20 dk görüşmede 3 net aksiyon</li></ul><button class="btn plan-btn" type="button" data-plan="denetim">Denetim iste</button></div>
       <div class="plan"><h4>Ajans &amp; Mali Müşavir</h4><div class="price">Teklif al</div><p>Birden fazla müşteri mağazası yönetenler için.</p><ul><li>Müşterilerin için toplu denetim</li><li>Müşteri başına özel fiyat</li><li>Yönlendirme ortaklığı</li></ul><button class="btn plan-btn" type="button" data-plan="ajans">Görüşme iste</button></div>
     </div>
-    <p class="note">Ödeme, rapor hazır olduğunda IBAN veya ödeme linkiyle alınır.</p>
   </div>
 </section>
 
@@ -189,7 +199,6 @@ footer{padding:32px 0 48px;color:var(--muted);font-size:14px;border-top:1px soli
       <input id="jSales" placeholder="Aylık yaklaşık sipariş adedi">
       <select id="jPlan" aria-label="Hizmet">
         <option value="denetim">Kârlılık Denetimi – 1.990 ₺</option>
-        <option value="takip">Aylık Kâr Takibi – 990 ₺ / ay</option>
         <option value="ajans">Ajans &amp; Mali Müşavir – teklif</option>
       </select>
       <button class="btn" type="submit" id="jBtn">Denetim iste</button>

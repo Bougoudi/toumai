@@ -13,7 +13,8 @@ import waitlist
 # ordre = étapes de l'entonnoir
 EVENTS = {
     "landing_view": "Visites de la landing",
-    "app_view": "Visites de l'application (essai)",
+    "app_view": "Visites de l'application",
+    "trial_started": "Essais gratuits démarrés",
     "file_loaded": "Rapports importés (activation)",
     "ai_requested": "Analyses IA demandées",
     "report_downloaded": "Rapports Excel téléchargés",
