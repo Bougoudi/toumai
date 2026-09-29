@@ -340,6 +340,16 @@ def app_page():
     return FileResponse(BASE_DIR / "app.html")
 
 
+@app.get("/static/xlsx.full.min.js")
+def xlsx_lib():
+    # Lecteur Excel (SheetJS CE, Apache-2.0) servi par le site : pas de dépendance à un CDN
+    return FileResponse(
+        BASE_DIR / "static" / "xlsx.full.min.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "public, max-age=604800"},
+    )
+
+
 @app.get("/index.html")
 def index_html():
     return FileResponse(BASE_DIR / "index.html")

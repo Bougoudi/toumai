@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Onest:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="/static/xlsx.full.min.js" defer></script>
 <style>
 :root{
   --bg:#E8ECF1;--ink:#16223A;--muted:#56637A;--paper:#FFFFFF;--line:#C7D0DB;
@@ -39,6 +39,10 @@ h2{font:600 18px/1.3 var(--body);margin:0 0 12px}
 .btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--green);outline-offset:2px}
 .drop{display:block;border:2px dashed var(--line);border-radius:12px;padding:28px 16px;text-align:center;cursor:pointer;background:var(--field)}
 .drop.over{border-color:var(--green)}
+.drop.ok{border-style:solid;border-color:var(--green)}
+.drop.bad{border-style:solid;border-color:var(--red)}
+.msg.ok{color:var(--green);font-weight:600}
+.msg.bad{color:var(--red);font-weight:600}
 .drop input{display:none}
 .settings{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 label.f{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--muted)}
@@ -87,9 +91,9 @@ td input.missing{border-color:var(--amber)}
     <div class="card">
       <h2>1. Sipariş raporunu yükle</h2>
       <label class="drop" id="drop">
-        <input type="file" id="file" accept=".csv,.txt,.xlsx,.xls">
-        <strong>CSV veya Excel dosyasını buraya bırak</strong><br>
-        <span class="muted">ya da seçmek için tıkla (Trendyol / Hepsiburada sipariş raporu)</span>
+        <input type="file" id="file" accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        <span id="dropText"><strong>CSV veya Excel dosyasını buraya bırak</strong><br>
+        <span class="muted">ya da seçmek için tıkla (Trendyol / Hepsiburada sipariş raporu)</span></span>
       </label>
       <p class="msg muted">Satıcı panelinden sipariş raporunu Excel veya CSV olarak indir ve buraya yükle. Gerekli sütunlar: <strong>ürün adı</strong>, <strong>adet</strong> ve <strong>satış tutarı</strong>. Komisyon tutarı ve maliyet sütunları varsa otomatik kullanılır.</p>
       <p class="msg" id="fileMsg"></p>
@@ -228,25 +232,28 @@ function renderMap(){
   $("map").innerHTML=Object.entries(FIELDS).map(([f,def])=>
     `<label class="f">${def.label}<select data-f="${f}"><option value="-1">— yok —</option>${
       RAW.headers.map((h,i)=>`<option value="${i}" ${MAP[f]===i?"selected":""}>${esc(h||("Sütun "+(i+1)))}</option>`).join("")}</select></label>`).join("");
-  $("map").querySelectorAll("select").forEach(s=>s.addEventListener("change",()=>{MAP[s.dataset.f]=+s.value;aggregate();}));
+  $("map").querySelectorAll("select").forEach(s=>s.addEventListener("change",()=>{
+    MAP[s.dataset.f]=+s.value; aggregate();
+    if(PRODUCTS.length) fileStatus("ok","✅ "+PRODUCTS.length+" ürün hesaplandı. Sonuçlar aşağıda.");
+    else fileStatus("bad","⚠️ Ürün adı ve satış tutarı sütunlarını seç.");
+  }));
   $("mapCard").classList.remove("hidden");
 }
 
-function loadRows(rows,label){
+function loadRows(rows){
   // la ligne d'en-tête est la première ligne qui contient au moins 3 cellules non vides
   const h=rows.findIndex(r=>r.filter(c=>String(c).trim()!=="").length>=3);
-  if(h<0){$("fileMsg").textContent="Dosyada tablo bulunamadı.";return;}
+  if(h<0) throw new Error("Dosyada tablo bulunamadı. Sipariş raporunu seçtiğinden emin ol.");
   RAW={headers:rows[h].map(x=>String(x).trim()),rows:rows.slice(h+1)};
   MAP=detect(RAW.headers);
   renderMap();
   aggregate();
-  $("fileMsg").textContent=label+": "+RAW.rows.length+" satır okundu.";
 }
 
 function aggregate(){
   if(MAP.name<0||MAP.amount<0){
     $("results").classList.add("hidden");
-    $("fileMsg").textContent="Ürün adı ve satış tutarı sütunlarını seç.";
+    PRODUCTS=[];
     return;
   }
   const isUnitPrice=/birim|fiyat|price/.test(norm(RAW.headers[MAP.amount]))&&!/tutar|toplam|total|amount/.test(norm(RAW.headers[MAP.amount]));
@@ -313,21 +320,46 @@ document.querySelectorAll("th[data-k]").forEach(th=>th.addEventListener("click",
 }));
 
 // ---------- Fichiers ----------
+function fileStatus(kind,text){
+  const drop=$("drop"), msg=$("fileMsg");
+  drop.classList.remove("ok","bad"); msg.className="msg";
+  if(kind){ drop.classList.add(kind); msg.classList.add(kind); }
+  msg.textContent=text;
+}
+
 async function handleFile(f){
   if(!f) return;
-  $("fileMsg").textContent="Okunuyor…";
+  $("dropText").innerHTML="<strong>📄 "+esc(f.name||"Dosya")+"</strong><br><span class=\"muted\">Başka dosya seçmek için tıkla</span>";
+  fileStatus("","Okunuyor…");
   try{
-    if(/\.xlsx?$/i.test(f.name)){
-      if(!window.XLSX){$("fileMsg").textContent="Excel okuyucu yüklenemedi. Dosyayı CSV olarak kaydedip tekrar dene.";return;}
-      const wb=XLSX.read(await f.arrayBuffer(),{type:"array"});
-      const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:""});
-      loadRows(rows,f.name);
+    // Le type se lit dans les premiers octets : les fichiers venant de WhatsApp/Drive
+    // arrivent souvent sans extension.
+    const buf=await f.arrayBuffer(), head=new Uint8Array(buf.slice(0,4));
+    const isZip=head[0]===0x50&&head[1]===0x4B;               // .xlsx
+    const isOle=head[0]===0xD0&&head[1]===0xCF;               // ancien .xls
+    let rows;
+    if(isZip||isOle||/\.xlsx?$/i.test(f.name)){
+      if(!window.XLSX) throw new Error("Excel okuyucu yüklenemedi. İnternet bağlantını kontrol et ya da dosyayı CSV olarak kaydet.");
+      const wb=XLSX.read(buf,{type:"array"});
+      rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:""});
     } else {
-      loadRows(parseCSV(await f.text()),f.name);
+      rows=parseCSV(new TextDecoder("utf-8").decode(buf));
     }
-  }catch(e){ $("fileMsg").textContent="Dosya okunamadı: "+e.message; }
+    loadRows(rows);
+    if(!PRODUCTS.length) throw new Error("Ürün bulunamadı. Aşağıdaki sütun eşleştirmesinde ürün adı ve satış tutarını seç.");
+    const lines=RAW.rows.filter(r=>r.some(c=>String(c).trim()!=="")).length;
+    fileStatus("ok","✅ Dosya yüklendi: "+lines+" satır, "+PRODUCTS.length+" ürün. Sonuçlar aşağıda.");
+    $("results").scrollIntoView({behavior:"smooth",block:"start"});
+  }catch(e){
+    fileStatus("bad","⚠️ "+(e.message||"Dosya okunamadı."));
+    $("results").classList.add("hidden");
+    if(!$("mapCard").classList.contains("hidden")) $("mapCard").scrollIntoView({behavior:"smooth",block:"start"});
+  }
 }
-$("file").addEventListener("change",e=>handleFile(e.target.files[0]));
+$("file").addEventListener("change",async e=>{
+  await handleFile(e.target.files[0]);
+  e.target.value="";  // permet de re-sélectionner le même fichier
+});
 const drop=$("drop");
 ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
