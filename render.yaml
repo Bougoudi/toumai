@@ -69,3 +69,6 @@ services:
         sync: false
       - key: ALIEXPRESS_TRACKING_ID
         sync: false
+      # Import de produits CJdropshipping (boutique en ligne /boutique) :
+      - key: CJ_API_KEY
+        sync: false

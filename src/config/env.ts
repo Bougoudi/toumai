@@ -78,6 +78,10 @@ export const env = {
       appSecret: process.env.ALIEXPRESS_APP_SECRET ?? '',
       trackingId: process.env.ALIEXPRESS_TRACKING_ID ?? '',
     },
+    /** CJdropshipping (import de produits par lien). Clé : cjdropshipping.com → My CJ → Authorization → API. */
+    cj: {
+      apiKey: process.env.CJ_API_KEY ?? '',
+    },
   },
 
   /** Authentification (JWT). */

@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody } from '../../middleware/validate.js';
-import { setAliexpressCreds, setAiCreds } from './settings.service.js';
+import { setAliexpressCreds, setAiCreds, setCjApiKey } from './settings.service.js';
 import { settingsService } from './settings.service.js';
 
 const aiSchema = z.object({
@@ -25,7 +25,23 @@ const updateSchema = z.object({
   autopilotIntervalSeconds: z.number().int().min(10).max(3600).optional(),
   simulateDemand: z.boolean().optional(),
   ordersPerCycle: z.number().int().min(0).max(50).optional(),
+  shopName: z.string().trim().min(1).max(80).optional(),
+  shopTagline: z.string().trim().max(160).optional(),
+  shopDescription: z.string().trim().max(1000).optional(),
+  shopEmail: z.union([z.literal(''), z.string().trim().email()]).optional(),
+  shopPhone: z.string().trim().max(40).optional(),
+  shopAddress: z.string().trim().max(200).optional(),
+  shopCity: z.string().trim().max(80).optional(),
+  shopZip: z.string().trim().max(20).optional(),
+  shopCountry: z.string().trim().max(2).optional(),
+  shopDeliveryMinDays: z.number().int().min(0).max(90).optional(),
+  shopDeliveryMaxDays: z.number().int().min(0).max(120).optional(),
+  shopReturnDays: z.number().int().min(0).max(365).optional(),
+  googleSiteVerification: z.string().trim().max(120).regex(/^[\w-]*$/, 'Code de vérification invalide').optional(),
+  googleBusinessUrl: z.union([z.literal(''), z.string().trim().url().max(300)]).optional(),
 });
+
+const cjSchema = z.object({ apiKey: z.string().min(8).max(300) });
 
 export const settingsController = {
   get(_req: Request, res: Response) {
@@ -47,6 +63,12 @@ export const settingsController = {
   async aliexpress(req: Request, res: Response) {
     const input = parseBody(aliexpressSchema, req);
     res.json(await setAliexpressCreds(input));
+  },
+
+  /** POST /api/settings/cj — enregistre la clé API CJdropshipping (import produits). */
+  async cj(req: Request, res: Response) {
+    const { apiKey } = parseBody(cjSchema, req);
+    res.json(await setCjApiKey(apiKey));
   },
 
   /** POST /api/settings/ai — enregistre la clé de l'assistant IA (service client). */

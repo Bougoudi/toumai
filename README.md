@@ -11,6 +11,14 @@ Toumai automatise l'ensemble du cycle du dropshipping, autour de **4 piliers** :
 
 Chaque pilier est disponible **à la demande** (API) **et en automatique** (tâches planifiées).
 
+## 🛍️ Boutique en ligne (SEO)
+
+Une boutique publique optimisée pour Google est servie sur **`/boutique`**
+(fiches produit, catégories, `sitemap.xml`, `robots.txt`, données structurées
+pour les extraits enrichis). Import d'un produit par simple lien
+**CJdropshipping**. Guide complet (Search Console, Keyword Planner, Trends,
+PageSpeed, Google Business Profile…) : **[docs/seo.md](docs/seo.md)**.
+
 ## Pile technique
 
 | Couche          | Choix                                          |
