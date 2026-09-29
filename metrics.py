@@ -16,6 +16,7 @@ EVENTS = {
     "app_view": "Visites de l'application (essai)",
     "file_loaded": "Rapports importés (activation)",
     "ai_requested": "Analyses IA demandées",
+    "report_downloaded": "Rapports Excel téléchargés",
 }
 
 _lock = threading.Lock()

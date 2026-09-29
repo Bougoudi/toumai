@@ -318,6 +318,7 @@ def _funnel_html(rows: list[dict], days: int = 30) -> str:
         ("Essais (ouverture de l'app)", t["app_view"], t["landing_view"], "cible > 5 %"),
         ("Rapports importés (activation)", t["file_loaded"], t["app_view"], "cible > 60 %"),
         ("Analyses IA demandées", t["ai_requested"], t["file_loaded"], ""),
+        ("Rapports Excel téléchargés", t["report_downloaded"], t["file_loaded"], ""),
         ("Inscrits liste d'attente", sum(signups.values()), t["landing_view"], ""),
     ]
     e = html.escape
@@ -338,8 +339,8 @@ def _funnel_html(rows: list[dict], days: int = 30) -> str:
 <div class="tw"><table class="small"><thead><tr><th>Étape</th><th>Nombre</th><th>Conversion</th><th>Objectif du plan</th></tr></thead>
 <tbody>{lines}</tbody></table></div>
 <h2>Par source (?src=…)</h2>
-<div class="tw"><table class="small"><thead><tr><th>Source</th><th>Landing</th><th>App</th><th>Imports</th><th>IA</th><th>Inscrits</th></tr></thead>
-<tbody>{src_lines or '<tr><td colspan="6" class="muted">Pas encore de données.</td></tr>'}</tbody></table></div>
+<div class="tw"><table class="small"><thead><tr><th>Source</th><th>Landing</th><th>App</th><th>Imports</th><th>IA</th><th>Rapports</th><th>Inscrits</th></tr></thead>
+<tbody>{src_lines or '<tr><td colspan="7" class="muted">Pas encore de données.</td></tr>'}</tbody></table></div>
 <p class="muted">Compteurs anonymes, une fois par visite et par onglet. Les pourcentages comparent chaque étape à la précédente.</p>
 <h2>Inscrits</h2>"""
 

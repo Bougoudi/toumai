@@ -66,6 +66,8 @@ td input.missing{border-color:var(--amber)}
 .reco .meta{font-size:13px;color:var(--muted);margin-bottom:6px}
 .reco p{margin:0}
 .msg{margin:10px 0 0;font-size:14px}
+.head-row{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;margin-bottom:12px}
+.head-row h2{margin:0}
 .hidden{display:none}
 .spinner{width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -140,7 +142,8 @@ td input.missing{border-color:var(--amber)}
     </div>
 
     <div class="card">
-      <h2>Ürün bazında kârlılık</h2>
+      <div class="head-row"><h2>Ürün bazında kârlılık</h2>
+        <button class="btn ghost" id="xlsBtn" type="button">⬇ Excel olarak indir</button></div>
       <p class="muted" style="margin-top:0">En çok zarar ettiren ürünler en üstte. Başlığa tıklayarak sırala.</p>
       <p class="msg muted" id="sources"></p>
       <div class="tablewrap"><table>
@@ -469,7 +472,50 @@ const drop=$("drop");
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
 drop.addEventListener("drop",e=>handleFile(e.dataTransfer.files[0]));
 
+// ---------- Rapport Excel ----------
+function exportExcel(){
+  if(!window.XLSX||!PRODUCTS.length) return;
+  const TL='#,##0.00 "₺"', PCT='0.0"%"';
+  const cols=[["Ürün","name"],["Adet","units"],["Ciro (KDV dahil)","revenue",TL],["Birim maliyet","unitCost",TL],["Toplam maliyet","cost",TL],
+    ["Komisyon","commission",TL],["Kargo","shipping",TL],["Hizmet bedeli","fees",TL],["Reklam","ads",TL],["İade kaybı","returns_loss",TL],
+    ["Ödenecek KDV","vat",TL],["Stopaj","stopaj",TL],["Net kâr","net_profit",TL],["Marj %","margin_pct",PCT],["Maliyet kaynağı","_src"]];
+  const list=[...PRODUCTS].sort((a,b)=>a.net_profit-b.net_profit);
+  const aoa=[cols.map(c=>c[0])].concat(list.map(p=>cols.map(([,k])=>
+    k==="_src"?(p.costKnown?"gerçek":"tahmini"):(typeof p[k]==="number"?Math.round(p[k]*100)/100:p[k]))));
+  const sum=k=>Math.round(PRODUCTS.reduce((a,p)=>a+p[k],0)*100)/100;
+  const rev=sum("revenue"), net=sum("net_profit");
+  aoa.push(cols.map(([label,k],i)=>i===0?"TOPLAM":(k==="margin_pct"?(rev?Math.round(net/rev*1000)/10:0):(["units","unitCost","_src"].includes(k)?(k==="units"?sum("units"):""):sum(k)))));
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  cols.forEach(([,,z],c)=>{ if(!z) return; for(let r=1;r<aoa.length;r++){ const cell=ws[XLSX.utils.encode_cell({r,c})]; if(cell&&typeof cell.v==="number") cell.z=z; }});
+  ws["!cols"]=cols.map((c,i)=>({wch:i===0?34:(i===cols.length-1?14:15)}));
+  ws["!autofilter"]={ref:XLSX.utils.encode_range({s:{r:0,c:0},e:{r:aoa.length-2,c:cols.length-1}})};
+
+  const today=new Date().toLocaleDateString("tr-TR");
+  const summary=[["ProfitPilot AI – Kârlılık raporu"],["Tarih",today],["Pazaryeri",$("s-market").value],[],
+    ["Toplam ciro",rev],["Net kâr",net],["Kâr marjı %",rev?Math.round(net/rev*1000)/10:0],
+    ["Zarar eden ürün",PRODUCTS.filter(p=>p.net_profit<0).length+" / "+PRODUCTS.length],[],
+    ["Ayarlar"],["Komisyon % (dosyada yoksa)",sv("comm")],["Kargo / sipariş ₺",sv("ship")],["Hizmet bedeli / sipariş ₺",sv("fee")],
+    ["Reklam / adet ₺",sv("ads")],["İade oranı % (tahmin)",sv("ret")],["KDV %",sv("vat")],["Stopaj %",sv("stop")],[],
+    ["Hesaplama kaynakları",$("sources").textContent.replace(/^Hesaplama kaynakları:\s*/,"")]];
+  if(LAST_AI&&LAST_AI.recommendations&&LAST_AI.recommendations.length){
+    summary.push([],["Yapay zekâ önerileri"]);
+    if(LAST_AI.summary) summary.push(["Özet",LAST_AI.summary]);
+    LAST_AI.recommendations.forEach((r,i)=>summary.push([(i+1)+". "+(ACTIONS[r.action]||r.action)+" – "+r.product,r.title+": "+r.detail+" (aylık etki ≈ "+fmt.format(r.monthly_impact_try||0)+")"]));
+  }
+  const ws2=XLSX.utils.aoa_to_sheet(summary);
+  ["B5","B6"].forEach(a=>{ if(ws2[a]) ws2[a].z=TL; });
+  ws2["!cols"]=[{wch:30},{wch:90}];
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws2,"Özet");
+  XLSX.utils.book_append_sheet(wb,ws,"Ürünler");
+  XLSX.writeFile(wb,"profitpilot-kar-raporu-"+new Date().toISOString().slice(0,10)+".xlsx");
+  track("report_downloaded");
+}
+$("xlsBtn").addEventListener("click",exportExcel);
+
 // ---------- IA ----------
+let LAST_AI=null;
 const ACTIONS={fiyat_artir:"Fiyatı artır",reklami_azalt:"Reklamı azalt",maliyeti_dusur:"Maliyeti düşür",satistan_cek:"Satıştan çek",one_cikar:"Öne çıkar"};
 const r2 = v => Math.round(v*100)/100;
 $("aiBtn").addEventListener("click",async()=>{
@@ -485,6 +531,7 @@ $("aiBtn").addEventListener("click",async()=>{
       body:JSON.stringify({marketplace:$("s-market").value,products})});
     const data=await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(typeof data.detail==="string"?data.detail:"Sunucu hatası ("+res.status+")");
+    LAST_AI=data;
     $("aiOut").innerHTML=(data.summary?`<p>${esc(data.summary)}</p>`:"")+(data.recommendations||[]).map((r,i)=>`
       <div class="reco"><div class="meta">${i+1}. ${esc(ACTIONS[r.action]||r.action)} · ${esc(r.product)} · aylık etki ≈ <strong class="${r.monthly_impact_try<0?"neg":"pos"}">${fmt.format(r.monthly_impact_try||0)}</strong></div>
       <h3>${esc(r.title)}</h3><p>${esc(r.detail)}</p></div>`).join("");
