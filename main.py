@@ -203,6 +203,7 @@ def health():
         "key_length": len(key),
         "model": ANTHROPIC_MODEL,
         "waitlist_storage": waitlist.storage_kind(),
+        "db_host": waitlist.db_host(),
     }
 
 

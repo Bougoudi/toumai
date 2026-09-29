@@ -26,6 +26,19 @@ def storage_kind() -> str:
     return "postgres" if _db_url() else "local_file"
 
 
+def db_host() -> str:
+    """Nom du serveur de DATABASE_URL, sans identifiants (diagnostic)."""
+    from urllib.parse import urlsplit
+
+    url = _db_url()
+    if not url:
+        return ""
+    try:
+        return urlsplit(url).hostname or "(absent)"
+    except ValueError:
+        return "(adresse invalide)"
+
+
 def _connect():
     import psycopg  # importé à la demande : inutile sans base de données
 
