@@ -105,8 +105,8 @@ td input.missing{border-color:var(--amber)}
         <label class="f">Pazaryeri
           <select id="s-market"><option>Trendyol</option><option>Hepsiburada</option><option>Diğer</option></select></label>
         <label class="f">Komisyon (%)<input type="number" inputmode="decimal" id="s-comm" value="18" min="0" max="100"></label>
-        <label class="f">Kargo / adet (₺)<input type="number" inputmode="decimal" id="s-ship" value="60" min="0"></label>
-        <label class="f">Hizmet bedeli / adet (₺)<input type="number" inputmode="decimal" id="s-fee" value="10" min="0"></label>
+        <label class="f">Kargo / sipariş (₺)<input type="number" inputmode="decimal" id="s-ship" value="60" min="0"></label>
+        <label class="f">Hizmet bedeli / sipariş (₺)<input type="number" inputmode="decimal" id="s-fee" value="10" min="0"></label>
         <label class="f">Reklam / adet (₺)<input type="number" inputmode="decimal" id="s-ads" value="0" min="0"></label>
         <label class="f">İade oranı (%)<input type="number" inputmode="decimal" id="s-ret" value="8" min="0" max="100"></label>
         <label class="f">KDV (%)<input type="number" inputmode="decimal" id="s-vat" value="20" min="0" max="100"></label>
@@ -142,6 +142,7 @@ td input.missing{border-color:var(--amber)}
     <div class="card">
       <h2>Ürün bazında kârlılık</h2>
       <p class="muted" style="margin-top:0">En çok zarar ettiren ürünler en üstte. Başlığa tıklayarak sırala.</p>
+      <p class="msg muted" id="sources"></p>
       <div class="tablewrap"><table>
         <thead><tr>
           <th data-k="name">Ürün</th><th data-k="units">Adet</th><th data-k="revenue">Ciro</th>
@@ -228,16 +229,21 @@ const FIELDS = {
   units:    {label:"Adet", keys:["adet","miktar","quantity","qty"]},
   amount:   {label:"Satış tutarı *", keys:["faturalanacak tutar","satis tutari","toplam tutar","tutar","birim fiyat","satis fiyati","fiyat","price","amount","total"]},
   comm:     {label:"Komisyon tutarı", keys:["komisyon tutari","komisyon","commission"]},
-  cost:     {label:"Birim maliyet", keys:["maliyet","alis fiyati","cost"]},
+  cost:     {label:"Maliyet", keys:["maliyet","alis fiyati","cost"]},
+  order:    {label:"Sipariş / paket no", keys:["siparis numarasi","siparis no","paket no","paket numarasi","order number","order id","order"]},
+  status:   {label:"Sipariş durumu", keys:["siparis durumu","durum","status"]},
+  ship:     {label:"Kargo tutarı", keys:["kargo tutari","kargo ucreti","kargo bedeli","shipping cost","shipping fee"]},
+  fee:      {label:"Hizmet bedeli", keys:["hizmet bedeli","islem bedeli","service fee"]},
 };
-let RAW={headers:[],rows:[]}, MAP={}, PRODUCTS=[], sortKey="net_profit", sortDir=1;
+let RAW={headers:[],rows:[]}, MAP={}, PRODUCTS=[], INFO={}, COST_MODE="auto", sortKey="net_profit", sortDir=1;
 
 function detect(headers){
   const n=headers.map(norm), m={}, used=new Set();
   for(const [f,def] of Object.entries(FIELDS)){
     m[f]=-1;
     for(const k of def.keys){
-      const i=n.findIndex((h,idx)=>!used.has(idx)&&h.includes(k)&&!(f==="comm"&&h.includes("oran"))&&!(f==="name"&&(h.includes("kod")||h.includes("no"))));
+      const i=n.findIndex((h,idx)=>!used.has(idx)&&h.includes(k)&&!(f==="comm"&&h.includes("oran"))&&!(f==="name"&&(h.includes("kod")||/\bno\b|numara|barkod|durum/.test(h)))
+        &&!(f==="amount"&&/komisyon|kargo|indirim|hizmet|alis|maliyet|kdv|iade/.test(h)));
       if(i>-1){m[f]=i;used.add(i);break;}
     }
   }
@@ -247,8 +253,13 @@ function detect(headers){
 function renderMap(){
   $("map").innerHTML=Object.entries(FIELDS).map(([f,def])=>
     `<label class="f">${def.label}<select data-f="${f}"><option value="-1">— yok —</option>${
-      RAW.headers.map((h,i)=>`<option value="${i}" ${MAP[f]===i?"selected":""}>${esc(h||("Sütun "+(i+1)))}</option>`).join("")}</select></label>`).join("");
-  $("map").querySelectorAll("select").forEach(s=>s.addEventListener("change",()=>{
+      RAW.headers.map((h,i)=>`<option value="${i}" ${MAP[f]===i?"selected":""}>${esc(h||("Sütun "+(i+1)))}</option>`).join("")}</select></label>`).join("")
+    +`<label class="f">Maliyet sütunu ne gösteriyor?<select id="costMode">
+        <option value="auto" ${COST_MODE==="auto"?"selected":""}>Otomatik algıla</option>
+        <option value="unit" ${COST_MODE==="unit"?"selected":""}>Birim maliyet (1 adet)</option>
+        <option value="line" ${COST_MODE==="line"?"selected":""}>Satır toplamı (adet × birim)</option></select></label>`;
+  $("costMode").addEventListener("change",e=>{COST_MODE=e.target.value; aggregate();});
+  $("map").querySelectorAll("select[data-f]").forEach(s=>s.addEventListener("change",()=>{
     MAP[s.dataset.f]=+s.value; aggregate();
     if(PRODUCTS.length) fileStatus("ok","✅ "+PRODUCTS.length+" ürün hesaplandı. Sonuçlar aşağıda.");
     else fileStatus("bad","⚠️ Ürün adı ve satış tutarı sütunlarını seç.");
@@ -272,19 +283,72 @@ function aggregate(){
     PRODUCTS=[];
     return;
   }
-  const isUnitPrice=/birim|fiyat|price/.test(norm(RAW.headers[MAP.amount]))&&!/tutar|toplam|total|amount/.test(norm(RAW.headers[MAP.amount]));
-  const agg=new Map();
+  const hAmount=norm(RAW.headers[MAP.amount]);
+  const isUnitPrice=/birim|fiyat|price/.test(hAmount)&&!/tutar|toplam|total|amount/.test(hAmount);
+  const col=(r,f)=>MAP[f]>-1?r[MAP[f]]:undefined;
+
+  // 1) lignes valides, sans les commandes annulées
+  const lines=[]; let cancelled=0;
   for(const r of RAW.rows){
     const name=String(r[MAP.name]??"").trim(); if(!name) continue;
+    const st=norm(col(r,"status")??"");
+    if(/iptal|cancel/.test(st)){cancelled++;continue;}
     const units=MAP.units>-1?(toNum(r[MAP.units])||1):1;
-    const amt=toNum(r[MAP.amount]); const revenue=isUnitPrice?amt*units:amt;
-    const p=agg.get(name)||{name,units:0,revenue:0,commAmt:0,hasComm:MAP.comm>-1,fileCost:null};
-    p.units+=units; p.revenue+=revenue;
-    if(MAP.comm>-1) p.commAmt+=Math.abs(toNum(r[MAP.comm]));
-    if(MAP.cost>-1){const c=toNum(r[MAP.cost]); if(c>0) p.fileCost=c;}
-    agg.set(name,p);
+    const amt=toNum(r[MAP.amount]);
+    lines.push({name,units,revenue:isUnitPrice?amt*units:amt,
+      returned:/iade|return/.test(st),
+      order:String(col(r,"order")??"").trim(),
+      comm:MAP.comm>-1?Math.abs(toNum(r[MAP.comm])):0,
+      cost:MAP.cost>-1?toNum(r[MAP.cost]):0,
+      ship:MAP.ship>-1?Math.abs(toNum(r[MAP.ship])):0,
+      fee:MAP.fee>-1?Math.abs(toNum(r[MAP.fee])):0});
   }
-  PRODUCTS=[...agg.values()];
+
+  // 2) la colonne coût est-elle un coût unitaire ou un total de ligne ?
+  let costMode=COST_MODE;
+  if(MAP.cost>-1&&costMode==="auto"){
+    const hCost=norm(RAW.headers[MAP.cost]);
+    if(/birim|unit/.test(hCost)) costMode="unit";
+    else if(/toplam|tutar|total/.test(hCost)) costMode="line";
+    else{
+      // si, lu comme unitaire, le coût dépasse le prix de vente alors que lu comme total
+      // il reste en dessous, c'est un total de ligne
+      const multi=lines.filter(l=>l.units>1&&l.cost>0&&l.revenue>0);
+      const asUnit=multi.reduce((a,l)=>a+l.cost*l.units,0), asLine=multi.reduce((a,l)=>a+l.cost,0), rev=multi.reduce((a,l)=>a+l.revenue,0);
+      costMode=(multi.length&&asUnit>rev&&asLine<=rev)?"line":"unit";
+    }
+  }
+
+  // 3) un colis = un envoi : si une commande contient plusieurs produits, son envoi
+  //    est réparti entre eux au prorata du montant (sans n° de commande : 1 ligne = 1 envoi)
+  const orderRev=new Map(), orderLines=new Map();
+  for(const l of lines) if(l.order){
+    orderRev.set(l.order,(orderRev.get(l.order)||0)+l.revenue);
+    orderLines.set(l.order,(orderLines.get(l.order)||0)+1);
+  }
+  const share=l=>!l.order?1:(orderRev.get(l.order)>0?l.revenue/orderRev.get(l.order):1/orderLines.get(l.order));
+
+  // 4) regroupement par produit
+  const agg=new Map();
+  for(const l of lines){
+    const p=agg.get(l.name)||{name:l.name,units:0,revenue:0,orders:0,returns:0,
+      commAmt:0,costTotal:0,costUnits:0,fileShip:0,fileFee:0};
+    if(l.returned) p.returns+=share(l);
+    else{
+      p.units+=l.units; p.revenue+=l.revenue; p.commAmt+=l.comm;
+      p.orders+=share(l);
+    }
+    if(l.cost>0&&!l.returned){ p.costTotal+=costMode==="line"?l.cost:l.cost*l.units; p.costUnits+=l.units; }
+    p.fileShip+=l.ship; p.fileFee+=l.fee;
+    agg.set(l.name,p);
+  }
+  PRODUCTS=[...agg.values()].filter(p=>p.units>0||p.returns>0).map(p=>({
+    ...p, fileUnitCost: p.costUnits?p.costTotal/p.costUnits:null,
+  }));
+  const soldKeys=new Set(lines.filter(l=>!l.returned).map((l,i)=>l.order||"#"+i));
+  const retKeys=new Set(lines.filter(l=>l.returned).map((l,i)=>l.order||"#r"+i));
+  INFO={cancelled,costMode,hasStatus:MAP.status>-1,hasOrder:MAP.order>-1,
+        orderCount:soldKeys.size,returnsTotal:retKeys.size};
   compute();
 }
 
@@ -294,12 +358,20 @@ function compute(){
   const commRate=sv("comm")/100, ship=sv("ship"), fee=sv("fee"), ads=sv("ads"), retRate=sv("ret")/100, vatRate=sv("vat")/100, costPct=sv("costpct")/100, stopRate=sv("stop")/100;
   for(const p of PRODUCTS){
     const avgPrice=p.units?p.revenue/p.units:0;
-    p.costKnown = costs[p.name]!=null || p.fileCost!=null;
-    p.unitCost = costs[p.name]!=null ? costs[p.name] : (p.fileCost!=null ? p.fileCost : Math.round(avgPrice*costPct*100)/100);
+    p.costKnown = costs[p.name]!=null || p.fileUnitCost!=null;
+    p.unitCost = costs[p.name]!=null ? costs[p.name]
+               : (p.fileUnitCost!=null ? Math.round(p.fileUnitCost*100)/100 : Math.round(avgPrice*costPct*100)/100);
     p.cost=p.unitCost*p.units;
-    p.commission=p.hasComm&&p.commAmt>0?p.commAmt:p.revenue*commRate;
-    p.shipping=ship*p.units; p.fees=fee*p.units; p.ads=ads*p.units;
-    p.returns_loss=retRate*p.shipping;
+    // commission du fichier si présente (Trendyol la rembourse sur les retours), sinon taux × CA
+    p.commission=MAP.comm>-1&&p.commAmt>0?p.commAmt:p.revenue*commRate;
+    // livraison et frais de service : par commande envoyée (y compris celles retournées)
+    const shipped=p.orders+p.returns;
+    p.shipping=MAP.ship>-1&&p.fileShip>0?p.fileShip:ship*shipped;
+    p.fees=MAP.fee>-1&&p.fileFee>0?p.fileFee:fee*shipped;
+    p.ads=ads*p.units;
+    // retours : réels si le fichier a une colonne statut (frais de retour = un envoi), sinon estimés
+    const perShipment=shipped?p.shipping/shipped:ship;
+    p.returns_loss=INFO.hasStatus?p.returns*perShipment:retRate*p.orders*perShipment;
     const ded=p.cost+p.commission+p.shipping+p.fees+p.ads+p.returns_loss;
     p.vat=Math.max(0,p.revenue-ded)*vatRate/(1+vatRate);
     p.stopaj=p.revenue/(1+vatRate)*stopRate;
@@ -307,6 +379,21 @@ function compute(){
     p.margin_pct=p.revenue>0?p.net_profit/p.revenue*100:0;
   }
   render();
+  renderSources();
+}
+
+function renderSources(){
+  const S=[], orders=INFO.orderCount;
+  const est=PRODUCTS.filter(p=>!p.costKnown).length;
+  S.push(MAP.cost>-1
+    ? "Maliyet: dosyadan ("+(INFO.costMode==="line"?"satır toplamı → birime bölündü":"birim maliyet")+")"+(est?", "+est+" üründe tahmini":"")
+    : "Maliyet: dosyada yok, fiyatın %"+sv("costpct")+"'i tahmin edildi. Turuncu kutulara gerçek maliyeti gir");
+  S.push(MAP.comm>-1?"Komisyon: dosyadan":"Komisyon: ayarlardan (%"+sv("comm")+")");
+  S.push(MAP.ship>-1?"Kargo: dosyadan":"Kargo: sipariş başı "+sv("ship")+" ₺ × "+orders+" sipariş"+(INFO.hasOrder?", aynı paketteki ürünler kargoyu paylaşır":" (her satır 1 sipariş sayıldı)"));
+  S.push(MAP.fee>-1?"Hizmet bedeli: dosyadan":"Hizmet bedeli: sipariş başı "+sv("fee")+" ₺");
+  S.push(INFO.hasStatus?"İade: dosyadaki durumdan ("+INFO.returnsTotal+" iade)":"İade: tahmini (%"+sv("ret")+"). Dosyada sipariş durumu sütunu yok");
+  if(INFO.cancelled) S.push(INFO.cancelled+" iptal edilen satır hesaba katılmadı");
+  $("sources").innerHTML="<strong>Hesaplama kaynakları:</strong> "+S.map(esc).join(" · ");
 }
 
 function render(){
