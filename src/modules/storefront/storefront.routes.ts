@@ -13,6 +13,7 @@ import {
   bundleUnitPrice,
   categoryPath,
   productImages,
+  productColors,
   productPath,
   productSizes,
   storefrontService,
@@ -165,6 +166,7 @@ const orderSchema = z.object({
   zip: z.string().trim().min(1).max(20),
   country: z.string().trim().min(2).max(60),
   size: z.string().trim().max(20).optional(),
+  color: z.string().trim().max(30).optional(),
   website: z.string().max(0).optional(), // pot de miel anti-robots : doit rester vide
 });
 
@@ -193,6 +195,9 @@ storefrontRouter.post(
     const input = parsed.data;
     const sizes = productSizes(product);
     if (sizes.length && !sizes.includes(input.size ?? '')) return fail('Merci de choisir une taille.', 400, back);
+    const colors = productColors(product);
+    if (colors.length && !colors.includes(input.color ?? '')) return fail('Merci de choisir une couleur.', 400, back);
+    const variant = [colors.length ? input.color : null, sizes.length ? input.size : null].filter(Boolean).join(' / ') || null;
     if (!paymentService.enabled()) return fail('Le paiement en ligne n’est pas encore activé.', 503, back);
 
     // Remise par lot (2 ou 3 articles) appliquée côté serveur, jamais depuis le formulaire.
@@ -216,7 +221,7 @@ storefrontRouter.post(
           },
         },
         items: {
-          create: [{ productId: product.id, quantity: input.quantity, unitSalePrice: unit, unitCostPrice: product.costPrice, variant: sizes.length ? input.size : null }],
+          create: [{ productId: product.id, quantity: input.quantity, unitSalePrice: unit, unitCostPrice: product.costPrice, variant }],
         },
       },
     });

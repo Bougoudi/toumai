@@ -62,9 +62,9 @@ vrais avis clients (par ex. via ta fiche Google Business Profile).
 
 Ajouté automatiquement au premier démarrage (une seule fois, `src/bootstrap/starterCatalog.ts`)
 et mis en avant sur l'accueil si aucun autre produit ne l'est : fiche rédigée en français,
-points forts, étapes, consignes de sécurité de portage, tailles S à XXL, 34,90 €.
+points forts, étapes, consignes de sécurité de portage, tailles S à XXL, couleurs beige / rose / gris, 34,90 €.
 
-- **Photos** : une photo (recadrée depuis la fiche CJ). Pour récupérer les 14 photos CJ :
+- **Photos** : 5 images retouchées (beige, rose, gris avec zoom tissu à la place des flammes CJ, photo réelle détourée sur fond blanc, guide des tailles en français). Pour ajouter d autres photos CJ :
   Paramètres → « Importer un produit CJdropshipping » → colle le SKU `CJWY281211301AZ`.
   Les photos et le prix d'achat sont ajoutés **sans écraser** tes textes ni ton prix.
 - **À vérifier** : tailles réellement disponibles chez CJ et guide des tailles, frais de

@@ -6,6 +6,7 @@ import {
   bundlePct,
   bundleUnitPrice,
   categoryPath,
+  productColors,
   productHighlights,
   productImages,
   productPath,
@@ -473,6 +474,7 @@ export function productPage(shop: AppSettings, categories: Category[], p: Produc
           return `<label class="offer"><input type="radio" name="quantity" value="${q}"${q === 1 ? ' checked' : ''}><span class="q">${q} × ${q === 1 ? 'article' : 'articles'}${pct ? `<span class="tag">-${pct} %</span>` : ''}</span><span class="t">${money(unit * q, p.currency)}${q > 1 ? `<small>soit ${money(unit, p.currency)} / pièce</small>` : ''}</span></label>`;
         })
         .join('')}</fieldset>
+${productColors(p).length ? `<label>Couleur<select name="color" required><option value="">Choisissez votre couleur</option>${productColors(p).map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>` : ''}
 ${productSizes(p).length ? `<label>Taille<select name="size" required><option value="">Choisissez votre taille</option>${productSizes(p).map((z) => `<option>${esc(z)}</option>`).join('')}</select></label>` : ''}
 <label>Nom complet<input name="name" required maxlength="120" autocomplete="name"></label>
 <div class="row"><label>E-mail<input type="email" name="email" required maxlength="160" autocomplete="email"></label>
@@ -488,7 +490,7 @@ ${productSizes(p).length ? `<label>Taille<select name="size" required><option va
   const body = `${bc.html}
 <article class="pdp">
 <div class="gallery">${imgs[0] ? `<div class="main"><img src="${esc(imgs[0])}" alt="${esc(p.name)}" width="800" height="800" fetchpriority="high" decoding="async"></div>` : ''}
-${imgs.length > 1 ? `<div class="more">${imgs.slice(1, 9).map((u, i) => `<img src="${esc(u)}" alt="${esc(p.name)} – vue ${i + 2}" width="120" height="120" loading="lazy" decoding="async">`).join('')}</div>` : ''}</div>
+${imgs.length > 1 ? `<div class="more">${imgs.slice(1, 9).map((u, i) => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="${esc(p.name)} – vue ${i + 2}" width="120" height="120" loading="lazy" decoding="async"></a>`).join('')}</div>` : ''}</div>
 <div>
 <h1>${esc(p.name)}</h1>
 ${priceHtml(p, true)}

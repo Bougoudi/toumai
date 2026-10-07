@@ -23,6 +23,7 @@ interface StarterProduct {
   salePrice: number;
   images: string;
   sizes: string;
+  colors: string;
   highlights: string;
   steps: string;
   description: string;
@@ -39,11 +40,19 @@ const STARTERS: StarterProduct[] = [
     currency: 'EUR',
     costPrice: 8.9,
     salePrice: 34.9,
-    images: '/boutique-img/sweat-portage-bebe-1.jpg',
+    // Photos CJ retouchées (flammes et icônes retirées, fond blanc pour la photo réelle).
+    images: [
+      '/boutique-img/sweat-portage-teddy-beige.jpg',
+      '/boutique-img/sweat-portage-teddy-rose.jpg',
+      '/boutique-img/sweat-portage-teddy-gris.jpg',
+      '/boutique-img/sweat-portage-teddy-photo-reelle.jpg',
+      '/boutique-img/sweat-portage-teddy-guide-tailles.jpg',
+    ].join(','),
     sizes: 'S,M,L,XL,XXL',
+    colors: 'Beige,Rose,Gris',
     highlights: [
       'Bébé au chaud contre vous | Un panneau zippé et une petite capuche à oreilles se referment sur bébé : vous partagez votre chaleur, sans manteau supplémentaire ni couverture qui glisse.',
-      'Matière teddy épaisse et douce | Un tissu bouclé moelleux façon sherpa, doux contre la peau et chaud pour les promenades d’automne et d’hiver.',
+      'Teddy épais et doux | Une imitation laine d’agneau bouclée et épaissie, douce contre la peau et chaude pour les promenades d’automne et d’hiver.',
       'À porter par-dessus le porte-bébé | Installez bébé dans son porte-bébé ventral, puis refermez le sweat par-dessus : vous restez couverts tous les deux.',
       '2 en 1 : avec ou sans bébé | Refermez simplement le zip central : il redevient une veste à capuche classique pour tous les jours.',
     ].join('\n'),
@@ -57,7 +66,9 @@ const STARTERS: StarterProduct[] = [
       'Le sweat de portage teddy qui garde maman et bébé au chaud, ensemble.',
       'Veste à capuche zippée en matière teddy (sherpa bouclée) épaisse, avec un panneau bébé amovible par zip et une petite capuche à oreilles pour la tête de bébé. Sans bébé, refermez le zip central : c’est une veste à capuche classique, avec deux poches.',
       'Pour qui : mamans (et papas) qui portent leur bébé en porte-bébé ventral et veulent sortir l’automne et l’hiver sans superposer couvertures et manteaux.',
-      'Coloris : beige. Tailles : S à XXL (vérifiez le guide des tailles avant de commander ; en cas de doute, prenez la taille au-dessus pour laisser de la place au porte-bébé).',
+      'Matière : imitation laine d’agneau (teddy) épaissie. Coupe ample. Coloris : beige, rose, gris.',
+      'Guide des tailles (vêtement à plat, ±2 cm) — S : poitrine 110, épaules 52, manches 63, longueur 60 · M : 114 / 54 / 64,5 / 61 · L : 118 / 56 / 66 / 62 · XL : 122 / 58 / 67,5 / 63 · XXL : 126 / 60 / 69 / 64.',
+      'Ces tailles taillent 1 à 2 tailles plus petit que les tailles européennes : entre deux tailles, ou pour porter bébé dedans, prenez la taille au-dessus.',
       'Sécurité de portage : ce sweat ne remplace pas un porte-bébé. Utilisez toujours un porte-bébé adapté au poids de votre enfant, gardez son visage visible et dégagé, le menton décollé de la poitrine, et son nez et sa bouche jamais couverts par le tissu ou la capuche. Bébé doit rester à portée de bisou.',
       'Entretien : lavage délicat à 30 °C, ne pas sécher en machine pour garder la douceur du teddy.',
     ].join('\n'),
@@ -86,6 +97,7 @@ export async function ensureStarterCatalog(): Promise<void> {
             margin: computeMargin(s.salePrice, s.costPrice),
             images: s.images,
             sizes: s.sizes,
+            colors: s.colors,
             highlights: s.highlights,
             steps: s.steps,
             source: 'cj',

@@ -42,6 +42,17 @@ export function absUrl(u: string): string {
   return u.startsWith('/') ? env.publicUrl.replace(/\/+$/, '') + u : u;
 }
 
+const list = (s: string) =>
+  s
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+
+export function productColors(p: Pick<Product, 'colors'>): string[] {
+  return list(p.colors);
+}
+
 export function productSizes(p: Pick<Product, 'sizes'>): string[] {
   return p.sizes
     .split(',')
