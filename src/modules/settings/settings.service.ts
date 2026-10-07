@@ -42,6 +42,10 @@ export interface AppSettings {
   /** Remises par lot sur la fiche produit (en %, 0 = offre masquée). */
   bundleTwoPct: number;
   bundleThreePct: number;
+  /** Pop-up d'inscription e-mail avec code de bienvenue. */
+  newsletterEnabled: boolean;
+  /** Remise du code de bienvenue (en %). */
+  newsletterPct: number;
 }
 
 const DEFAULTS: AppSettings = {
@@ -70,6 +74,8 @@ const DEFAULTS: AppSettings = {
   shopFeaturedProductId: '',
   bundleTwoPct: 10,
   bundleThreePct: 15,
+  newsletterEnabled: true,
+  newsletterPct: 10,
 };
 
 let cache: AppSettings = { ...DEFAULTS };

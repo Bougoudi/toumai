@@ -73,6 +73,16 @@ points forts, étapes, consignes de sécurité de portage, tailles S à XXL, cou
   marques (Love Radius, Najell). Mots-clés : « sweat de portage », « veste de portage »,
   « sweat kangourou bébé », « pull de portage ». Saison forte : octobre à février.
 
+## Pop-up « −10 % » et liste e-mail
+
+- Pop-up d'inscription affichée une fois par visiteur (après 8 s ou 40 % de défilement),
+  formulaire aussi dans le pied de page. Chaque inscrit reçoit un **code personnel à usage
+  unique** (`BIENVENUE-XXXXXX`), pré-rempli automatiquement dans « Code promo » à la commande.
+- Remise réglable (Paramètres → `newsletterPct`, 10 % par défaut) ; pop-up désactivable.
+- Si `RESEND_API_KEY` est configurée, le code est aussi envoyé par e-mail avec un lien de
+  désinscription (`/boutique/desinscription`).
+- Liste des inscrits : Paramètres → « Inscrits newsletter ».
+
 ## Importer un produit CJdropshipping
 
 1. Sur cjdropshipping.com : **My CJ → Authorization → API** → copie ta clé API.

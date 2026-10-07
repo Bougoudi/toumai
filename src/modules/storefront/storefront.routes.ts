@@ -7,6 +7,7 @@ import { HttpError } from '../../middleware/errorHandler.js';
 import { asyncHandler } from '../../middleware/validate.js';
 import { logger } from '../../utils/logger.js';
 import { paymentService } from '../payments/payment.service.js';
+import { newsletterService } from './newsletter.service.js';
 import { getSettings } from '../settings/settings.service.js';
 import {
   absUrl,
@@ -70,6 +71,8 @@ storefrontRouter.get('/robots.txt', (_req, res) => {
       'Disallow: /api/',
       'Disallow: /boutique/commander',
       'Disallow: /boutique/merci',
+      'Disallow: /boutique/newsletter',
+      'Disallow: /boutique/desinscription',
       // L'application d'administration (racine) n'a rien à faire dans Google.
       'Disallow: /$',
       'Disallow: /index.html',
@@ -167,6 +170,7 @@ const orderSchema = z.object({
   country: z.string().trim().min(2).max(60),
   size: z.string().trim().max(20).optional(),
   color: z.string().trim().max(30).optional(),
+  promo: z.string().trim().max(40).optional(),
   website: z.string().max(0).optional(), // pot de miel anti-robots : doit rester vide
 });
 
@@ -200,8 +204,16 @@ storefrontRouter.post(
     const variant = [colors.length ? input.color : null, sizes.length ? input.size : null].filter(Boolean).join(' / ') || null;
     if (!paymentService.enabled()) return fail('Le paiement en ligne n’est pas encore activé.', 503, back);
 
-    // Remise par lot (2 ou 3 articles) appliquée côté serveur, jamais depuis le formulaire.
-    const unit = bundleUnitPrice(shop, input.quantity, product.salePrice ?? 0);
+    // Code promo (code de bienvenue newsletter) : vérifié et réservé côté serveur.
+    const promo = input.promo ? await newsletterService.validCode(input.promo) : null;
+    if (input.promo && (!promo || !(await newsletterService.consume(promo.id, 'en-cours')))) {
+      return fail('Ce code promo n’est pas valide ou a déjà été utilisé.', 400, back);
+    }
+
+    // Remise par lot (2 ou 3 articles) puis code promo, appliqués côté serveur.
+    const bundleUnit = bundleUnitPrice(shop, input.quantity, product.salePrice ?? 0);
+    const unit = promo ? Math.round(bundleUnit * (1 - promo.pct / 100) * 100) / 100 : bundleUnit;
+    const discountAmount = promo ? Number(((bundleUnit - unit) * input.quantity).toFixed(2)) : null;
     const order = await prisma.order.create({
       data: {
         orderNumber: `TM-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
@@ -209,6 +221,8 @@ storefrontRouter.post(
         status: 'PENDING',
         currency: product.currency,
         total: Number((unit * input.quantity).toFixed(2)),
+        discountCode: promo?.code ?? null,
+        discountAmount,
         customer: {
           create: {
             name: input.name,
@@ -225,13 +239,19 @@ storefrontRouter.post(
         },
       },
     });
-    logger.info('Commande boutique créée', { orderNumber: order.orderNumber });
+    logger.info('Commande boutique créée', { orderNumber: order.orderNumber, promo: !!promo });
+    if (promo) await prisma.subscriber.update({ where: { id: promo.id }, data: { orderId: order.id } });
 
     let url: string | null = null;
     try {
       url = (await paymentService.createCheckout(order.id)).url;
     } catch (err) {
       logger.error('Paiement boutique indisponible', { err: err instanceof Error ? err.message : String(err) });
+    }
+    if (!url && promo) {
+      // Paiement impossible : on libère le code pour qu'il reste utilisable.
+      await prisma.subscriber.update({ where: { id: promo.id }, data: { codeUsedAt: null, orderId: null } });
+      await prisma.order.update({ where: { id: order.id }, data: { status: 'CANCELLED' } });
     }
     if (!url) return fail('Le paiement est momentanément indisponible, merci de réessayer dans quelques minutes.', 502, back);
 
@@ -243,7 +263,7 @@ storefrontRouter.post(
         shop,
         categories,
         'Dernière étape : le paiement',
-        `<p>Commande <strong>${esc(order.orderNumber)}</strong> — ${esc(product.name)} × ${input.quantity} : <strong>${money(order.total, order.currency)}</strong>.</p>
+        `<p>Commande <strong>${esc(order.orderNumber)}</strong> — ${esc(product.name)} × ${input.quantity} : <strong>${money(order.total, order.currency)}</strong>.</p>${promo ? `<p>Code ${esc(promo.code)} appliqué : −${money(discountAmount, order.currency)}.</p>` : ''}
 <p><a class="btn" href="${esc(url)}" rel="nofollow">Payer par carte en toute sécurité</a></p>`,
         '/boutique/commander',
       ),
@@ -265,6 +285,71 @@ storefrontRouter.get(
         ? messagePage(shop, categories, 'Paiement annulé', `<p>Votre paiement n’a pas été finalisé${num ? ` (commande ${esc(num)})` : ''}. Aucun montant n’a été débité.</p><p><a class="btn" href="/boutique">Retour à la boutique</a></p>`, '/boutique/merci')
         : messagePage(shop, categories, 'Merci pour votre commande !', `<p>Commande <strong>${esc(num)}</strong> confirmée. Vous recevrez le numéro de suivi par e-mail dès l’expédition.</p><p><a class="btn" href="/boutique">Continuer mes achats</a></p>`, '/boutique/merci'),
       200,
+      false,
+    );
+  }),
+);
+
+// ── Liste e-mail : inscription (pop-up / pied de page) et désinscription ───────
+const newsletterLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false });
+const newsletterSchema = z.object({
+  email: z.string().trim().email().max(160),
+  source: z.enum(['popup', 'footer']).default('footer'),
+  website: z.string().max(0).optional(), // pot de miel
+});
+
+storefrontRouter.post(
+  '/boutique/newsletter',
+  newsletterLimiter,
+  express.urlencoded({ extended: false, limit: '4kb' }),
+  express.json({ limit: '4kb' }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const wantsJson = (req.get('accept') ?? '').includes('application/json');
+    const shop = getSettings();
+    const parsed = newsletterSchema.safeParse(req.body);
+    if (!shop.newsletterEnabled) {
+      return wantsJson ? res.status(404).json({ error: 'Inscription indisponible.' }) : res.redirect(303, '/boutique');
+    }
+    if (!parsed.success) {
+      if (wantsJson) return res.status(400).json({ error: 'Adresse e-mail invalide.' });
+      const { categories } = await chrome();
+      return html(res, messagePage(shop, categories, 'Adresse e-mail invalide', '<p>Vérifiez votre adresse puis réessayez.</p><p><a class="btn" href="/boutique">Revenir</a></p>'), 400, false);
+    }
+    const r = await newsletterService.subscribe(parsed.data.email, parsed.data.source);
+    if (wantsJson) return res.json({ code: r.used ? null : r.code, pct: r.pct, reused: r.reused, used: r.used });
+    const { categories } = await chrome();
+    html(
+      res,
+      messagePage(
+        shop,
+        categories,
+        r.used ? 'Vous êtes déjà inscrit(e)' : 'Bienvenue !',
+        r.used
+          ? '<p>Votre code de bienvenue a déjà été utilisé. Merci de votre fidélité !</p><p><a class="btn" href="/boutique">Retour à la boutique</a></p>'
+          : `<p>Votre code personnel : <strong class="code">${esc(r.code)}</strong></p><p>−${r.pct} % sur votre première commande. Saisissez-le dans le champ « Code promo » au moment de commander.</p><p><a class="btn" href="/boutique">Découvrir la boutique</a></p>`,
+        '/boutique/newsletter',
+      ),
+      200,
+      false,
+    );
+  }),
+);
+
+storefrontRouter.get(
+  '/boutique/desinscription',
+  asyncHandler(async (req, res) => {
+    const { shop, categories } = await chrome();
+    const ok = await newsletterService.unsubscribe(String(req.query.e ?? '').slice(0, 160), String(req.query.t ?? '').slice(0, 64));
+    html(
+      res,
+      messagePage(
+        shop,
+        categories,
+        ok ? 'Désinscription confirmée' : 'Lien invalide',
+        ok ? '<p>Vous ne recevrez plus nos e-mails.</p>' : '<p>Ce lien de désinscription est invalide ou incomplet.</p>',
+        '/boutique/desinscription',
+      ),
+      ok ? 200 : 400,
       false,
     );
   }),

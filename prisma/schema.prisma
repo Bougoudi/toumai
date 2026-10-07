@@ -388,6 +388,10 @@ model Order {
   /// Identifiant de la commande côté marketplace (déduplication à l'import).
   externalId String?
 
+  /// Code de réduction appliqué (ex. code de bienvenue newsletter) et montant déduit.
+  discountCode   String?
+  discountAmount Float?
+
   /// En attente de vérification manuelle (ex. adresse à confirmer avant l'envoi
   /// au fournisseur). Les commandes « en attente » sont ignorées par le pilote
   /// automatique tant qu'elles ne sont pas confirmées.
@@ -556,4 +560,20 @@ model SupplierMatch {
 
   @@index([searchRequestId])
   @@index([score])
+}
+
+/// Inscrit à la liste e-mail de la boutique (pop-up « -10 % »), avec son code de bienvenue.
+model Subscriber {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  /// Code de réduction personnel, utilisable une seule fois.
+  code        String    @unique
+  /// popup | footer
+  source      String    @default("popup")
+  consentAt   DateTime  @default(now())
+  unsubscribedAt DateTime?
+  codeUsedAt  DateTime?
+  orderId     String?
+
+  createdAt DateTime @default(now())
 }

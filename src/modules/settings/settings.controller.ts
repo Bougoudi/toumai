@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { parseBody } from '../../middleware/validate.js';
+import { newsletterService } from '../storefront/newsletter.service.js';
 import { setAliexpressCreds, setAiCreds, setCjApiKey } from './settings.service.js';
 import { settingsService } from './settings.service.js';
 
@@ -43,6 +44,8 @@ const updateSchema = z.object({
   shopFeaturedProductId: z.string().trim().max(40).optional(),
   bundleTwoPct: z.number().min(0).max(60).optional(),
   bundleThreePct: z.number().min(0).max(60).optional(),
+  newsletterEnabled: z.boolean().optional(),
+  newsletterPct: z.number().min(0).max(50).optional(),
 });
 
 const cjSchema = z.object({ apiKey: z.string().min(8).max(300) });
@@ -67,6 +70,11 @@ export const settingsController = {
   async aliexpress(req: Request, res: Response) {
     const input = parseBody(aliexpressSchema, req);
     res.json(await setAliexpressCreds(input));
+  },
+
+  /** GET /api/settings/subscribers — inscrits à la newsletter de la boutique. */
+  async subscribers(_req: Request, res: Response) {
+    res.json(await newsletterService.list());
   },
 
   /** POST /api/settings/cj — enregistre la clé API CJdropshipping (import produits). */

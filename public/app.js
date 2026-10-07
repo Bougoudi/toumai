@@ -1393,6 +1393,7 @@ const SHOP_FIELDS = [
   { key: 'shopDeliveryMaxDays', label: 'Livraison max. (jours)', type: 'number' },
   { key: 'shopReturnDays', label: 'Retours acceptés (jours, 0 = non)', type: 'number' },
   { key: 'shopAnnouncement', label: 'Bandeau d’annonce (ex. « Livraison offerte dès 2 articles »)' },
+  { key: 'newsletterPct', label: 'Pop-up newsletter : remise du code de bienvenue (%, 0 = sans remise)', type: 'number' },
   { key: 'bundleTwoPct', label: 'Remise pour 2 articles (%)', type: 'number' },
   { key: 'bundleThreePct', label: 'Remise pour 3 articles (%)', type: 'number' },
   { key: 'googleSiteVerification', label: 'Code Google Search Console (balise meta, content="…")' },
@@ -1406,6 +1407,8 @@ async function loadShopForm() {
     box.innerHTML = SHOP_FIELDS.map((f) =>
       `<div class="field"><label>${esc(f.label)}</label><input class="input shop-f" data-key="${f.key}" type="${f.type || 'text'}" value="${esc(s[f.key])}"/></div>`,
     ).join('');
+    box.insertAdjacentHTML('beforeend', `<div class="field"><label>Pop-up d’inscription « code de bienvenue »</label><select class="input" id="nl-enabled"><option value="true" ${s.newsletterEnabled !== false ? 'selected' : ''}>Activée</option><option value="false" ${s.newsletterEnabled === false ? 'selected' : ''}>Désactivée</option></select></div>`);
+    loadSubscribers();
     _featuredId = s.shopFeaturedProductId || '';
     loadLandingEditor();
     const lbl = $('#cj-rate-label');
@@ -1420,10 +1423,21 @@ $('#shop-save')?.addEventListener('click', async (ev) => {
     patch[i.dataset.key] = i.type === 'number' ? Number(i.value) : i.value.trim();
   });
   if (!patch.shopName) return toast('Le nom de la boutique est requis');
+  patch.newsletterEnabled = $('#nl-enabled')?.value !== 'false';
   busy(ev.currentTarget, true, '...');
   try { await api('/api/settings', { method: 'PATCH', body: patch }); toast('Boutique enregistrée'); }
   catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
 });
+async function loadSubscribers() {
+  const box = $('#nl-subscribers');
+  if (!box) return;
+  try {
+    const r = await api('/api/settings/subscribers');
+    const rows = r.items.map((s) => [esc(s.email), esc(s.code), s.codeUsedAt ? 'Utilisé' : 'Non utilisé', s.unsubscribedAt ? 'Désinscrit' : 'Inscrit', dt(s.createdAt)]);
+    box.innerHTML = `<p class="muted">${r.active} inscrit(s) actif(s) sur ${r.total}.</p>` + tableHtml(['E-mail', 'Code', 'Utilisation', 'Statut', 'Date'], rows);
+  } catch (e) { box.textContent = e.message; }
+}
+
 // ── Page de vente (prix barré, points forts, étapes, produit mis en avant) ──
 let _featuredId = '';
 let _lpProducts = [];
