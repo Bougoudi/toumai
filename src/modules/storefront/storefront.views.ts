@@ -2,12 +2,14 @@ import type { Product } from '@prisma/client';
 import { env } from '../../config/env.js';
 import type { AppSettings } from '../settings/settings.service.js';
 import {
+  absUrl,
   bundlePct,
   bundleUnitPrice,
   categoryPath,
   productHighlights,
   productImages,
   productPath,
+  productSizes,
   productSteps,
 } from './storefront.service.js';
 
@@ -211,7 +213,7 @@ ${shop.googleSiteVerification ? `<meta name="google-site-verification" content="
 <meta property="og:title" content="${esc(o.title)}">
 <meta property="og:description" content="${esc(o.description)}">
 <meta property="og:url" content="${esc(canonical)}">
-${o.ogImage ? `<meta property="og:image" content="${esc(o.ogImage)}">\n<meta name="twitter:image" content="${esc(o.ogImage)}">` : ''}
+${o.ogImage ? `<meta property="og:image" content="${esc(absUrl(o.ogImage))}">\n<meta name="twitter:image" content="${esc(absUrl(o.ogImage))}">` : ''}
 <meta name="twitter:card" content="${o.ogImage ? 'summary_large_image' : 'summary'}">
 <meta name="theme-color" content="#e8590c">
 <link rel="icon" href="/icons/icon-192.png" type="image/png">
@@ -251,7 +253,8 @@ function reasonsHtml(p: Product, imgs: string[], ctaHref: string): string {
   if (!hl.length) return '';
   return hl
     .map((h, i) => {
-      const img = imgs.length ? imgs[(i + 1) % imgs.length] : '';
+      // Une seule photo : on ne la répète pas dans chaque section.
+      const img = imgs.length > 1 ? imgs[(i + 1) % imgs.length] : '';
       return `<section class="reason">${img ? `<div class="rimg"><img src="${esc(img)}" alt="${esc(p.name)} – ${esc(h.title)}" width="600" height="600" loading="lazy" decoding="async"></div>` : ''}
 <div><h3>${hl.length > 1 ? `${i + 1}. ` : ''}${esc(h.title)}</h3><p>${esc(h.text)}</p><a class="btn" href="${esc(ctaHref)}">Je le veux</a></div></section>`;
     })
@@ -307,6 +310,7 @@ function landingPage(shop: AppSettings, categories: Category[], products: Produc
   const href = productPath(f) + '#acheter';
   const hl = productHighlights(f);
   const others = products.filter((x) => x.id !== f.id);
+  const short = f.name.split(' – ')[0];
   const lead = shop.shopDescription || (f.description ?? '').split('\n')[0] || shop.shopTagline;
   const body = `
 <section class="lhero">
@@ -316,10 +320,10 @@ ${priceHtml(f, true)}
 ${hl.length ? `<ul class="checks">${hl.slice(0, 5).map((h) => `<li>${esc(h.title)}</li>`).join('')}</ul>` : ''}
 <a class="btn" href="${esc(href)}">Commander maintenant</a>
 ${badgesHtml(shop)}</div></section>
-${hl.some((h) => h.text) ? `<h2>${hl.filter((h) => h.text).length > 1 ? `${hl.filter((h) => h.text).length} raisons de choisir ${esc(f.name)}` : `Pourquoi choisir ${esc(f.name)}`}</h2>` : ''}
+${hl.some((h) => h.text) ? `<h2>${hl.filter((h) => h.text).length > 1 ? `${hl.filter((h) => h.text).length} raisons de choisir notre ${esc(short.charAt(0).toLowerCase() + short.slice(1))}` : `Pourquoi choisir ${esc(short)}`}</h2>` : ''}
 ${reasonsHtml(f, imgs, href)}
 ${stepsHtml(f)}
-<div class="cta-band"><h2>Prêt à essayer ${esc(f.name)} ?</h2>${priceHtml(f, true)}<p><a class="btn" href="${esc(href)}">Commander maintenant</a></p></div>
+<div class="cta-band"><h2>Commandez votre ${esc(short.charAt(0).toLowerCase() + short.slice(1))}</h2>${priceHtml(f, true)}<p><a class="btn" href="${esc(href)}">Commander maintenant</a></p></div>
 ${faqBlock(faqs)}
 ${others.length ? `<section><h2>Nos autres produits</h2><div class="grid">${others.slice(0, 8).map((p) => productCard(p)).join('')}</div></section>` : ''}`;
   return layout({
@@ -414,7 +418,7 @@ export function productPage(shop: AppSettings, categories: Category[], p: Produc
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: p.name,
-    ...(imgs.length ? { image: imgs.slice(0, 6) } : {}),
+    ...(imgs.length ? { image: imgs.slice(0, 6).map(absUrl) } : {}),
     description: clip(desc || p.name, 5000),
     ...(p.sku ? { sku: p.sku } : {}),
     category: p.category,
@@ -469,6 +473,7 @@ export function productPage(shop: AppSettings, categories: Category[], p: Produc
           return `<label class="offer"><input type="radio" name="quantity" value="${q}"${q === 1 ? ' checked' : ''}><span class="q">${q} × ${q === 1 ? 'article' : 'articles'}${pct ? `<span class="tag">-${pct} %</span>` : ''}</span><span class="t">${money(unit * q, p.currency)}${q > 1 ? `<small>soit ${money(unit, p.currency)} / pièce</small>` : ''}</span></label>`;
         })
         .join('')}</fieldset>
+${productSizes(p).length ? `<label>Taille<select name="size" required><option value="">Choisissez votre taille</option>${productSizes(p).map((z) => `<option>${esc(z)}</option>`).join('')}</select></label>` : ''}
 <label>Nom complet<input name="name" required maxlength="120" autocomplete="name"></label>
 <div class="row"><label>E-mail<input type="email" name="email" required maxlength="160" autocomplete="email"></label>
 <label>Téléphone<input type="tel" name="phone" required maxlength="40" autocomplete="tel"></label></div>

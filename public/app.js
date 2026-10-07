@@ -538,7 +538,7 @@ async function showOrder(id) {
     const items = tableHtml(
       [i18n.t('th_product'), i18n.t('th_qty'), i18n.t('th_unit_price'), i18n.t('th_subtotal')],
       o.items.map((it) => [
-        esc(it.product?.name || it.productId),
+        esc(it.product?.name || it.productId) + (it.variant ? ` <span class="badge wait">Taille ${esc(it.variant)}</span>` : ''),
         it.quantity,
         `<span class="num">${money(it.unitSalePrice)}</span>`,
         `<span class="num">${money(it.unitSalePrice * it.quantity)}</span>`,
@@ -1445,6 +1445,7 @@ function fillLandingEditor() {
   $('#lp-was').value = p?.compareAtPrice ?? '';
   $('#lp-highlights').value = p?.highlights ?? '';
   $('#lp-steps').value = p?.steps ?? '';
+  $('#lp-sizes').value = p?.sizes ?? '';
   $('#lp-featured').checked = !!p && p.id === _featuredId;
 }
 $('#lp-product')?.addEventListener('change', fillLandingEditor);
@@ -1459,7 +1460,7 @@ $('#lp-save')?.addEventListener('click', async (ev) => {
   try {
     const p = await api(`/api/products/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      body: { salePrice: price, compareAtPrice: was > 0 ? was : null, highlights: $('#lp-highlights').value, steps: $('#lp-steps').value },
+      body: { salePrice: price, compareAtPrice: was > 0 ? was : null, highlights: $('#lp-highlights').value, steps: $('#lp-steps').value, sizes: $('#lp-sizes').value.trim() },
     });
     const featured = $('#lp-featured').checked ? id : (_featuredId === id ? '' : _featuredId);
     if (featured !== _featuredId) {

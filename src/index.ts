@@ -3,6 +3,7 @@ import { env, isProd } from './config/env.js';
 import { runFullCycle } from './automation/autopilot.js';
 import { startScheduler } from './automation/scheduler.js';
 import { ensureFirstAdmin } from './bootstrap/firstAdmin.js';
+import { ensureStarterCatalog } from './bootstrap/starterCatalog.js';
 import { prisma } from './db/prisma.js';
 import { loadSettings } from './modules/settings/settings.service.js';
 import { logger } from './utils/logger.js';
@@ -27,6 +28,7 @@ async function main() {
   assertSecureConfig();
   await ensureFirstAdmin();
   await loadSettings();
+  await ensureStarterCatalog();
   const app = createApp();
 
   const server = app.listen(env.port, () => {

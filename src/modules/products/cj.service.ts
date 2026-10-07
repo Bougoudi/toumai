@@ -17,8 +17,15 @@ const CJ_API = 'https://developers.cjdropshipping.com/api2.0/v1';
 let tokenCache: { key: string; token: string; expiresAt: number } | null = null;
 
 /** Extrait l'identifiant produit (pid) d'un lien CJ ou d'un pid brut. */
+/** SKU produit CJ (ex. « CJWY281211301AZ ») : interrogé via `productSku` au lieu du pid. */
+export function parseCjSku(input: string): string | null {
+  const s = input.trim().toUpperCase();
+  return /^CJ[A-Z]{2}\d{6,}[A-Z]{0,4}$/.test(s) ? s : null;
+}
+
 export function parseCjProductId(input: string): string | null {
   const s = input.trim();
+  if (parseCjSku(s)) return null;
   if (/^[0-9A-Za-z-]{10,40}$/.test(s) && !s.includes('/')) return s;
   const m =
     s.match(/.*-p-([0-9A-Za-z-]+)\.html/i) ?? // /product/nom-du-produit-p-<pid>.html
@@ -147,8 +154,11 @@ export interface CjImportInput {
 export const cjService = {
   /** Importe (ou met à jour) un produit CJ dans le catalogue, prêt à vendre sur la boutique. */
   async importFromUrl(input: CjImportInput) {
-    const pid = parseCjProductId(input.url);
-    if (!pid) throw new HttpError(400, 'Lien CJdropshipping invalide (attendu : …-p-<identifiant>.html).');
+    const cjSku = parseCjSku(input.url);
+    const pidFromUrl = cjSku ? null : parseCjProductId(input.url);
+    if (!cjSku && !pidFromUrl) {
+      throw new HttpError(400, 'Lien ou SKU CJdropshipping invalide (attendu : …-p-<identifiant>.html ou CJ…).');
+    }
 
     const currency = getSettings().currency.toUpperCase();
     const rate = currency === 'USD' ? 1 : input.exchangeRate;
@@ -157,10 +167,12 @@ export const cjService = {
     }
 
     const token = await accessToken();
-    const p = (await cjFetch(`/product/query?pid=${encodeURIComponent(pid)}`, {
+    const query = cjSku ? `productSku=${encodeURIComponent(cjSku)}` : `pid=${encodeURIComponent(pidFromUrl!)}`;
+    const p = (await cjFetch(`/product/query?${query}`, {
       headers: { 'CJ-Access-Token': token },
     })) as CjProduct | null;
     if (!p) throw new HttpError(404, 'Produit CJ introuvable.');
+    const pid = p.pid || pidFromUrl || cjSku!;
 
     const name = (p.productNameEn || asList(p.productName)[0] || `Produit CJ ${pid}`).trim().slice(0, 190);
     const { text, images: descImages } = cleanDescription(p.description ?? '');
@@ -196,9 +208,30 @@ export const cjService = {
       source: 'cj',
       status: input.publish === false ? 'DRAFT' : 'ACTIVE',
     };
-    const sku = `CJ-${pid}`;
-    const product = await prisma.product.upsert({ where: { sku }, create: { sku, ...data }, update: data });
-    logger.info('Produit CJ importé', { pid, productId: product.id, cjSku: p.productSku });
+    // Déjà au catalogue (import précédent par lien ou par SKU) : on rafraîchit les
+    // photos et le prix d'achat, mais on garde les textes et le prix de vente du vendeur.
+    const keys = [`CJ-${pid}`, ...(p.productSku ? [`CJ-${p.productSku.toUpperCase()}`] : []), ...(cjSku ? [`CJ-${cjSku}`] : [])];
+    const existing = await prisma.product.findFirst({ where: { sku: { in: keys } } });
+    let product;
+    if (existing) {
+      const kept = existing.images.split(',').map((u) => u.trim()).filter(Boolean);
+      const sale = input.salePrice ?? existing.salePrice ?? salePrice;
+      product = await prisma.product.update({
+        where: { id: existing.id },
+        data: {
+          images: [...new Set([...images, ...kept])].slice(0, 16).join(','),
+          costPrice,
+          salePrice: sale,
+          margin: computeMargin(sale, costPrice),
+          ...(existing.description ? {} : { description: data.description }),
+          ...(input.publish === false ? { status: 'DRAFT' } : {}),
+        },
+      });
+    } else {
+      const sku = `CJ-${pid}`;
+      product = await prisma.product.create({ data: { sku, ...data } });
+    }
+    logger.info('Produit CJ importé', { pid, productId: product.id, cjSku: p.productSku, updated: !!existing });
     return product;
   },
 };

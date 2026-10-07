@@ -12,6 +12,7 @@ export const createProductSchema = z.object({
   compareAtPrice: z.number().positive().nullable().optional(),
   highlights: z.string().max(4000).optional(),
   steps: z.string().max(2000).optional(),
+  sizes: z.string().max(200).optional(),
   status: z.enum(['DRAFT', 'ACTIVE', 'ARCHIVED']).default('DRAFT'),
   source: z.string().default('manual'),
   images: z.string().default(''),

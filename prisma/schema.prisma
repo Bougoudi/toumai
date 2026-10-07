@@ -295,6 +295,8 @@ model Product {
   /// et étapes d'utilisation (une étape par ligne).
   highlights             String             @default("")
   steps                  String             @default("")
+  /// Tailles proposées à la commande, séparées par des virgules (vide = pas de choix).
+  sizes                  String             @default("")
 
   /// DRAFT | ACTIVE | ARCHIVED
   status                 String             @default("DRAFT")
@@ -423,6 +425,8 @@ model OrderItem {
   quantity      Int     @default(1)
   unitSalePrice Float
   unitCostPrice Float?
+  /// Variante choisie par le client (ex. taille « M »), à reporter chez le fournisseur.
+  variant       String?
 
   @@index([orderId])
 }

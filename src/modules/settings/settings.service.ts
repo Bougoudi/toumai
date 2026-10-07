@@ -80,7 +80,7 @@ export async function loadSettings() {
     const rows = await prisma.setting.findMany();
     const merged = { ...DEFAULTS };
     for (const row of rows) {
-      if (row.key.startsWith(SECRET_PREFIX)) continue; // secrets : hors cache/API
+      if (row.key.startsWith(SECRET_PREFIX) || row.key.startsWith('starter.')) continue; // secrets / drapeaux internes : hors cache/API
       try {
         (merged as Record<string, unknown>)[row.key] = JSON.parse(row.value);
       } catch {

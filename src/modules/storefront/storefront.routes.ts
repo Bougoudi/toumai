@@ -8,7 +8,15 @@ import { asyncHandler } from '../../middleware/validate.js';
 import { logger } from '../../utils/logger.js';
 import { paymentService } from '../payments/payment.service.js';
 import { getSettings } from '../settings/settings.service.js';
-import { bundleUnitPrice, categoryPath, productImages, productPath, storefrontService } from './storefront.service.js';
+import {
+  absUrl,
+  bundleUnitPrice,
+  categoryPath,
+  productImages,
+  productPath,
+  productSizes,
+  storefrontService,
+} from './storefront.service.js';
 import { categoryPage, esc, homePage, infoPage, messagePage, money, productPage } from './storefront.views.js';
 
 /**
@@ -84,7 +92,7 @@ storefrontRouter.get(
       ...products.map((p) => {
         const img = productImages(p)[0];
         return `<url><loc>${x(abs(productPath(p)))}</loc><lastmod>${p.updatedAt.toISOString()}</lastmod>${
-          img ? `<image:image><image:loc>${x(img)}</image:loc></image:image>` : ''
+          img ? `<image:image><image:loc>${x(absUrl(img))}</image:loc></image:image>` : ''
         }</url>`;
       }),
     ];
@@ -156,6 +164,7 @@ const orderSchema = z.object({
   city: z.string().trim().min(1).max(80),
   zip: z.string().trim().min(1).max(20),
   country: z.string().trim().min(2).max(60),
+  size: z.string().trim().max(20).optional(),
   website: z.string().max(0).optional(), // pot de miel anti-robots : doit rester vide
 });
 
@@ -182,6 +191,8 @@ storefrontRouter.post(
     const back = productPath(product);
     if (!parsed.success) return fail('Merci de vérifier les informations saisies (tous les champs sont requis).', 400, back);
     const input = parsed.data;
+    const sizes = productSizes(product);
+    if (sizes.length && !sizes.includes(input.size ?? '')) return fail('Merci de choisir une taille.', 400, back);
     if (!paymentService.enabled()) return fail('Le paiement en ligne n’est pas encore activé.', 503, back);
 
     // Remise par lot (2 ou 3 articles) appliquée côté serveur, jamais depuis le formulaire.
@@ -205,7 +216,7 @@ storefrontRouter.post(
           },
         },
         items: {
-          create: [{ productId: product.id, quantity: input.quantity, unitSalePrice: unit, unitCostPrice: product.costPrice }],
+          create: [{ productId: product.id, quantity: input.quantity, unitSalePrice: unit, unitCostPrice: product.costPrice, variant: sizes.length ? input.size : null }],
         },
       },
     });

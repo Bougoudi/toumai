@@ -1,4 +1,5 @@
 import type { Product } from '@prisma/client';
+import { env } from '../../config/env.js';
 import { prisma } from '../../db/prisma.js';
 import { HttpError } from '../../middleware/errorHandler.js';
 
@@ -28,11 +29,25 @@ export function categoryPath(category: string): string {
   return `/boutique/categorie/${slugify(category)}`;
 }
 
+/** Photos du produit : URL https ou fichiers servis par l'appli (« /boutique-img/… »). */
 export function productImages(p: Pick<Product, 'images'>): string[] {
   return p.images
     .split(',')
     .map((s) => s.trim())
-    .filter((u) => /^https:\/\//.test(u));
+    .filter((u) => /^https:\/\//.test(u) || (/^\/[\w./-]+$/.test(u) && !u.startsWith('//')));
+}
+
+/** URL absolue (Open Graph, données structurées, sitemap) d'une photo éventuellement relative. */
+export function absUrl(u: string): string {
+  return u.startsWith('/') ? env.publicUrl.replace(/\/+$/, '') + u : u;
+}
+
+export function productSizes(p: Pick<Product, 'sizes'>): string[] {
+  return p.sizes
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 12);
 }
 
 /** Remise par lot (en %) selon la quantité commandée : 2 → bundleTwoPct, 3+ → bundleThreePct. */

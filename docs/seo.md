@@ -58,6 +58,21 @@ Volontairement absents : faux avis, faux compteurs de clients, faux « stock lim
 comptes à rebours — Google et la loi sanctionnent ces pratiques. Ajoute uniquement de
 vrais avis clients (par ex. via ta fiche Google Business Profile).
 
+## Produit vedette : sweat de portage teddy (CJ `CJWY281211301AZ`)
+
+Ajouté automatiquement au premier démarrage (une seule fois, `src/bootstrap/starterCatalog.ts`)
+et mis en avant sur l'accueil si aucun autre produit ne l'est : fiche rédigée en français,
+points forts, étapes, consignes de sécurité de portage, tailles S à XXL, 34,90 €.
+
+- **Photos** : une photo (recadrée depuis la fiche CJ). Pour récupérer les 14 photos CJ :
+  Paramètres → « Importer un produit CJdropshipping » → colle le SKU `CJWY281211301AZ`.
+  Les photos et le prix d'achat sont ajoutés **sans écraser** tes textes ni ton prix.
+- **À vérifier** : tailles réellement disponibles chez CJ et guide des tailles, frais de
+  livraison CJ vers ton pays (le prix d'achat de 8,90 € est une estimation de 9,62 $ hors port).
+- **Marché** : concurrents entre ~23 € et 30 € en entrée de gamme, 60 à 140 € pour les
+  marques (Love Radius, Najell). Mots-clés : « sweat de portage », « veste de portage »,
+  « sweat kangourou bébé », « pull de portage ». Saison forte : octobre à février.
+
 ## Importer un produit CJdropshipping
 
 1. Sur cjdropshipping.com : **My CJ → Authorization → API** → copie ta clé API.
