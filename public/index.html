@@ -362,6 +362,18 @@
           <div class="form-actions">
             <button id="shop-save" class="btn btn-primary">Enregistrer la boutique</button>
           </div>
+          <h3 style="margin-top:18px">🎯 Page de vente (style boutique mono-produit)</h3>
+          <p class="muted">Choisis un produit : prix barré, points forts, étapes « comment ça marche ».
+            Coche « Mettre en avant » pour que l'accueil de la boutique devienne sa page de vente.</p>
+          <div class="field"><label>Produit</label><select id="lp-product" class="input"></select></div>
+          <div class="field"><label>Prix de vente</label><input id="lp-price" class="input" type="number" step="0.01" min="0" /></div>
+          <div class="field"><label>Prix barré (ancien prix réel, facultatif)</label><input id="lp-was" class="input" type="number" step="0.01" min="0" /></div>
+          <div class="field"><label>Points forts — un par ligne : « Titre | explication »</label>
+            <textarea id="lp-highlights" class="input" rows="6" placeholder="Fini la brosse sale | Une tête neuve à chaque nettoyage, puis on la jette."></textarea></div>
+          <div class="field"><label>Comment ça marche — une étape par ligne</label>
+            <textarea id="lp-steps" class="input" rows="4" placeholder="Clipsez une tête neuve&#10;Frottez&#10;Éjectez et jetez"></textarea></div>
+          <div class="field"><label><input id="lp-featured" type="checkbox" /> Mettre en avant sur l'accueil de la boutique</label></div>
+          <div class="form-actions"><button id="lp-save" class="btn btn-primary">Enregistrer la page de vente</button></div>
           <h3 style="margin-top:18px">📦 Importer un produit CJdropshipping</h3>
           <p class="muted">Colle le lien d'un produit CJ : il est ajouté au catalogue et publié sur la boutique.
             Nécessite ta clé API CJ (cjdropshipping.com → My CJ → Authorization → API).</p>

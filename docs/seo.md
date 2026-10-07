@@ -40,6 +40,24 @@ et les données structurées.
 > ⚠️ `PUBLIC_URL` doit être ton **vrai domaine en HTTPS** (ex. `https://www.maboutique.com`) :
 > il sert aux URL canoniques et au sitemap.
 
+## Page de vente « mono-produit »
+
+Comme les boutiques à un seul produit vedette : Paramètres → « Page de vente ».
+
+- **Prix barré** (seulement un ancien prix réel — un faux prix barré est interdit par
+  la loi sur les pratiques commerciales trompeuses).
+- **Points forts** : une ligne « Titre | explication » par point → liste à cocher sous le
+  prix + sections « N raisons de choisir… » illustrées avec les photos du produit.
+- **Comment ça marche** : une étape par ligne.
+- **Mettre en avant** : l'accueil `/boutique` devient la page de vente de ce produit.
+- **Offres par lot** (Boutique en ligne & SEO) : remise en % pour 2 et 3 articles,
+  calculée côté serveur à la commande.
+- **Bandeau d'annonce** en haut de page et **bouton « Commander » fixe** sur mobile.
+
+Volontairement absents : faux avis, faux compteurs de clients, faux « stock limité » ou
+comptes à rebours — Google et la loi sanctionnent ces pratiques. Ajoute uniquement de
+vrais avis clients (par ex. via ta fiche Google Business Profile).
+
 ## Importer un produit CJdropshipping
 
 1. Sur cjdropshipping.com : **My CJ → Authorization → API** → copie ta clé API.

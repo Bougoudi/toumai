@@ -49,8 +49,17 @@ export const productService = {
   },
 
   async update(id: string, input: UpdateProductInput) {
-    await this.getById(id);
-    return prisma.product.update({ where: { id }, data: withEconomics(input) });
+    const current = await this.getById(id);
+    // Mise à jour partielle : on ne recalcule l'économie que si un prix change,
+    // à partir des valeurs existantes (sinon les prix absents seraient effacés).
+    if (input.costPrice === undefined && input.salePrice === undefined) {
+      return prisma.product.update({ where: { id }, data: input });
+    }
+    const merged = withEconomics({
+      costPrice: input.costPrice ?? current.costPrice,
+      salePrice: input.salePrice ?? (input.costPrice !== undefined ? undefined : current.salePrice),
+    });
+    return prisma.product.update({ where: { id }, data: { ...input, ...merged } });
   },
 
   async remove(id: string) {

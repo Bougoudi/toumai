@@ -39,6 +39,10 @@ const updateSchema = z.object({
   shopReturnDays: z.number().int().min(0).max(365).optional(),
   googleSiteVerification: z.string().trim().max(120).regex(/^[\w-]*$/, 'Code de vérification invalide').optional(),
   googleBusinessUrl: z.union([z.literal(''), z.string().trim().url().max(300)]).optional(),
+  shopAnnouncement: z.string().trim().max(140).optional(),
+  shopFeaturedProductId: z.string().trim().max(40).optional(),
+  bundleTwoPct: z.number().min(0).max(60).optional(),
+  bundleThreePct: z.number().min(0).max(60).optional(),
 });
 
 const cjSchema = z.object({ apiKey: z.string().min(8).max(300) });

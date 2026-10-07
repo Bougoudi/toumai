@@ -1392,6 +1392,9 @@ const SHOP_FIELDS = [
   { key: 'shopDeliveryMinDays', label: 'Livraison min. (jours)', type: 'number' },
   { key: 'shopDeliveryMaxDays', label: 'Livraison max. (jours)', type: 'number' },
   { key: 'shopReturnDays', label: 'Retours acceptés (jours, 0 = non)', type: 'number' },
+  { key: 'shopAnnouncement', label: 'Bandeau d’annonce (ex. « Livraison offerte dès 2 articles »)' },
+  { key: 'bundleTwoPct', label: 'Remise pour 2 articles (%)', type: 'number' },
+  { key: 'bundleThreePct', label: 'Remise pour 3 articles (%)', type: 'number' },
   { key: 'googleSiteVerification', label: 'Code Google Search Console (balise meta, content="…")' },
   { key: 'googleBusinessUrl', label: 'Lien de ta fiche Google Business Profile', type: 'url' },
 ];
@@ -1403,6 +1406,8 @@ async function loadShopForm() {
     box.innerHTML = SHOP_FIELDS.map((f) =>
       `<div class="field"><label>${esc(f.label)}</label><input class="input shop-f" data-key="${f.key}" type="${f.type || 'text'}" value="${esc(s[f.key])}"/></div>`,
     ).join('');
+    _featuredId = s.shopFeaturedProductId || '';
+    loadLandingEditor();
     const lbl = $('#cj-rate-label');
     if (lbl) lbl.textContent = s.currency === 'USD'
       ? 'Taux de change (inutile : boutique en USD)'
@@ -1418,6 +1423,52 @@ $('#shop-save')?.addEventListener('click', async (ev) => {
   busy(ev.currentTarget, true, '...');
   try { await api('/api/settings', { method: 'PATCH', body: patch }); toast('Boutique enregistrée'); }
   catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+// ── Page de vente (prix barré, points forts, étapes, produit mis en avant) ──
+let _featuredId = '';
+let _lpProducts = [];
+async function loadLandingEditor() {
+  const sel = $('#lp-product');
+  if (!sel) return;
+  try {
+    const r = await api('/api/products?status=ACTIVE&take=100');
+    _lpProducts = r.items;
+    sel.innerHTML = _lpProducts.length
+      ? _lpProducts.map((p) => `<option value="${esc(p.id)}" ${p.id === _featuredId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')
+      : '<option value="">Aucun produit actif — importe d’abord un produit</option>';
+    fillLandingEditor();
+  } catch (e) { toast(e.message); }
+}
+function fillLandingEditor() {
+  const p = _lpProducts.find((x) => x.id === $('#lp-product').value);
+  $('#lp-price').value = p?.salePrice ?? '';
+  $('#lp-was').value = p?.compareAtPrice ?? '';
+  $('#lp-highlights').value = p?.highlights ?? '';
+  $('#lp-steps').value = p?.steps ?? '';
+  $('#lp-featured').checked = !!p && p.id === _featuredId;
+}
+$('#lp-product')?.addEventListener('change', fillLandingEditor);
+$('#lp-save')?.addEventListener('click', async (ev) => {
+  const id = $('#lp-product').value;
+  if (!id) return toast('Choisis un produit');
+  const price = Number($('#lp-price').value);
+  const was = Number($('#lp-was').value);
+  if (!(price > 0)) return toast('Prix de vente invalide');
+  if (was && was <= price) return toast('Le prix barré doit être supérieur au prix de vente');
+  busy(ev.currentTarget, true, '...');
+  try {
+    const p = await api(`/api/products/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: { salePrice: price, compareAtPrice: was > 0 ? was : null, highlights: $('#lp-highlights').value, steps: $('#lp-steps').value },
+    });
+    const featured = $('#lp-featured').checked ? id : (_featuredId === id ? '' : _featuredId);
+    if (featured !== _featuredId) {
+      await api('/api/settings', { method: 'PATCH', body: { shopFeaturedProductId: featured } });
+      _featuredId = featured;
+    }
+    _lpProducts = _lpProducts.map((x) => (x.id === p.id ? p : x));
+    toast('Page de vente enregistrée');
+  } catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
 });
 $('#cj-key-save')?.addEventListener('click', async (ev) => {
   const apiKey = $('#cj-key').value.trim();

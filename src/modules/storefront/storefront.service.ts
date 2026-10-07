@@ -35,6 +35,39 @@ export function productImages(p: Pick<Product, 'images'>): string[] {
     .filter((u) => /^https:\/\//.test(u));
 }
 
+/** Remise par lot (en %) selon la quantité commandée : 2 → bundleTwoPct, 3+ → bundleThreePct. */
+export function bundlePct(shop: { bundleTwoPct: number; bundleThreePct: number }, qty: number): number {
+  if (qty >= 3) return Math.max(0, shop.bundleThreePct || 0);
+  if (qty === 2) return Math.max(0, shop.bundleTwoPct || 0);
+  return 0;
+}
+
+/** Prix unitaire après remise par lot, arrondi au centime. */
+export function bundleUnitPrice(shop: { bundleTwoPct: number; bundleThreePct: number }, qty: number, unit: number): number {
+  return Math.round(unit * (1 - bundlePct(shop, qty) / 100) * 100) / 100;
+}
+
+/** Points forts : une ligne « Titre | texte » (ou juste « Titre ») par point. */
+export function productHighlights(p: Pick<Product, 'highlights'>): { title: string; text: string }[] {
+  return p.highlights
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 8)
+    .map((l) => {
+      const i = l.indexOf('|');
+      return i < 0 ? { title: l, text: '' } : { title: l.slice(0, i).trim(), text: l.slice(i + 1).trim() };
+    });
+}
+
+export function productSteps(p: Pick<Product, 'steps'>): string[] {
+  return p.steps
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
 export const storefrontService = {
   async listProducts(params: { take?: number; category?: string } = {}) {
     return prisma.product.findMany({
@@ -71,6 +104,12 @@ export const storefrontService = {
       orderBy: { createdAt: 'desc' },
       take,
     });
+  },
+
+  /** Produit mis en avant (page de vente de l'accueil), s'il est en vente. */
+  async featured(id: string) {
+    if (!id) return null;
+    return prisma.product.findFirst({ where: { id, ...SELLABLE } });
   },
 
   async sitemapEntries() {

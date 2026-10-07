@@ -35,6 +35,13 @@ export interface AppSettings {
   googleSiteVerification: string;
   /** Lien de la fiche Google Business Profile (relie la boutique à la fiche locale). */
   googleBusinessUrl: string;
+  /** Bandeau d'annonce en haut de la boutique (vide = masqué). */
+  shopAnnouncement: string;
+  /** Produit mis en avant : l'accueil devient sa page de vente (vide = catalogue). */
+  shopFeaturedProductId: string;
+  /** Remises par lot sur la fiche produit (en %, 0 = offre masquée). */
+  bundleTwoPct: number;
+  bundleThreePct: number;
 }
 
 const DEFAULTS: AppSettings = {
@@ -59,6 +66,10 @@ const DEFAULTS: AppSettings = {
   shopReturnDays: 14,
   googleSiteVerification: process.env.GOOGLE_SITE_VERIFICATION ?? '',
   googleBusinessUrl: '',
+  shopAnnouncement: '',
+  shopFeaturedProductId: '',
+  bundleTwoPct: 10,
+  bundleThreePct: 15,
 };
 
 let cache: AppSettings = { ...DEFAULTS };

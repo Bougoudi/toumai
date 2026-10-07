@@ -1,7 +1,15 @@
 import type { Product } from '@prisma/client';
 import { env } from '../../config/env.js';
 import type { AppSettings } from '../settings/settings.service.js';
-import { categoryPath, productImages, productPath } from './storefront.service.js';
+import {
+  bundlePct,
+  bundleUnitPrice,
+  categoryPath,
+  productHighlights,
+  productImages,
+  productPath,
+  productSteps,
+} from './storefront.service.js';
 
 /**
  * Rendu HTML de la boutique publique.
@@ -138,6 +146,33 @@ footer.bot{border-top:1px solid var(--line);margin-top:56px;padding:28px 0;color
 footer.bot .cols{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
 footer.bot a{text-decoration:none}footer.bot p{margin:4px 0}
 .empty{color:var(--muted);padding:40px 0}
+.announce{background:var(--fg);color:var(--bg);text-align:center;font-size:13px;font-weight:600;padding:8px 16px}
+.was{color:var(--muted);text-decoration:line-through;font-weight:500;font-size:.6em;margin-left:8px}
+.save{display:inline-block;background:var(--brand);color:#fff;font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;margin-left:8px;vertical-align:middle}
+.checks{list-style:none;padding:0;margin:14px 0;display:grid;gap:6px}
+.checks li::before{content:"✓";color:var(--ok);font-weight:800;margin-right:8px}
+.offers{display:grid;gap:8px;border:0;padding:0;margin:0}
+.offers legend{font-size:13px;color:var(--muted);margin-bottom:6px}
+.offer{display:flex;align-items:center;gap:10px;border:2px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;color:var(--fg);font-size:15px}
+.offer:has(input:checked){border-color:var(--brand);background:var(--card)}
+.offer input{width:auto;accent-color:var(--brand)}
+.offer .q{flex:1;font-weight:600}.offer .tag{white-space:nowrap;background:var(--ok);color:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:2px 8px;margin-left:6px}
+.offer .t{font-weight:800;text-align:right}.offer .t small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.badges{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0;text-align:center;font-size:12px;color:var(--muted)}
+.badges div{background:var(--card);border-radius:10px;padding:10px 6px}.badges b{display:block;font-size:20px}
+.reason{display:grid;gap:20px;align-items:center;margin:40px 0}@media(min-width:760px){.reason{grid-template-columns:1fr 1fr}.reason:nth-of-type(even) .rimg{order:2}}
+.reason h3{font-size:22px;margin:0 0 8px;letter-spacing:-.01em}.reason p{color:var(--muted);margin:0 0 14px}
+.rimg{aspect-ratio:1/1;border-radius:16px;overflow:hidden;background:var(--card)}.rimg img{width:100%;height:100%;object-fit:cover}
+.steps{list-style:none;counter-reset:s;padding:0;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.steps li{counter-increment:s;background:var(--card);border-radius:14px;padding:16px;font-weight:600}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--brand);color:#fff;font-weight:800;margin-bottom:10px}
+.lhero{display:grid;gap:24px;align-items:center;padding:28px 0}@media(min-width:860px){.lhero{grid-template-columns:1fr 1fr}}
+.lhero h1{font-size:clamp(28px,4.4vw,46px);line-height:1.1;margin:0 0 12px;letter-spacing:-.02em}
+.lhero p.lead{color:var(--muted);font-size:18px;margin:0 0 16px}
+.cta-band{text-align:center;background:var(--card);border-radius:18px;padding:28px 16px;margin:40px 0}
+.sticky-buy{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1px solid var(--line);padding:10px 16px;display:flex;gap:12px;align-items:center;z-index:9}
+.sticky-buy .btn{flex:1;padding:12px}@media(min-width:860px){.sticky-buy{display:none}}
+body.has-sticky{padding-bottom:72px}@media(min-width:860px){body.has-sticky{padding-bottom:0}}
 `;
 
 interface LayoutOpts {
@@ -151,6 +186,8 @@ interface LayoutOpts {
   ogImage?: string;
   ogType?: 'website' | 'product';
   noindex?: boolean;
+  /** Barre d'achat fixe en bas sur mobile (pages de vente). */
+  sticky?: { label: string; href: string; price: string };
 }
 
 export function layout(o: LayoutOpts): string {
@@ -181,7 +218,8 @@ ${o.ogImage ? `<meta property="og:image" content="${esc(o.ogImage)}">\n<meta nam
 <style>${CSS.replace(/\n/g, '')}</style>
 ${(o.jsonLd ?? []).map(ld).join('\n')}
 </head>
-<body>
+<body${o.sticky ? ' class="has-sticky"' : ''}>
+${shop.shopAnnouncement ? `<div class="announce">${esc(shop.shopAnnouncement)}</div>` : ''}
 <header class="top"><div class="wrap">
 <a class="logo" href="/boutique">${esc(shop.shopName)}<span>.</span></a>
 <nav class="cats" aria-label="Catégories">${o.categories
@@ -195,15 +233,45 @@ ${(o.jsonLd ?? []).map(ld).join('\n')}
 <div>${nap ? `<p>${esc(nap)}</p>` : ''}${shop.shopPhone ? `<p><a href="tel:${esc(shop.shopPhone.replace(/\s+/g, ''))}">${esc(shop.shopPhone)}</a></p>` : ''}${shop.shopEmail ? `<p><a href="mailto:${esc(shop.shopEmail)}">${esc(shop.shopEmail)}</a></p>` : ''}</div>
 <div><p><a href="/boutique/infos">Livraison, retours &amp; contact</a></p><p><a href="/privacy.html">Confidentialité</a></p></div>
 </div></footer>
+${o.sticky ? `<div class="sticky-buy"><strong>${o.sticky.price}</strong><a class="btn" href="${esc(o.sticky.href)}">${esc(o.sticky.label)}</a></div>` : ''}
 </body>
 </html>`;
+}
+
+/** Prix de vente + prix barré éventuel (uniquement s'il est réellement supérieur). */
+function priceHtml(p: Product, big = false): string {
+  const sale = p.salePrice ?? 0;
+  const was = p.compareAtPrice && p.compareAtPrice > sale ? p.compareAtPrice : null;
+  const pct = was ? Math.round((1 - sale / was) * 100) : 0;
+  return `<div class="price${big ? ' big' : ''}">${money(sale, p.currency)}${was ? `<span class="was">${money(was, p.currency)}</span>${big && pct > 0 ? `<span class="save">-${pct} %</span>` : ''}` : ''}</div>`;
+}
+
+function reasonsHtml(p: Product, imgs: string[], ctaHref: string): string {
+  const hl = productHighlights(p).filter((h) => h.text);
+  if (!hl.length) return '';
+  return hl
+    .map((h, i) => {
+      const img = imgs.length ? imgs[(i + 1) % imgs.length] : '';
+      return `<section class="reason">${img ? `<div class="rimg"><img src="${esc(img)}" alt="${esc(p.name)} – ${esc(h.title)}" width="600" height="600" loading="lazy" decoding="async"></div>` : ''}
+<div><h3>${hl.length > 1 ? `${i + 1}. ` : ''}${esc(h.title)}</h3><p>${esc(h.text)}</p><a class="btn" href="${esc(ctaHref)}">Je le veux</a></div></section>`;
+    })
+    .join('');
+}
+
+function stepsHtml(p: Product): string {
+  const st = productSteps(p);
+  return st.length ? `<section><h2>Comment ça marche</h2><ol class="steps">${st.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></section>` : '';
+}
+
+function badgesHtml(shop: AppSettings): string {
+  return `<div class="badges"><div><b>🚚</b>Livraison ${shop.shopDeliveryMinDays}-${shop.shopDeliveryMaxDays} j</div><div><b>🔒</b>Paiement sécurisé</div><div><b>↩️</b>${shop.shopReturnDays ? `Retours ${shop.shopReturnDays} j` : 'Service client'}</div></div>`;
 }
 
 function productCard(p: Product, eager = false): string {
   const img = productImages(p)[0];
   return `<a class="card" href="${productPath(p)}">
 <div class="thumb">${img ? `<img src="${esc(img)}" alt="${esc(p.name)}" width="400" height="400" ${eager ? 'fetchpriority="high"' : 'loading="lazy"'} decoding="async">` : ''}</div>
-<div class="info"><h3>${esc(p.name)}</h3><div class="price">${money(p.salePrice, p.currency)}</div></div></a>`;
+<div class="info"><h3>${esc(p.name)}</h3>${priceHtml(p)}</div></a>`;
 }
 
 function faqBlock(items: { q: string; a: string }[]): string {
@@ -232,7 +300,43 @@ function breadcrumb(items: { name: string; path: string }[]) {
   return { html, data };
 }
 
-export function homePage(shop: AppSettings, categories: Category[], products: Product[]): string {
+/** Accueil « page de vente » centré sur le produit mis en avant (style boutique mono-produit). */
+function landingPage(shop: AppSettings, categories: Category[], products: Product[], f: Product): string {
+  const faqs = faq(shop);
+  const imgs = productImages(f);
+  const href = productPath(f) + '#acheter';
+  const hl = productHighlights(f);
+  const others = products.filter((x) => x.id !== f.id);
+  const lead = shop.shopDescription || (f.description ?? '').split('\n')[0] || shop.shopTagline;
+  const body = `
+<section class="lhero">
+${imgs[0] ? `<div class="rimg"><img src="${esc(imgs[0])}" alt="${esc(f.name)}" width="800" height="800" fetchpriority="high" decoding="async"></div>` : ''}
+<div><h1>${esc(f.name)}</h1><p class="lead">${esc(clip(lead, 220))}</p>
+${priceHtml(f, true)}
+${hl.length ? `<ul class="checks">${hl.slice(0, 5).map((h) => `<li>${esc(h.title)}</li>`).join('')}</ul>` : ''}
+<a class="btn" href="${esc(href)}">Commander maintenant</a>
+${badgesHtml(shop)}</div></section>
+${hl.some((h) => h.text) ? `<h2>${hl.filter((h) => h.text).length > 1 ? `${hl.filter((h) => h.text).length} raisons de choisir ${esc(f.name)}` : `Pourquoi choisir ${esc(f.name)}`}</h2>` : ''}
+${reasonsHtml(f, imgs, href)}
+${stepsHtml(f)}
+<div class="cta-band"><h2>Prêt à essayer ${esc(f.name)} ?</h2>${priceHtml(f, true)}<p><a class="btn" href="${esc(href)}">Commander maintenant</a></p></div>
+${faqBlock(faqs)}
+${others.length ? `<section><h2>Nos autres produits</h2><div class="grid">${others.slice(0, 8).map((p) => productCard(p)).join('')}</div></section>` : ''}`;
+  return layout({
+    shop,
+    categories,
+    title: clip(`${f.name} – ${shop.shopName}`, 65),
+    description: clip(`${f.name} à ${money(f.salePrice, f.currency)}. ${lead.replace(/[.!…\s]+$/, '')}. Livraison suivie, paiement sécurisé.`, 158),
+    path: '/boutique',
+    body,
+    jsonLd: [storeLd(shop), { '@context': 'https://schema.org', '@type': 'WebSite', name: shop.shopName, url: abs('/boutique') }, faqLd(faqs)],
+    ogImage: imgs[0],
+    sticky: { label: 'Commander', href, price: money(f.salePrice, f.currency) },
+  });
+}
+
+export function homePage(shop: AppSettings, categories: Category[], products: Product[], featured?: Product | null): string {
+  if (featured) return landingPage(shop, categories, products, featured);
   const faqs = faq(shop);
   const title = clip(`${shop.shopName} – ${shop.shopTagline}`, 65);
   const description = clip(
@@ -358,7 +462,13 @@ export function productPage(shop: AppSettings, categories: Category[], p: Produc
     ? `<form class="buy" method="post" action="/boutique/commander">
 <input type="hidden" name="productId" value="${esc(p.id)}">
 <div class="hp" aria-hidden="true"><label>Site web<input name="website" tabindex="-1" autocomplete="off"></label></div>
-<label>Quantité<select name="quantity">${[1, 2, 3, 4, 5].map((n) => `<option>${n}</option>`).join('')}</select></label>
+<fieldset class="offers"><legend>Choisissez votre offre</legend>${[1, 2, 3]
+        .map((q) => {
+          const unit = bundleUnitPrice(shop, q, p.salePrice ?? 0);
+          const pct = bundlePct(shop, q);
+          return `<label class="offer"><input type="radio" name="quantity" value="${q}"${q === 1 ? ' checked' : ''}><span class="q">${q} × ${q === 1 ? 'article' : 'articles'}${pct ? `<span class="tag">-${pct} %</span>` : ''}</span><span class="t">${money(unit * q, p.currency)}${q > 1 ? `<small>soit ${money(unit, p.currency)} / pièce</small>` : ''}</span></label>`;
+        })
+        .join('')}</fieldset>
 <label>Nom complet<input name="name" required maxlength="120" autocomplete="name"></label>
 <div class="row"><label>E-mail<input type="email" name="email" required maxlength="160" autocomplete="email"></label>
 <label>Téléphone<input type="tel" name="phone" required maxlength="40" autocomplete="tel"></label></div>
@@ -376,11 +486,15 @@ export function productPage(shop: AppSettings, categories: Category[], p: Produc
 ${imgs.length > 1 ? `<div class="more">${imgs.slice(1, 9).map((u, i) => `<img src="${esc(u)}" alt="${esc(p.name)} – vue ${i + 2}" width="120" height="120" loading="lazy" decoding="async">`).join('')}</div>` : ''}</div>
 <div>
 <h1>${esc(p.name)}</h1>
-<div class="price big">${money(p.salePrice, p.currency)}</div>
+${priceHtml(p, true)}
+${productHighlights(p).length ? `<ul class="checks">${productHighlights(p).slice(0, 5).map((h) => `<li>${esc(h.title)}</li>`).join('')}</ul>` : ''}
 <div class="ship">🚚 <b>Livraison offerte</b> · reçu en ${shop.shopDeliveryMinDays}-${shop.shopDeliveryMaxDays} jours ouvrés avec suivi${shop.shopReturnDays ? `<br>↩️ Retours acceptés sous ${shop.shopReturnDays} jours` : ''}<br>🔒 Paiement par carte sécurisé</div>
-${buyForm}
+<div id="acheter">${buyForm}</div>
+${badgesHtml(shop)}
 </div>
 </article>
+${reasonsHtml(p, imgs, '#acheter')}
+${stepsHtml(p)}
 ${desc ? `<section><h2>Description – ${esc(p.name)}</h2><div class="desc">${esc(desc)}</div></section>` : ''}
 ${faqBlock(faqs)}
 ${related.length ? `<section><h2>Vous aimerez aussi</h2><div class="grid">${related.map((r) => productCard(r)).join('')}</div></section>` : ''}`;
@@ -398,6 +512,7 @@ ${related.length ? `<section><h2>Vous aimerez aussi</h2><div class="grid">${rela
     jsonLd: [productLd, bc.data, faqLd(faqs)],
     ogImage: imgs[0],
     ogType: 'product',
+    sticky: payEnabled ? { label: 'Commander', href: '#acheter', price: money(p.salePrice, p.currency) } : undefined,
   });
 }
 

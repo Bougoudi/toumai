@@ -288,6 +288,13 @@ model Product {
   costPrice              Float? // prix d'achat fournisseur
   salePrice              Float? // prix de vente client
   margin                 Float? // marge = salePrice - costPrice
+  /// Prix barré affiché sur la boutique (ancien prix), facultatif.
+  compareAtPrice         Float?
+
+  /// Page de vente : points forts (une ligne « Titre | texte » par point)
+  /// et étapes d'utilisation (une étape par ligne).
+  highlights             String             @default("")
+  steps                  String             @default("")
 
   /// DRAFT | ACTIVE | ARCHIVED
   status                 String             @default("DRAFT")

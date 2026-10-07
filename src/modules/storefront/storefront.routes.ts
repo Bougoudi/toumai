@@ -8,7 +8,7 @@ import { asyncHandler } from '../../middleware/validate.js';
 import { logger } from '../../utils/logger.js';
 import { paymentService } from '../payments/payment.service.js';
 import { getSettings } from '../settings/settings.service.js';
-import { categoryPath, productImages, productPath, storefrontService } from './storefront.service.js';
+import { bundleUnitPrice, categoryPath, productImages, productPath, storefrontService } from './storefront.service.js';
 import { categoryPage, esc, homePage, infoPage, messagePage, money, productPage } from './storefront.views.js';
 
 /**
@@ -102,7 +102,8 @@ storefrontRouter.get(
   '/boutique',
   asyncHandler(async (_req, res) => {
     const [{ shop, categories }, products] = await Promise.all([chrome(), storefrontService.listProducts()]);
-    html(res, homePage(shop, categories, products));
+    const featured = await storefrontService.featured(shop.shopFeaturedProductId);
+    html(res, homePage(shop, categories, products, featured));
   }),
 );
 
@@ -183,7 +184,8 @@ storefrontRouter.post(
     const input = parsed.data;
     if (!paymentService.enabled()) return fail('Le paiement en ligne n’est pas encore activé.', 503, back);
 
-    const unit = product.salePrice ?? 0;
+    // Remise par lot (2 ou 3 articles) appliquée côté serveur, jamais depuis le formulaire.
+    const unit = bundleUnitPrice(shop, input.quantity, product.salePrice ?? 0);
     const order = await prisma.order.create({
       data: {
         orderNumber: `TM-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
