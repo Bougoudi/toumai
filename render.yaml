@@ -53,6 +53,9 @@ services:
       # Sans compte marchand API : lien de paiement hébergé (ex. iyzico Link).
       - key: PAYMENT_URL
         sync: false
+      # Tableau de bord visiteurs /admin/login (code d'accès généré par Render).
+      - key: ADMIN_DASHBOARD_TOKEN
+        generateValue: true
       # Paiement carte — Stripe (Europe, facultatif) :
       - key: STRIPE_SECRET_KEY
         sync: false

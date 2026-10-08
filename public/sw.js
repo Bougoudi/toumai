@@ -1,7 +1,7 @@
 // Service worker — coquille d'application (app shell) pour l'installabilité PWA
 // et un fonctionnement dégradé hors-ligne. Les appels /api ne sont pas mis en
 // cache (données temps réel) : réseau d'abord, sans repli.
-const CACHE = 'toumai-shell-v24';
+const CACHE = 'toumai-shell-v25';
 const SHELL = [
   '/',
   '/index.html',
@@ -40,6 +40,7 @@ self.addEventListener('fetch', (event) => {
   if (
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/boutique') ||
+    url.pathname.startsWith('/admin') ||
     ['/health', '/robots.txt', '/sitemap.xml'].includes(url.pathname)
   ) {
     return; // laisse le navigateur gérer la requête réseau

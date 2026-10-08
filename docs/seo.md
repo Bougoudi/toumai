@@ -109,6 +109,11 @@ plus visitées. Aucun cookie ni adresse IP stockée (empreinte hachée avec un s
 change chaque jour), robots et navigateurs « Do Not Track » exclus, données supprimées
 après 14 jours.
 
+Version autonome (pratique sur téléphone) : **`https://ton-domaine/admin/login`**, protégée
+par le code `ADMIN_DASHBOARD_TOKEN` (≥ 32 caractères ; Render le génère : Environment →
+copier la valeur). Le code n'est jamais mis dans l'adresse : il ouvre une session de 12 h
+(cookie sécurisé), 5 essais par quart d'heure maximum. Sans ce réglage, la page n'existe pas.
+
 ## Importer un produit CJdropshipping
 
 1. Sur cjdropshipping.com : **My CJ → Authorization → API** → copie ta clé API.

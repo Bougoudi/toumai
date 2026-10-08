@@ -76,6 +76,7 @@ storefrontRouter.get('/robots.txt', (_req, res) => {
       'User-agent: *',
       'Allow: /boutique',
       'Disallow: /api/',
+      'Disallow: /admin',
       'Disallow: /boutique/commander',
       'Disallow: /boutique/merci',
       'Disallow: /boutique/newsletter',

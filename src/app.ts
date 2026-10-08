@@ -29,6 +29,7 @@ import { aliexpressController } from './modules/aliexpress/aliexpress.controller
 import { supportRouter } from './modules/support/support.routes.js';
 import { storefrontRouter } from './modules/storefront/storefront.routes.js';
 import { analyticsService } from './modules/storefront/analytics.service.js';
+import { adminDashboardRouter } from './modules/storefront/adminDashboard.routes.js';
 
 /**
  * Dossier des fichiers statiques (PWA). En développement (tsx) le module est
@@ -74,6 +75,9 @@ export function createApp() {
 
   // Boutique en ligne publique (SEO) + robots.txt / sitemap.xml.
   app.use(storefrontRouter);
+
+  // Tableau de bord visiteurs autonome (/admin/login), actif si ADMIN_DASHBOARD_TOKEN est défini.
+  app.use(adminDashboardRouter);
 
   // Application web (PWA) : fichiers statiques servis à la racine.
   app.use(express.static(publicDir));
