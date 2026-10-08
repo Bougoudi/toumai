@@ -20,6 +20,9 @@ export const paymentService = {
   /** Un prestataire de paiement carte est-il configuré ? */
   enabled: () => env.paymentProvider !== 'none',
 
+  /** Lien de paiement hébergé (PAYMENT_URL), utilisé par la boutique à défaut d'API. */
+  linkUrl: () => (env.paymentProvider === 'none' ? env.paymentLinkUrl : ''),
+
   /**
    * Crée une page de paiement carte pour une commande et renvoie l'URL de
    * redirection. Aiguille vers le prestataire actif : iyzico (Turquie —

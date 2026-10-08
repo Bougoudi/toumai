@@ -141,3 +141,121 @@
     sel.addRange(r);
   }
 })();
+
+// Fiche produit : total en direct (lot + code de bienvenue estimé) et
+// récapitulatif avant paiement. Sans JavaScript, le formulaire s'envoie tel quel ;
+// les montants définitifs sont toujours recalculés par le serveur.
+(function () {
+  var form = document.querySelector('form.buy[data-prices]');
+  if (!form) return;
+  var prices;
+  try {
+    prices = JSON.parse(form.getAttribute('data-prices')) || [];
+  } catch (e) {
+    return;
+  }
+  var currency = form.getAttribute('data-currency') || 'EUR';
+  var pct = Number(form.getAttribute('data-promo-pct')) || 0;
+  var fmt;
+  try {
+    fmt = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: currency });
+  } catch (e) {
+    fmt = { format: function (n) { return n.toFixed(2) + ' ' + currency; } };
+  }
+  var $ = function (id) { return document.getElementById(id); };
+  var promoInput = $('promo');
+
+  function checked(name) {
+    var el = form.querySelector('input[name="' + name + '"]:checked');
+    return el ? el.value : '';
+  }
+  function totals() {
+    var q = Number(checked('quantity')) || 1;
+    var sub = prices[q - 1] || prices[0] || 0;
+    var code = promoInput ? promoInput.value.trim() : '';
+    var off = pct && /^BIENVENUE-/i.test(code) ? Math.round(sub * pct) / 100 : 0;
+    return { q: q, sub: sub, off: off, total: sub - off };
+  }
+  function render() {
+    var t = totals();
+    $('sum-sub').textContent = fmt.format(t.sub);
+    $('sum-promo-row').hidden = !t.off;
+    $('sum-promo').textContent = '−' + fmt.format(t.off);
+    $('sum-total').textContent = fmt.format(t.total);
+  }
+  form.addEventListener('change', render);
+  if (promoInput) promoInput.addEventListener('input', render);
+  render();
+
+  var rv = $('rv');
+  if (!rv) return;
+  var lastFocus = null;
+  function text(tag, s) {
+    var el = document.createElement(tag);
+    el.textContent = s;
+    return el;
+  }
+  function row(label, value) {
+    var d = document.createElement('div');
+    d.className = 'rv-row';
+    d.appendChild(text('span', label));
+    d.appendChild(text('b', value));
+    return d;
+  }
+  function openReview() {
+    var t = totals();
+    var variant = [checked('color'), checked('size')].filter(Boolean).join(' / ');
+    var p = $('rv-product');
+    p.replaceChildren(text('b', form.getAttribute('data-name') || ''));
+    if (variant) p.appendChild(text('span', variant));
+    p.appendChild(row('Quantité', String(t.q)));
+    if (t.off) p.appendChild(row('Code de bienvenue', '−' + fmt.format(t.off)));
+    p.appendChild(row('Livraison', 'Offerte'));
+    p.appendChild(row('Total', fmt.format(t.total)));
+    var f = form.elements;
+    $('rv-address').replaceChildren(
+      text('span', 'Livraison à'),
+      text('b', f.name.value),
+      text('span', f.address.value),
+      text('span', [f.zip.value, f.city.value, f.country.value].filter(Boolean).join(' ')),
+      text('span', [f.email.value, f.phone.value].filter(Boolean).join(' · ')),
+    );
+    $('rv-wait').hidden = true;
+    $('rv-pay').disabled = false;
+    lastFocus = document.activeElement;
+    rv.hidden = false;
+    $('rv-pay').focus({ preventScroll: true });
+    document.addEventListener('keydown', onKey);
+  }
+  function closeReview() {
+    rv.hidden = true;
+    document.removeEventListener('keydown', onKey);
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  function onKey(e) {
+    if (e.key === 'Escape' && $('rv-wait').hidden) closeReview();
+  }
+  rv.querySelectorAll('[data-rv-close]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if ($('rv-wait').hidden) closeReview();
+    });
+  });
+  form.addEventListener('submit', function (e) {
+    if (form.getAttribute('data-confirmed') === '1') return;
+    e.preventDefault();
+    openReview();
+  });
+  $('rv-pay').addEventListener('click', function () {
+    $('rv-pay').disabled = true;
+    $('rv-wait').hidden = false;
+    form.setAttribute('data-confirmed', '1');
+    // requestSubmit garde la validation native ; submit() en repli (anciens navigateurs).
+    if (form.requestSubmit) form.requestSubmit();
+    else form.submit();
+  });
+  // Retour arrière depuis la page de paiement (cache navigateur) : on réinitialise.
+  window.addEventListener('pageshow', function () {
+    form.removeAttribute('data-confirmed');
+    rv.hidden = true;
+  });
+})();

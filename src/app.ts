@@ -28,6 +28,7 @@ import { aliexpressRouter } from './modules/aliexpress/aliexpress.routes.js';
 import { aliexpressController } from './modules/aliexpress/aliexpress.controller.js';
 import { supportRouter } from './modules/support/support.routes.js';
 import { storefrontRouter } from './modules/storefront/storefront.routes.js';
+import { analyticsService } from './modules/storefront/analytics.service.js';
 
 /**
  * Dossier des fichiers statiques (PWA). En développement (tsx) le module est
@@ -172,6 +173,8 @@ export function createApp() {
   app.use('/api/tools', toolsRouter); // titres optimisés
   app.use('/api/reports', reportRouter); // tableur P&L
   app.use('/api/wallet', walletRouter); // portefeuille / retraits
+  // Statistiques de visite de la boutique (anonymes, 14 jours).
+  app.get('/api/analytics/summary', asyncHandler(async (_req, res) => res.json(await analyticsService.summary())));
 
   app.use(notFound);
   app.use(errorHandler);

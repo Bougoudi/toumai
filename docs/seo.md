@@ -83,6 +83,32 @@ points forts, étapes, consignes de sécurité de portage, tailles S à XXL, cou
   désinscription (`/boutique/desinscription`).
 - Liste des inscrits : Paramètres → « Inscrits newsletter ».
 
+## Paiement par lien (sans société) — `PAYMENT_URL`
+
+Si tu n'as pas encore de compte marchand avec API (iyzico API ou Stripe), la boutique
+peut encaisser via un **lien de paiement hébergé**, par exemple **iyzico Link** :
+
+1. Crée le lien dans ton espace iyzico, puis ajoute dans Render `PAYMENT_URL=https://…`.
+2. À la commande, le client voit un **récapitulatif** (produit, taille, couleur, adresse,
+   total), confirme, puis reçoit sa référence `TM-…` et le montant exact à régler.
+3. La commande est enregistrée **« en attente »** : rien ne confirme automatiquement le
+   paiement. Vérifie chaque paiement reçu (référence + montant) dans iyzico, puis passe la
+   commande en « payée » dans l'onglet **Commandes**.
+
+Dès que `IYZICO_API_KEY` ou `STRIPE_SECRET_KEY` est configuré, la boutique repasse
+automatiquement au paiement intégré avec confirmation automatique.
+
+Le montant est toujours recalculé côté serveur (prix catalogue, lot, code promo) ;
+aucune clé secrète n'est envoyée au navigateur.
+
+## Statistiques de visite
+
+Tableau de bord de l'admin → **Visiteurs de la boutique** : visiteurs en ce moment
+(5 dernières minutes), visiteurs et pages vues du jour, historique 14 jours, pages les
+plus visitées. Aucun cookie ni adresse IP stockée (empreinte hachée avec un sel qui
+change chaque jour), robots et navigateurs « Do Not Track » exclus, données supprimées
+après 14 jours.
+
 ## Importer un produit CJdropshipping
 
 1. Sur cjdropshipping.com : **My CJ → Authorization → API** → copie ta clé API.

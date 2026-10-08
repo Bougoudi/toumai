@@ -50,6 +50,9 @@ services:
         sync: false
       - key: IYZICO_URI
         sync: false
+      # Sans compte marchand API : lien de paiement hébergé (ex. iyzico Link).
+      - key: PAYMENT_URL
+        sync: false
       # Paiement carte — Stripe (Europe, facultatif) :
       - key: STRIPE_SECRET_KEY
         sync: false

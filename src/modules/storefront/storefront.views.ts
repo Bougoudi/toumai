@@ -281,6 +281,20 @@ footer.bot p{margin:0 0 8px}footer.bot a{text-decoration:none}footer.bot a:hover
 .sticky-buy .price{font-size:20px}.sticky-buy .btn{flex:1;padding:15px 18px}
 @media (min-width:900px){.sticky-buy{display:none}}
 body.has-sticky{padding-bottom:84px}@media (min-width:900px){body.has-sticky{padding-bottom:0}}
+.sum{border:1px solid var(--line);background:var(--surface);padding:16px 18px;display:grid;gap:10px;margin:0}
+.sum>div{display:flex;justify-content:space-between;gap:16px;font-size:14px;color:var(--muted)}
+.sum dt,.sum dd{margin:0}.sum dd{font-variant-numeric:tabular-nums;text-align:right}
+.sum .tot{border-top:1px solid var(--line);padding-top:12px;color:var(--fg);font-size:16px}.sum .tot dd{font-weight:500}
+.sum .off dd{color:var(--ok)}.sum [hidden]{display:none}
+.rv{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:16px}.rv[hidden],.rv [hidden]{display:none!important}
+.rv-back{position:absolute;inset:0;background:color-mix(in srgb,#140E11 55%,transparent);animation:nlfade .25s ease}
+.rv-box{position:relative;background:var(--bg);color:var(--fg);width:min(520px,100%);max-height:calc(100% - 32px);overflow:auto;padding:36px 28px 24px;display:grid;gap:14px;box-shadow:0 30px 80px -20px rgba(20,14,17,.45);animation:nlup .3s ease}
+.rv-box h2{font-size:clamp(26px,4vw,32px);margin:0}.rv-box .eyebrow{margin:0}
+.rv-card{border:1px solid var(--line);padding:14px 16px;display:grid;gap:4px;font-size:14px}.rv-card b{font-weight:500}.rv-card span{color:var(--muted)}
+.rv-row{display:flex;justify-content:space-between;gap:16px}
+.rv-back-btn{background:none;border:0;color:var(--muted);font:400 13px/1 var(--body);text-decoration:underline;cursor:pointer;justify-self:center;padding:8px}
+.rv-wait{display:grid;justify-items:center;gap:14px;text-align:center;padding:12px 0}.rv-wait p{margin:0;color:var(--muted)}
+.spin{width:30px;height:30px;border:2px solid var(--line);border-top-color:var(--fg);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 `;
 
 interface LayoutOpts {
@@ -347,7 +361,7 @@ ${shop.shopAnnouncement ? `<div class="announce">${esc(shop.shopAnnouncement)}</
 <div><a class="logo" href="/boutique">${esc(shop.shopName)}</a><p>${esc(shop.shopTagline)}</p></div>
 <div><h4>Service client</h4><p><a href="/boutique/infos">Livraison &amp; retours</a></p><p><a href="/boutique/infos#contact">Nous contacter</a></p><p><a href="/privacy.html">Confidentialité</a></p></div>
 ${shop.newsletterEnabled ? `<div><h4>Newsletter</h4><p>−${shop.newsletterPct} % sur votre première commande.</p><form class="nlf" method="post" action="/boutique/newsletter"><input type="hidden" name="source" value="footer"><label class="hp" aria-hidden="true">Site<input name="website" tabindex="-1" autocomplete="off"></label><input type="email" name="email" required maxlength="160" placeholder="Votre e-mail" aria-label="Votre adresse e-mail" autocomplete="email"><button class="btn" type="submit">OK</button></form></div>` : ''}
-<div><h4>Nous trouver</h4>${nap ? `<p>${esc(nap)}</p>` : ''}${shop.shopPhone ? `<p><a href="tel:${esc(shop.shopPhone.replace(/\s+/g, ''))}">${esc(shop.shopPhone)}</a></p>` : ''}${shop.shopEmail ? `<p><a href="mailto:${esc(shop.shopEmail)}">${esc(shop.shopEmail)}</a></p>` : ''}${!nap && !shop.shopPhone && !shop.shopEmail ? '<p>Boutique en ligne</p>' : ''}</div>
+<div><h4>Nous trouver</h4>${nap ? `<p>${esc(nap)}</p>` : ''}${shop.shopPhone ? `<p><a href="tel:${esc(shop.shopPhone.replace(/\s+/g, ''))}">${esc(shop.shopPhone)}</a></p>` : ''}${shop.shopEmail ? `<p><a href="mailto:${esc(shop.shopEmail)}">${esc(shop.shopEmail)}</a></p>` : ''}${!nap ? '<p>Service client · France et international</p>' : ''}</div>
 </div>
 <p class="legal">© ${new Date().getFullYear()} ${esc(shop.shopName)} · Paiement sécurisé · Livraison suivie</p>
 </div></footer>
@@ -688,7 +702,7 @@ export function productPage(shop: AppSettings, categories: Category[], p: Produc
     .join('')}</fieldset>`;
 
   const buyForm = payEnabled
-    ? `<form class="buy" method="post" action="/boutique/commander">
+    ? `<form class="buy" method="post" action="/boutique/commander" data-name="${esc(p.name)}" data-currency="${esc(p.currency)}" data-promo-pct="${shop.newsletterEnabled ? shop.newsletterPct : 0}" data-prices="${esc(JSON.stringify([1, 2, 3].map((q) => Number((bundleUnitPrice(shop, q, p.salePrice ?? 0) * q).toFixed(2)))))}">
 <input type="hidden" name="productId" value="${esc(p.id)}">
 <div class="hp" aria-hidden="true"><label>Site web<input name="website" tabindex="-1" autocomplete="off"></label></div>
 ${colorField}${sizeField}${offers}
@@ -702,9 +716,31 @@ ${colorField}${sizeField}${offers}
 <label class="f">Pays<input name="country" required maxlength="60" autocomplete="country-name" value="${esc(shop.shopCountry)}"></label>
 </div></fieldset>
 <label class="f">Code promo (facultatif)<input id="promo" name="promo" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>
-<button class="btn block" type="submit">Commander</button>
+<dl class="sum" aria-live="polite">
+<div><dt>Sous-total</dt><dd id="sum-sub">${money(bundleUnitPrice(shop, 1, p.salePrice ?? 0), p.currency)}</dd></div>
+<div class="off" id="sum-promo-row" hidden><dt>Code de bienvenue (−${shop.newsletterPct} %)</dt><dd id="sum-promo"></dd></div>
+<div><dt>Livraison</dt><dd>Offerte</dd></div>
+<div class="tot"><dt>Total</dt><dd id="sum-total">${money(bundleUnitPrice(shop, 1, p.salePrice ?? 0), p.currency)}</dd></div>
+</dl>
+<button class="btn block" type="submit">Passer au paiement sécurisé</button>
 <p class="secure">${ICON.lock}Paiement par carte sécurisé et chiffré</p>
-</form>`
+</form>
+<div class="rv" id="rv" hidden role="dialog" aria-modal="true" aria-labelledby="rv-title">
+<div class="rv-back" data-rv-close></div>
+<div class="rv-box">
+<button class="nl-x" type="button" data-rv-close aria-label="Fermer">${ICON.plus}</button>
+<div id="rv-main">
+<p class="eyebrow">Récapitulatif</p>
+<h2 id="rv-title">Vérifiez votre commande</h2>
+</div>
+<div class="rv-card" id="rv-product"></div>
+<div class="rv-card" id="rv-address"></div>
+<p class="secure">${ICON.lock}Vous allez être redirigé(e) vers la page de paiement sécurisée.</p>
+<button class="btn block" type="button" id="rv-pay">Confirmer et payer</button>
+<button class="rv-back-btn" type="button" data-rv-close>Modifier ma commande</button>
+<div class="rv-wait" id="rv-wait" hidden><div class="spin" aria-hidden="true"></div><p>Préparation du paiement sécurisé…</p></div>
+</div>
+</div>`
     : `<div class="notice"><p>Cette pièce sera bientôt disponible à la commande en ligne.${shop.shopEmail ? ` Écrivez-nous : <a href="mailto:${esc(shop.shopEmail)}">${esc(shop.shopEmail)}</a>` : ''}</p></div>`;
 
   const perks = `<div class="perks">

@@ -70,7 +70,7 @@ const DEFAULTS: AppSettings = {
   shopReturnDays: 14,
   googleSiteVerification: process.env.GOOGLE_SITE_VERIFICATION ?? '',
   googleBusinessUrl: '',
-  shopAnnouncement: '',
+  shopAnnouncement: 'Paiement sécurisé · livraison suivie',
   shopFeaturedProductId: '',
   bundleTwoPct: 10,
   bundleThreePct: 15,

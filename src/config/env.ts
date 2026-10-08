@@ -155,6 +155,20 @@ export const env = {
   },
 
   /**
+   * Lien de paiement hébergé (ex. iyzico Link, accessible sans société) : utilisé
+   * par la boutique quand aucune API de paiement n'est configurée. La commande
+   * reste « en attente » jusqu'à vérification manuelle du paiement.
+   */
+  get paymentLinkUrl(): string {
+    const raw = (process.env.PAYMENT_URL ?? '').trim();
+    try {
+      return raw && new URL(raw).protocol === 'https:' ? raw : '';
+    } catch {
+      return '';
+    }
+  },
+
+  /**
    * Prestataire de paiement carte actif. `auto` (défaut) : iyzico s'il est
    * configuré, sinon Stripe. On peut forcer via `PAYMENT_PROVIDER=iyzico|stripe`.
    */

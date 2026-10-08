@@ -577,3 +577,16 @@ model Subscriber {
 
   createdAt DateTime @default(now())
 }
+
+/// Visite d'une page de la boutique publique (statistiques anonymes, sans cookie).
+/// `visitor` = empreinte hachée avec un sel qui change chaque jour : impossible de
+/// retrouver l'adresse IP ou de suivre un visiteur d'un jour à l'autre.
+/// Conservation : 14 jours maximum (purge automatique).
+model PageView {
+  id        String   @id @default(cuid())
+  visitor   String
+  path      String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

@@ -146,7 +146,38 @@ async function loadDashboard() {
   } catch (e) {
     toast(e.message);
   }
+  loadVisitors();
 }
+
+// Visiteurs de la boutique (statistiques anonymes, 14 jours).
+async function loadVisitors() {
+  const box = $('#visitors-kpis');
+  if (!box) return;
+  try {
+    const d = await api('/api/analytics/summary');
+    box.replaceChildren(
+      el(`<div class="kpi accent"><div class="label">En ce moment</div><div class="value num">${d.activeVisitors}</div><div class="sub">5 dernières minutes</div></div>`),
+      el(`<div class="kpi"><div class="label">Visiteurs aujourd’hui</div><div class="value num">${d.visitorsToday}</div></div>`),
+      el(`<div class="kpi"><div class="label">Pages vues aujourd’hui</div><div class="value num">${d.pageViewsToday}</div></div>`),
+    );
+    const max = Math.max(1, ...d.daily.map((x) => x.views));
+    $('#visitors-daily').innerHTML = tableHtml(
+      ['Jour', 'Visiteurs', 'Pages vues', ''],
+      d.daily.slice().reverse().map((x) => [
+        esc(new Date(x.day + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })),
+        `<span class="num">${x.visitors}</span>`,
+        `<span class="num">${x.views}</span>`,
+        `<div style="height:8px;width:${Math.round((x.views / max) * 100)}%;min-width:${x.views ? 2 : 0}px;background:var(--accent);border-radius:4px"></div>`,
+      ]),
+    );
+    $('#visitors-pages').innerHTML = d.topPages.length
+      ? tableHtml(['Page', 'Vues'], d.topPages.map((x) => [`<a href="${esc(x.page)}" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all">${esc(x.page)}</a>`, `<span class="num">${x.views}</span>`]))
+      : '<p class="muted">Aucune visite enregistrée pour l’instant.</p>';
+  } catch (e) {
+    box.textContent = e.message;
+  }
+}
+$('#visitors-refresh')?.addEventListener('click', loadVisitors);
 
 // ── Marché ─────────────────────────────────────────────────
 async function loadMarket() {
@@ -579,6 +610,7 @@ async function showOrder(id) {
       <div class="form-actions">
         ${o.onHold ? `<button class="btn btn-primary" id="m-confirm">✅ Confirmer &amp; envoyer</button>` : ''}
         ${o.status === 'PENDING' && paymentsEnabled ? `<button class="btn btn-primary" id="m-pay">💳 Payer par carte</button>` : ''}
+        ${o.status === 'PENDING' ? `<button class="btn" id="m-paid">✔️ Paiement reçu</button>` : ''}
         ${!o.onHold && (o.status === 'PAID' || o.status === 'FULFILLING') ? `<button class="btn btn-primary" id="m-fulfill">Relancer l'expédition</button>` : ''}
         ${canCancel ? `<button class="btn btn-ghost" id="m-cancel">Annuler</button>` : ''}
       </div>`);
@@ -601,6 +633,16 @@ async function showOrder(id) {
         toast(e.message);
         busy(ev.currentTarget, false);
       }
+    });
+    $('#m-paid')?.addEventListener('click', async (ev) => {
+      if (!confirm(`As-tu bien reçu ${money(o.total, o.currency)} pour la commande ${o.orderNumber} ? Elle passera en « payée », prête pour l’expédition.`)) return;
+      busy(ev.currentTarget, true, '...');
+      try {
+        await api(`/api/orders/${id}/mark-paid`, { method: 'POST' });
+        toast('Commande marquée payée');
+        showOrder(id);
+        loadOrders();
+      } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
     });
     $('#m-fulfill')?.addEventListener('click', async (ev) => {
       busy(ev.currentTarget, true, '...');

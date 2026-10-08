@@ -7,6 +7,7 @@ import { HttpError } from '../../middleware/errorHandler.js';
 import { asyncHandler } from '../../middleware/validate.js';
 import { logger } from '../../utils/logger.js';
 import { paymentService } from '../payments/payment.service.js';
+import { trackPageView } from './analytics.service.js';
 import { newsletterService } from './newsletter.service.js';
 import { getSettings } from '../settings/settings.service.js';
 import {
@@ -29,6 +30,9 @@ import { categoryPage, esc, homePage, infoPage, messagePage, money, productPage 
  */
 export const storefrontRouter = Router();
 
+// Statistiques de visite anonymes (sans cookie) des pages de la boutique.
+storefrontRouter.use(trackPageView);
+
 const abs = (path: string) => env.publicUrl.replace(/\/+$/, '') + path;
 
 /** Pages publiques : cache court côté navigateur/CDN (rapidité PageSpeed). */
@@ -47,6 +51,9 @@ const orderLimiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
 });
+
+/** Commande possible : API de paiement (iyzico/Stripe) ou lien de paiement hébergé. */
+const canSell = () => paymentService.enabled() || !!paymentService.linkUrl();
 
 async function chrome() {
   return { shop: getSettings(), categories: await storefrontService.listCategories() };
@@ -153,7 +160,7 @@ storefrontRouter.get(
     if (req.path !== canonical) return res.redirect(301, canonical);
 
     const [{ shop, categories }, related] = await Promise.all([chrome(), storefrontService.related(product)]);
-    html(res, productPage(shop, categories, product, related, paymentService.enabled()));
+    html(res, productPage(shop, categories, product, related, canSell()));
   }),
 );
 
@@ -202,7 +209,7 @@ storefrontRouter.post(
     const colors = productColors(product);
     if (colors.length && !colors.includes(input.color ?? '')) return fail('Merci de choisir une couleur.', 400, back);
     const variant = [colors.length ? input.color : null, sizes.length ? input.size : null].filter(Boolean).join(' / ') || null;
-    if (!paymentService.enabled()) return fail('Le paiement en ligne n’est pas encore activé.', 503, back);
+    if (!canSell()) return fail('Le paiement en ligne n’est pas encore activé.', 503, back);
 
     // Code promo (code de bienvenue newsletter) : vérifié et réservé côté serveur.
     const promo = input.promo ? await newsletterService.validCode(input.promo) : null;
@@ -242,6 +249,30 @@ storefrontRouter.post(
     logger.info('Commande boutique créée', { orderNumber: order.orderNumber, promo: !!promo });
     if (promo) await prisma.subscriber.update({ where: { id: promo.id }, data: { orderId: order.id } });
 
+    const promoLine = promo ? `<p>Code ${esc(promo.code)} appliqué : −${money(discountAmount, order.currency)}.</p>` : '';
+
+    // Lien de paiement hébergé (ex. iyzico Link) : pas de confirmation automatique,
+    // la commande reste « en attente » jusqu'à vérification du paiement reçu.
+    const link = paymentService.linkUrl();
+    if (link) {
+      logger.info('Commande boutique en attente de paiement par lien', { orderNumber: order.orderNumber });
+      return html(
+        res,
+        messagePage(
+          shop,
+          categories,
+          'Dernière étape : le paiement',
+          `<p>Commande <strong>${esc(order.orderNumber)}</strong> — ${esc(product.name)}${variant ? ` (${esc(variant)})` : ''} × ${input.quantity}.</p>${promoLine}
+<p>Montant à régler : <strong>${money(order.total, order.currency)}</strong></p>
+<p>Sur la page de paiement sécurisée, réglez ce montant exact et indiquez la référence <strong>${esc(order.orderNumber)}</strong>. Votre commande est préparée dès réception du paiement ; vous recevrez le numéro de suivi par e-mail.</p>
+<p><a class="btn" href="${esc(link)}" rel="nofollow noopener" target="_blank">Payer par carte en toute sécurité</a></p>`,
+          '/boutique/commander',
+        ),
+        200,
+        false,
+      );
+    }
+
     let url: string | null = null;
     try {
       url = (await paymentService.createCheckout(order.id)).url;
@@ -263,7 +294,7 @@ storefrontRouter.post(
         shop,
         categories,
         'Dernière étape : le paiement',
-        `<p>Commande <strong>${esc(order.orderNumber)}</strong> — ${esc(product.name)} × ${input.quantity} : <strong>${money(order.total, order.currency)}</strong>.</p>${promo ? `<p>Code ${esc(promo.code)} appliqué : −${money(discountAmount, order.currency)}.</p>` : ''}
+        `<p>Commande <strong>${esc(order.orderNumber)}</strong> — ${esc(product.name)} × ${input.quantity} : <strong>${money(order.total, order.currency)}</strong>.</p>${promoLine}
 <p><a class="btn" href="${esc(url)}" rel="nofollow">Payer par carte en toute sécurité</a></p>`,
         '/boutique/commander',
       ),

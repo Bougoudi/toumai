@@ -111,6 +111,16 @@ export const orderService = {
     return prisma.order.update({ where: { id }, data: { status: 'CANCELLED' } });
   },
 
+  /**
+   * Paiement reçu hors API (lien de paiement hébergé, virement…) : vérifié à la
+   * main par le vendeur, la commande passe de « en attente » à « payée ».
+   */
+  async markPaid(id: string) {
+    const r = await prisma.order.updateMany({ where: { id, status: 'PENDING' }, data: { status: 'PAID' } });
+    if (r.count !== 1) throw new HttpError(409, 'Seule une commande en attente de paiement peut être marquée payée.');
+    return this.getById(id);
+  },
+
   /** Vraie si un article a déjà été expédié chez le fournisseur (adresse figée). */
   hasShippedPurchase(order: { purchaseOrders?: { status: string }[] }): boolean {
     return (order.purchaseOrders ?? []).some((p) => ['SHIPPED', 'DELIVERED'].includes(p.status));
