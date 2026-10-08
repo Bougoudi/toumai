@@ -48,6 +48,11 @@ export const orderController = {
     res.json(await orderService.cancel(req.params.id));
   },
 
+  /** POST /api/orders/:id/mark-paid — paiement reçu hors API, vérifié par le vendeur. */
+  async markPaid(req: Request, res: Response) {
+    res.json(await orderService.markPaid(req.params.id));
+  },
+
   /** POST /api/orders/:id/fulfill — force l'exécution immédiate (pilier 3). */
   async fulfill(req: Request, res: Response) {
     const order = await orderService.getById(req.params.id);

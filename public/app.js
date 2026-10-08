@@ -146,7 +146,38 @@ async function loadDashboard() {
   } catch (e) {
     toast(e.message);
   }
+  loadVisitors();
 }
+
+// Visiteurs de la boutique (statistiques anonymes, 14 jours).
+async function loadVisitors() {
+  const box = $('#visitors-kpis');
+  if (!box) return;
+  try {
+    const d = await api('/api/analytics/summary');
+    box.replaceChildren(
+      el(`<div class="kpi accent"><div class="label">En ce moment</div><div class="value num">${d.activeVisitors}</div><div class="sub">5 dernières minutes</div></div>`),
+      el(`<div class="kpi"><div class="label">Visiteurs aujourd’hui</div><div class="value num">${d.visitorsToday}</div></div>`),
+      el(`<div class="kpi"><div class="label">Pages vues aujourd’hui</div><div class="value num">${d.pageViewsToday}</div></div>`),
+    );
+    const max = Math.max(1, ...d.daily.map((x) => x.views));
+    $('#visitors-daily').innerHTML = tableHtml(
+      ['Jour', 'Visiteurs', 'Pages vues', ''],
+      d.daily.slice().reverse().map((x) => [
+        esc(new Date(x.day + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })),
+        `<span class="num">${x.visitors}</span>`,
+        `<span class="num">${x.views}</span>`,
+        `<div style="height:8px;width:${Math.round((x.views / max) * 100)}%;min-width:${x.views ? 2 : 0}px;background:var(--accent);border-radius:4px"></div>`,
+      ]),
+    );
+    $('#visitors-pages').innerHTML = d.topPages.length
+      ? tableHtml(['Page', 'Vues'], d.topPages.map((x) => [`<a href="${esc(x.page)}" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all">${esc(x.page)}</a>`, `<span class="num">${x.views}</span>`]))
+      : '<p class="muted">Aucune visite enregistrée pour l’instant.</p>';
+  } catch (e) {
+    box.textContent = e.message;
+  }
+}
+$('#visitors-refresh')?.addEventListener('click', loadVisitors);
 
 // ── Marché ─────────────────────────────────────────────────
 async function loadMarket() {
@@ -538,7 +569,7 @@ async function showOrder(id) {
     const items = tableHtml(
       [i18n.t('th_product'), i18n.t('th_qty'), i18n.t('th_unit_price'), i18n.t('th_subtotal')],
       o.items.map((it) => [
-        esc(it.product?.name || it.productId),
+        esc(it.product?.name || it.productId) + (it.variant ? ` <span class="badge wait">${esc(it.variant)}</span>` : ''),
         it.quantity,
         `<span class="num">${money(it.unitSalePrice)}</span>`,
         `<span class="num">${money(it.unitSalePrice * it.quantity)}</span>`,
@@ -579,6 +610,7 @@ async function showOrder(id) {
       <div class="form-actions">
         ${o.onHold ? `<button class="btn btn-primary" id="m-confirm">✅ Confirmer &amp; envoyer</button>` : ''}
         ${o.status === 'PENDING' && paymentsEnabled ? `<button class="btn btn-primary" id="m-pay">💳 Payer par carte</button>` : ''}
+        ${o.status === 'PENDING' ? `<button class="btn" id="m-paid">✔️ Paiement reçu</button>` : ''}
         ${!o.onHold && (o.status === 'PAID' || o.status === 'FULFILLING') ? `<button class="btn btn-primary" id="m-fulfill">Relancer l'expédition</button>` : ''}
         ${canCancel ? `<button class="btn btn-ghost" id="m-cancel">Annuler</button>` : ''}
       </div>`);
@@ -601,6 +633,16 @@ async function showOrder(id) {
         toast(e.message);
         busy(ev.currentTarget, false);
       }
+    });
+    $('#m-paid')?.addEventListener('click', async (ev) => {
+      if (!confirm(`As-tu bien reçu ${money(o.total, o.currency)} pour la commande ${o.orderNumber} ? Elle passera en « payée », prête pour l’expédition.`)) return;
+      busy(ev.currentTarget, true, '...');
+      try {
+        await api(`/api/orders/${id}/mark-paid`, { method: 'POST' });
+        toast('Commande marquée payée');
+        showOrder(id);
+        loadOrders();
+      } catch (e) { toast(e.message); busy(ev.currentTarget, false); }
     });
     $('#m-fulfill')?.addEventListener('click', async (ev) => {
       busy(ev.currentTarget, true, '...');
@@ -1313,6 +1355,7 @@ async function loadSettingsTab() {
     ).join('') +
       `<div class="field"><label>Demande simulée (démo)</label><select class="input set-f" data-key="simulateDemand"><option value="true" ${s.simulateDemand ? 'selected' : ''}>Activée</option><option value="false" ${!s.simulateDemand ? 'selected' : ''}>Désactivée</option></select></div>`;
   } catch (e) { toast(e.message); }
+  loadShopForm();
   loadSecurityPanel();
   loadAliexpressStatus();
   loadAiStatus();
@@ -1377,6 +1420,140 @@ $('#ali-connect')?.addEventListener('click', async (ev) => {
     toast(i18n.t('ali_opening'));
   } catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
 });
+// ── Boutique en ligne (SEO) + import CJdropshipping ─────────
+const SHOP_FIELDS = [
+  { key: 'shopName', label: 'Nom de la boutique' },
+  { key: 'shopTagline', label: 'Slogan (apparaît dans le titre Google)' },
+  { key: 'shopDescription', label: 'Description (meta description de l’accueil)' },
+  { key: 'shopEmail', label: 'E-mail de contact', type: 'email' },
+  { key: 'shopPhone', label: 'Téléphone', type: 'tel' },
+  { key: 'shopAddress', label: 'Adresse (même que la fiche Google Business)' },
+  { key: 'shopCity', label: 'Ville' },
+  { key: 'shopZip', label: 'Code postal' },
+  { key: 'shopCountry', label: 'Pays (code à 2 lettres : FR, TR, BE…)' },
+  { key: 'shopDeliveryMinDays', label: 'Livraison min. (jours)', type: 'number' },
+  { key: 'shopDeliveryMaxDays', label: 'Livraison max. (jours)', type: 'number' },
+  { key: 'shopReturnDays', label: 'Retours acceptés (jours, 0 = non)', type: 'number' },
+  { key: 'shopAnnouncement', label: 'Bandeau d’annonce (ex. « Livraison offerte dès 2 articles »)' },
+  { key: 'newsletterPct', label: 'Pop-up newsletter : remise du code de bienvenue (%, 0 = sans remise)', type: 'number' },
+  { key: 'bundleTwoPct', label: 'Remise pour 2 articles (%)', type: 'number' },
+  { key: 'bundleThreePct', label: 'Remise pour 3 articles (%)', type: 'number' },
+  { key: 'googleSiteVerification', label: 'Code Google Search Console (balise meta, content="…")' },
+  { key: 'googleBusinessUrl', label: 'Lien de ta fiche Google Business Profile', type: 'url' },
+];
+async function loadShopForm() {
+  const box = $('#shop-form');
+  if (!box) return;
+  try {
+    const s = await api('/api/settings');
+    box.innerHTML = SHOP_FIELDS.map((f) =>
+      `<div class="field"><label>${esc(f.label)}</label><input class="input shop-f" data-key="${f.key}" type="${f.type || 'text'}" value="${esc(s[f.key])}"/></div>`,
+    ).join('');
+    box.insertAdjacentHTML('beforeend', `<div class="field"><label>Pop-up d’inscription « code de bienvenue »</label><select class="input" id="nl-enabled"><option value="true" ${s.newsletterEnabled !== false ? 'selected' : ''}>Activée</option><option value="false" ${s.newsletterEnabled === false ? 'selected' : ''}>Désactivée</option></select></div>`);
+    loadSubscribers();
+    _featuredId = s.shopFeaturedProductId || '';
+    loadLandingEditor();
+    const lbl = $('#cj-rate-label');
+    if (lbl) lbl.textContent = s.currency === 'USD'
+      ? 'Taux de change (inutile : boutique en USD)'
+      : `Taux de change (1 USD = ? ${s.currency})`;
+  } catch (e) { toast(e.message); }
+}
+$('#shop-save')?.addEventListener('click', async (ev) => {
+  const patch = {};
+  document.querySelectorAll('#shop-form .shop-f').forEach((i) => {
+    patch[i.dataset.key] = i.type === 'number' ? Number(i.value) : i.value.trim();
+  });
+  if (!patch.shopName) return toast('Le nom de la boutique est requis');
+  patch.newsletterEnabled = $('#nl-enabled')?.value !== 'false';
+  busy(ev.currentTarget, true, '...');
+  try { await api('/api/settings', { method: 'PATCH', body: patch }); toast('Boutique enregistrée'); }
+  catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+async function loadSubscribers() {
+  const box = $('#nl-subscribers');
+  if (!box) return;
+  try {
+    const r = await api('/api/settings/subscribers');
+    const rows = r.items.map((s) => [esc(s.email), esc(s.code), s.codeUsedAt ? 'Utilisé' : 'Non utilisé', s.unsubscribedAt ? 'Désinscrit' : 'Inscrit', dt(s.createdAt)]);
+    box.innerHTML = `<p class="muted">${r.active} inscrit(s) actif(s) sur ${r.total}.</p>` + tableHtml(['E-mail', 'Code', 'Utilisation', 'Statut', 'Date'], rows);
+  } catch (e) { box.textContent = e.message; }
+}
+
+// ── Page de vente (prix barré, points forts, étapes, produit mis en avant) ──
+let _featuredId = '';
+let _lpProducts = [];
+async function loadLandingEditor() {
+  const sel = $('#lp-product');
+  if (!sel) return;
+  try {
+    const r = await api('/api/products?status=ACTIVE&take=100');
+    _lpProducts = r.items;
+    sel.innerHTML = _lpProducts.length
+      ? _lpProducts.map((p) => `<option value="${esc(p.id)}" ${p.id === _featuredId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')
+      : '<option value="">Aucun produit actif — importe d’abord un produit</option>';
+    fillLandingEditor();
+  } catch (e) { toast(e.message); }
+}
+function fillLandingEditor() {
+  const p = _lpProducts.find((x) => x.id === $('#lp-product').value);
+  $('#lp-price').value = p?.salePrice ?? '';
+  $('#lp-was').value = p?.compareAtPrice ?? '';
+  $('#lp-highlights').value = p?.highlights ?? '';
+  $('#lp-steps').value = p?.steps ?? '';
+  $('#lp-sizes').value = p?.sizes ?? '';
+  $('#lp-colors').value = p?.colors ?? '';
+  $('#lp-featured').checked = !!p && p.id === _featuredId;
+}
+$('#lp-product')?.addEventListener('change', fillLandingEditor);
+$('#lp-save')?.addEventListener('click', async (ev) => {
+  const id = $('#lp-product').value;
+  if (!id) return toast('Choisis un produit');
+  const price = Number($('#lp-price').value);
+  const was = Number($('#lp-was').value);
+  if (!(price > 0)) return toast('Prix de vente invalide');
+  if (was && was <= price) return toast('Le prix barré doit être supérieur au prix de vente');
+  busy(ev.currentTarget, true, '...');
+  try {
+    const p = await api(`/api/products/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: { salePrice: price, compareAtPrice: was > 0 ? was : null, highlights: $('#lp-highlights').value, steps: $('#lp-steps').value, sizes: $('#lp-sizes').value.trim(), colors: $('#lp-colors').value.trim() },
+    });
+    const featured = $('#lp-featured').checked ? id : (_featuredId === id ? '' : _featuredId);
+    if (featured !== _featuredId) {
+      await api('/api/settings', { method: 'PATCH', body: { shopFeaturedProductId: featured } });
+      _featuredId = featured;
+    }
+    _lpProducts = _lpProducts.map((x) => (x.id === p.id ? p : x));
+    toast('Page de vente enregistrée');
+  } catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+$('#cj-key-save')?.addEventListener('click', async (ev) => {
+  const apiKey = $('#cj-key').value.trim();
+  if (!apiKey) return toast('Colle ta clé API CJ');
+  busy(ev.currentTarget, true, '...');
+  try { await api('/api/settings/cj', { method: 'POST', body: { apiKey } }); $('#cj-key').value = ''; toast('Clé CJ enregistrée'); }
+  catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+$('#cj-import')?.addEventListener('click', async (ev) => {
+  const url = $('#cj-url').value.trim();
+  if (!url) return toast('Colle le lien du produit CJ');
+  const body = { url };
+  const rate = Number($('#cj-rate').value);
+  const price = Number($('#cj-price').value);
+  if (rate > 0) body.exchangeRate = rate;
+  if (price > 0) body.salePrice = price;
+  busy(ev.currentTarget, true, 'Import...');
+  try {
+    const p = await api('/api/products/import/cj', { method: 'POST', body });
+    const slug = p.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80).replace(/-+$/, '') || 'produit';
+    $('#cj-result').innerHTML = `✅ <b>${esc(p.name)}</b> — ${money(p.salePrice, p.currency)} (achat ${money(p.costPrice, p.currency)}) · ` +
+      `<a href="/boutique/produit/${slug}-${esc(p.id)}" target="_blank" rel="noopener">voir sur la boutique</a>`;
+    toast('Produit importé et publié');
+  } catch (e) { toast(e.message); } finally { busy(ev.currentTarget, false); }
+});
+
 $('#settings-save').addEventListener('click', async (ev) => {
   const patch = {};
   document.querySelectorAll('#settings-form .set-f').forEach((i) => {

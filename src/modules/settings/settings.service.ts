@@ -15,6 +15,37 @@ export interface AppSettings {
   autopilotIntervalSeconds: number;
   simulateDemand: boolean;
   ordersPerCycle: number;
+
+  /** Boutique en ligne publique (/boutique) — identité, SEO et fiche locale. */
+  shopName: string;
+  shopTagline: string;
+  shopDescription: string;
+  shopEmail: string;
+  shopPhone: string;
+  shopAddress: string;
+  shopCity: string;
+  shopZip: string;
+  shopCountry: string;
+  /** Délai de livraison annoncé (jours ouvrés), affiché et déclaré aux moteurs. */
+  shopDeliveryMinDays: number;
+  shopDeliveryMaxDays: number;
+  /** Délai de retour accepté (jours). */
+  shopReturnDays: number;
+  /** Code de vérification Google Search Console (balise meta). */
+  googleSiteVerification: string;
+  /** Lien de la fiche Google Business Profile (relie la boutique à la fiche locale). */
+  googleBusinessUrl: string;
+  /** Bandeau d'annonce en haut de la boutique (vide = masqué). */
+  shopAnnouncement: string;
+  /** Produit mis en avant : l'accueil devient sa page de vente (vide = catalogue). */
+  shopFeaturedProductId: string;
+  /** Remises par lot sur la fiche produit (en %, 0 = offre masquée). */
+  bundleTwoPct: number;
+  bundleThreePct: number;
+  /** Pop-up d'inscription e-mail avec code de bienvenue. */
+  newsletterEnabled: boolean;
+  /** Remise du code de bienvenue (en %). */
+  newsletterPct: number;
 }
 
 const DEFAULTS: AppSettings = {
@@ -25,6 +56,26 @@ const DEFAULTS: AppSettings = {
   autopilotIntervalSeconds: env.autopilot.intervalSeconds,
   simulateDemand: env.autopilot.simulateDemand,
   ordersPerCycle: env.autopilot.ordersPerCycle,
+  shopName: process.env.SHOP_NAME || 'Toumai Shop',
+  shopTagline: process.env.SHOP_TAGLINE || 'Les meilleurs produits, livrés chez vous',
+  shopDescription: '',
+  shopEmail: '',
+  shopPhone: '',
+  shopAddress: '',
+  shopCity: '',
+  shopZip: '',
+  shopCountry: '',
+  shopDeliveryMinDays: 7,
+  shopDeliveryMaxDays: 15,
+  shopReturnDays: 14,
+  googleSiteVerification: process.env.GOOGLE_SITE_VERIFICATION ?? '',
+  googleBusinessUrl: '',
+  shopAnnouncement: 'Paiement sécurisé · livraison suivie',
+  shopFeaturedProductId: '',
+  bundleTwoPct: 10,
+  bundleThreePct: 15,
+  newsletterEnabled: true,
+  newsletterPct: 10,
 };
 
 let cache: AppSettings = { ...DEFAULTS };
@@ -35,7 +86,7 @@ export async function loadSettings() {
     const rows = await prisma.setting.findMany();
     const merged = { ...DEFAULTS };
     for (const row of rows) {
-      if (row.key.startsWith(SECRET_PREFIX)) continue; // secrets : hors cache/API
+      if (row.key.startsWith(SECRET_PREFIX) || row.key.startsWith('starter.')) continue; // secrets / drapeaux internes : hors cache/API
       try {
         (merged as Record<string, unknown>)[row.key] = JSON.parse(row.value);
       } catch {
@@ -144,6 +195,25 @@ export async function setAiCreds(input: Partial<AiCreds>): Promise<{ ok: true; c
   if (ops.length) await prisma.$transaction(ops);
   const creds = await getAiCreds();
   return { ok: true, configured: Boolean(creds.apiKey) };
+}
+
+/** Clé API CJdropshipping (secret chiffré au repos), repli sur CJ_API_KEY. */
+export async function getCjApiKey(): Promise<string | undefined> {
+  try {
+    const row = await prisma.setting.findUnique({ where: { key: `${SECRET_PREFIX}cjApiKey` } });
+    if (row) return decrypt(row.value);
+  } catch {
+    /* base indisponible : repli environnement */
+  }
+  return env.connectors.cj.apiKey || undefined;
+}
+
+/** Enregistre la clé API CJdropshipping (chiffrée). */
+export async function setCjApiKey(apiKey: string): Promise<{ ok: true; configured: boolean }> {
+  const key = `${SECRET_PREFIX}cjApiKey`;
+  const value = encrypt(apiKey.trim());
+  await prisma.setting.upsert({ where: { key }, create: { key, value }, update: { value } });
+  return { ok: true, configured: true };
 }
 
 export interface AliexpressTokens {

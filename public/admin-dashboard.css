@@ -1,0 +1,19 @@
+:root{--bg:#f7f7f5;--card:#fff;--fg:#171717;--muted:#666;--line:#e5e5e5;--accent:#9C6B4E;--btn:#171717;--on-btn:#fff;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#121212;--card:#1c1c1c;--fg:#f0f0f0;--muted:#a3a3a3;--line:#2e2e2e;--accent:#d3a284;--btn:#f0f0f0;--on-btn:#121212}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:1050px;margin:auto;padding:24px 16px}.login{max-width:420px;padding-top:12vh}
+h1{margin:0 0 4px;font-size:24px}h2{font-size:17px;margin:0 0 12px}.muted{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;margin-bottom:14px}
+label{display:grid;gap:6px;font-size:14px;color:var(--muted);margin-top:14px}
+input{padding:13px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit}
+button{padding:12px 16px;border-radius:10px;border:0;background:var(--btn);color:var(--on-btn);font:600 14px system-ui,sans-serif;cursor:pointer}
+form button[type=submit]{width:100%;margin-top:14px}.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);width:auto!important;margin:0!important}
+.err{color:#c0392b;min-height:1.2em}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.grid .card{display:grid;gap:6px}.grid span{color:var(--muted);font-size:14px}
+.grid b{font-size:34px;font-variant-numeric:tabular-nums}.grid small{color:var(--muted)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:14px}
+th{color:var(--muted);font-weight:500}td.n{font-variant-numeric:tabular-nums}td.page{word-break:break-all}
+.bar{height:8px;border-radius:4px;background:var(--accent)}
+@media (max-width:700px){.grid{grid-template-columns:1fr}header{flex-direction:column}}
+#daily td:last-child{width:30%}

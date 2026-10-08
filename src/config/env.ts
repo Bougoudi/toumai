@@ -78,6 +78,10 @@ export const env = {
       appSecret: process.env.ALIEXPRESS_APP_SECRET ?? '',
       trackingId: process.env.ALIEXPRESS_TRACKING_ID ?? '',
     },
+    /** CJdropshipping (import de produits par lien). Clé : cjdropshipping.com → My CJ → Authorization → API. */
+    cj: {
+      apiKey: process.env.CJ_API_KEY ?? '',
+    },
   },
 
   /** Authentification (JWT). */
@@ -148,6 +152,20 @@ export const env = {
     get sandbox() {
       return (process.env.IYZICO_URI ?? 'https://sandbox-api.iyzipay.com').includes('sandbox');
     },
+  },
+
+  /**
+   * Lien de paiement hébergé (ex. iyzico Link, accessible sans société) : utilisé
+   * par la boutique quand aucune API de paiement n'est configurée. La commande
+   * reste « en attente » jusqu'à vérification manuelle du paiement.
+   */
+  get paymentLinkUrl(): string {
+    const raw = (process.env.PAYMENT_URL ?? '').trim();
+    try {
+      return raw && new URL(raw).protocol === 'https:' ? raw : '';
+    } catch {
+      return '';
+    }
   },
 
   /**

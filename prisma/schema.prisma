@@ -288,6 +288,17 @@ model Product {
   costPrice              Float? // prix d'achat fournisseur
   salePrice              Float? // prix de vente client
   margin                 Float? // marge = salePrice - costPrice
+  /// Prix barré affiché sur la boutique (ancien prix), facultatif.
+  compareAtPrice         Float?
+
+  /// Page de vente : points forts (une ligne « Titre | texte » par point)
+  /// et étapes d'utilisation (une étape par ligne).
+  highlights             String             @default("")
+  steps                  String             @default("")
+  /// Tailles proposées à la commande, séparées par des virgules (vide = pas de choix).
+  sizes                  String             @default("")
+  /// Couleurs proposées à la commande, séparées par des virgules (vide = pas de choix).
+  colors                 String             @default("")
 
   /// DRAFT | ACTIVE | ARCHIVED
   status                 String             @default("DRAFT")
@@ -377,6 +388,10 @@ model Order {
   /// Identifiant de la commande côté marketplace (déduplication à l'import).
   externalId String?
 
+  /// Code de réduction appliqué (ex. code de bienvenue newsletter) et montant déduit.
+  discountCode   String?
+  discountAmount Float?
+
   /// En attente de vérification manuelle (ex. adresse à confirmer avant l'envoi
   /// au fournisseur). Les commandes « en attente » sont ignorées par le pilote
   /// automatique tant qu'elles ne sont pas confirmées.
@@ -416,6 +431,8 @@ model OrderItem {
   quantity      Int     @default(1)
   unitSalePrice Float
   unitCostPrice Float?
+  /// Variante choisie par le client (ex. « Beige / M »), à reporter chez le fournisseur.
+  variant       String?
 
   @@index([orderId])
 }
@@ -543,4 +560,33 @@ model SupplierMatch {
 
   @@index([searchRequestId])
   @@index([score])
+}
+
+/// Inscrit à la liste e-mail de la boutique (pop-up « -10 % »), avec son code de bienvenue.
+model Subscriber {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  /// Code de réduction personnel, utilisable une seule fois.
+  code        String    @unique
+  /// popup | footer
+  source      String    @default("popup")
+  consentAt   DateTime  @default(now())
+  unsubscribedAt DateTime?
+  codeUsedAt  DateTime?
+  orderId     String?
+
+  createdAt DateTime @default(now())
+}
+
+/// Visite d'une page de la boutique publique (statistiques anonymes, sans cookie).
+/// `visitor` = empreinte hachée avec un sel qui change chaque jour : impossible de
+/// retrouver l'adresse IP ou de suivre un visiteur d'un jour à l'autre.
+/// Conservation : 14 jours maximum (purge automatique).
+model PageView {
+  id        String   @id @default(cuid())
+  visitor   String
+  path      String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }

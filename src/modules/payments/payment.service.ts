@@ -20,6 +20,9 @@ export const paymentService = {
   /** Un prestataire de paiement carte est-il configuré ? */
   enabled: () => env.paymentProvider !== 'none',
 
+  /** Lien de paiement hébergé (PAYMENT_URL), utilisé par la boutique à défaut d'API. */
+  linkUrl: () => (env.paymentProvider === 'none' ? env.paymentLinkUrl : ''),
+
   /**
    * Crée une page de paiement carte pour une commande et renvoie l'URL de
    * redirection. Aiguille vers le prestataire actif : iyzico (Turquie —
@@ -66,8 +69,15 @@ export const paymentService = {
           product_data: { name: it.product?.name ?? 'Produit' },
         },
       })),
-      success_url: `${env.publicUrl}/?paid=${order.orderNumber}`,
-      cancel_url: `${env.publicUrl}/?canceled=${order.orderNumber}`,
+      // Commande de la boutique publique : le client revient sur la boutique.
+      success_url:
+        order.channel === 'boutique'
+          ? `${env.publicUrl}/boutique/merci?commande=${order.orderNumber}`
+          : `${env.publicUrl}/?paid=${order.orderNumber}`,
+      cancel_url:
+        order.channel === 'boutique'
+          ? `${env.publicUrl}/boutique/merci?annule=1&commande=${order.orderNumber}`
+          : `${env.publicUrl}/?canceled=${order.orderNumber}`,
     });
 
     logger.info('Session Stripe créée', { orderId: order.id, sessionId: session.id });

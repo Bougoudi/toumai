@@ -12,3 +12,7 @@ settingsRouter.post('/purge', asyncHandler(settingsController.purge));
 settingsRouter.post('/aliexpress', asyncHandler(settingsController.aliexpress));
 // Clé de l'assistant IA du service client (secret chiffré au repos).
 settingsRouter.post('/ai', asyncHandler(settingsController.ai));
+// Clé API CJdropshipping (import de produits par lien).
+settingsRouter.post('/cj', asyncHandler(settingsController.cj));
+// Inscrits à la liste e-mail de la boutique (pop-up « code de bienvenue »).
+settingsRouter.get('/subscribers', asyncHandler(settingsController.subscribers));
