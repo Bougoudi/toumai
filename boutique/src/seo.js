@@ -133,7 +133,8 @@ function merchantFeed(cfg) {
   if (!cfg.publicUrl) return null;
   const p = catalog(cfg);
   const base = cfg.publicUrl;
-  const items = p.variants.filter(v => v.available).map(v => `  <item>
+  // Google requires the image to show the listed color: colors without their own photo are left out.
+  const items = p.variants.filter(v => v.available && v.hasPhoto).map(v => `  <item>
     <g:id>${esc(`${p.sku}-${v.id}`)}</g:id>
     <g:item_group_id>${esc(p.sku)}</g:item_group_id>
     <g:title>${esc(`${p.name} – ${v.name}`)}</g:title>

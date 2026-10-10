@@ -114,7 +114,7 @@ function createApp({ cfg, db, log = console }) {
   app.get("/api/catalog", (_req, res) => {
     const p = catalog(cfg);
     res.json({ id: p.id, name: p.name, priceCents: p.priceCents, maxQtyPerLine: p.maxQtyPerLine, images: p.images,
-      variants: p.variants.map(v => ({ id: v.id, name: v.name, available: v.available, swatch: v.swatch })), states: orders.US_STATES });
+      variants: p.variants.map(v => ({ id: v.id, name: v.name, available: v.available, hasPhoto: Boolean(v.hasPhoto), swatch: v.swatch })), states: orders.US_STATES });
   });
 
   const startCheckout = wrap(async (req, res) => {
