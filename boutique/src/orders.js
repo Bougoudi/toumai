@@ -6,6 +6,9 @@ const { getSettings } = require("./db");
 const { toCents, estimateFeeCents, orderProfit, PAID_STATES } = require("./profit");
 const iyzico = require("./iyzico");
 const notify = require("./notify");
+const analytics = require("./analytics");
+const promotions = require("./promotions");
+const { cleanUtm } = require("./utm");
 
 const now = () => new Date().toISOString();
 const usd = (c) => `$${(c / 100).toFixed(2)}`;
@@ -45,7 +48,13 @@ function validateCheckout(body, cfg) {
     const v = product.variants.find(x => x.name === c.variant || x.id === c.variant);
     rawItems = [{ variantId: v ? v.id : c.variant, quantity: c.quantity }];
   }
-  if (!rawItems || rawItems.length === 0) throw new OrderError(400, "Your cart is empty.");
+  return { customer, items: validateItems(rawItems, cfg), promoCode: promotions.normCode(b.promoCode), utm: cleanUtm(b.utm) };
+}
+
+/** Validates cart lines against the catalog; prices always come from the server. */
+function validateItems(rawItems, cfg) {
+  const product = catalog(cfg);
+  if (!Array.isArray(rawItems) || rawItems.length === 0) throw new OrderError(400, "Your cart is empty.");
   if (rawItems.length > 10) throw new OrderError(400, "Too many cart lines.");
   const merged = new Map();
   for (const it of rawItems) {
@@ -56,33 +65,50 @@ function validateCheckout(body, cfg) {
     if (!Number.isInteger(qty) || qty < 1) throw new OrderError(400, "Invalid quantity.");
     merged.set(variant.id, (merged.get(variant.id) || 0) + qty);
   }
-  const items = [...merged.entries()].map(([variantId, quantity]) => {
+  return [...merged.entries()].map(([variantId, quantity]) => {
     if (quantity > product.maxQtyPerLine) throw new OrderError(400, `Maximum ${product.maxQtyPerLine} per colour.`);
     const v = product.variants.find(x => x.id === variantId);
     return { sku: product.sku, supplier_sku: product.supplierSku, product_name: product.name, variant_id: v.id, variant_name: v.name,
       supplier_variant: v.supplierVariant, quantity, unit_price_cents: product.priceCents, line_total_cents: product.priceCents * quantity };
   });
-  return { customer, items };
+}
+
+/** Server-side quote for the checkout page: subtotal, discount (if a valid code), shipping, total. */
+function quote(db, cfg, body) {
+  const items = validateItems(body && body.items, cfg);
+  const subtotal = items.reduce((s, i) => s + i.line_total_cents, 0);
+  const promo = body && body.promoCode ? promotions.resolve(db, body.promoCode, subtotal) : null;
+  const discount = promotions.discountFor(promo, subtotal);
+  const shipping = toCents(cfg.shippingUsd);
+  return { subtotal_cents: subtotal, discount_cents: discount, shipping_cents: shipping, total_cents: subtotal - discount + shipping,
+    promo: promo ? { code: promo.code, conditions: promotions.describe(promo) } : null };
 }
 
 /** Creates an order (pending payment). Prices and costs are computed here, server-side. */
-function createOrder(db, cfg, { customer, items }, { isTest, ip }) {
+function createOrder(db, cfg, { customer, items, promoCode, utm }, { isTest, ip }) {
   const settings = getSettings(db);
   const units = items.reduce((s, i) => s + i.quantity, 0);
   const subtotal = items.reduce((s, i) => s + i.line_total_cents, 0);
   const shipping = toCents(cfg.shippingUsd);
-  const total = subtotal + shipping;
+  // Promo codes are re-validated here, server-side; an invalid code rejects the checkout
+  // rather than silently charging a price the customer didn't expect.
+  const promo = promoCode ? promotions.resolve(db, promoCode, subtotal) : null;
+  const discount = promotions.discountFor(promo, subtotal);
+  const total = subtotal - discount + shipping;
+  const u = utm || {};
   const orderNumber = (isTest ? "HL-TEST-" : "HL-") + crypto.randomBytes(5).toString("hex").toUpperCase();
   const t = now();
   return db.transaction(() => {
     const id = db.prepare(`INSERT INTO orders(order_number,created_at,updated_at,is_test,customer_name,customer_email,customer_phone,
       address1,address2,city,state,postal_code,country,currency,subtotal_cents,shipping_cents,total_cents,payment_status,
-      payment_provider,fee_estimated_cents,est_product_cost_cents,est_shipping_cost_cents,customer_ip)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?,?,?,?)`).run(
+      payment_provider,fee_estimated_cents,est_product_cost_cents,est_shipping_cost_cents,customer_ip,
+      promo_code,discount_cents,utm_source,utm_medium,utm_campaign,utm_content)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?,?,?,?,?,?,?,?,?,?)`).run(
       orderNumber, t, t, isTest ? 1 : 0, customer.name, customer.email, customer.phone || null,
       customer.address1, customer.address2 || null, customer.city, customer.state, customer.postalCode, customer.country, cfg.currency,
       subtotal, shipping, total, isTest ? null : "iyzico", isTest ? 0 : estimateFeeCents(total, settings),
       toCents(settings.product_cost_usd) * units, toCents(settings.shipping_cost_usd) * units, String(ip || "").slice(0, 64),
+      promo ? promo.code : null, discount, u.source || null, u.medium || null, u.campaign || null, u.content || null,
     ).lastInsertRowid;
     const ins = db.prepare(`INSERT INTO order_items(order_id,sku,supplier_sku,product_name,variant_id,variant_name,supplier_variant,quantity,unit_price_cents,line_total_cents)
       VALUES(?,?,?,?,?,?,?,?,?,?)`);
@@ -130,6 +156,8 @@ async function confirmPayment(db, cfg, order, source) {
     if (changed) {
       event(db, order.id, "payment_verified", `iyzico payment ${verdict.paymentId}, ${usd(verdict.paidCents)} (via ${source})`);
       const o = getOrder(db, order.id);
+      // Analytics "purchase" exists only here: once, after iyzico confirmed a real payment.
+      try { analytics.recordPurchase(db, cfg, o, getItems(db, order.id).reduce((n, i) => n + i.quantity, 0)); } catch { /* never block an order */ }
       const items = getItems(db, order.id).map(i => `${i.quantity} × ${i.variant_name}`).join(", ");
       await notify.notifyAdmin(db, cfg, { kind: "new_paid_order", orderId: order.id,
         title: `New paid order ${o.order_number} — ${usd(o.paid_cents)}`,
@@ -364,6 +392,6 @@ function updateCosts(db, orderId, b, actor) {
 }
 
 module.exports = {
-  OrderError, US_STATES, validateCheckout, createOrder, getOrder, getItems, orderDetail, event,
+  OrderError, US_STATES, validateCheckout, validateItems, quote, createOrder, getOrder, getItems, orderDetail, event,
   confirmPayment, refundOrder, supplierOrderText, recordSupplierOrder, recordShipment, changeStatus, updateCosts, TRANSITIONS,
 };

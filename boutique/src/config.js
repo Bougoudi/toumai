@@ -4,6 +4,20 @@ const path = require("path");
 const bool = (v) => String(v || "").toLowerCase() === "true";
 const num = (v, d) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
+function validTimezone(tz) {
+  if (!tz) return null;
+  try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return tz; } catch { return null; }
+}
+
+const PAYMENT_METHODS = {
+  visa: "Visa", mastercard: "Mastercard", amex: "American Express",
+  "apple-pay": "Apple Pay", "google-pay": "Google Pay", unionpay: "UnionPay",
+};
+function paymentMethods(v) {
+  const ids = (v === undefined ? "visa,mastercard,amex" : String(v)).split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+  return [...new Set(ids)].filter(id => PAYMENT_METHODS[id]).map(id => ({ id, name: PAYMENT_METHODS[id], icon: `/images/payment/${id}.svg` }));
+}
+
 function load(env = process.env) {
   const root = path.join(__dirname, "..");
   return {
@@ -49,6 +63,26 @@ function load(env = process.env) {
       adminNotifyEmail: env.ADMIN_NOTIFY_EMAIL || "",
     },
     adminNotifyWebhookUrl: env.ADMIN_NOTIFY_WEBHOOK_URL || "",
+
+    // Payment logos shown in the footer and at checkout. List ONLY what your iyzico
+    // account really accepts (check the iyzico merchant panel). Unknown ids are ignored.
+    paymentMethods: paymentMethods(env.PAYMENT_METHODS),
+    // Search Console / Merchant Center "HTML tag" verification token (content="..." only).
+    googleSiteVerification: /^[A-Za-z0-9_-]{10,100}$/.test(env.GOOGLE_SITE_VERIFICATION || "") ? env.GOOGLE_SITE_VERIFICATION : "",
+
+    analytics: {
+      enabled: env.ANALYTICS_ENABLED !== "false",
+      // "opt-out": collected unless the visitor declines (or sends GPC / Do Not Track).
+      // "opt-in": nothing is collected until the visitor accepts in the banner.
+      consentMode: env.ANALYTICS_CONSENT_MODE === "opt-in" ? "opt-in" : "opt-out",
+      timezone: validTimezone(env.ANALYTICS_TIMEZONE) || "America/New_York",
+      retentionDays: Math.max(30, Math.min(800, num(env.ANALYTICS_RETENTION_DAYS, 395))),
+      allowHeadlessForTests: env.ANALYTICS_ALLOW_HEADLESS === "true",
+    },
+    geoip: {
+      path: env.GEOIP_DB_PATH || path.join(path.dirname(env.DB_PATH || path.join(root, "data", "x")), "geoip", "dbip-country-lite.csv.gz"),
+      autoDownload: env.GEOIP_AUTO_DOWNLOAD !== "false",
+    },
 
     supplierInstructions: env.SUPPLIER_INSTRUCTIONS ||
       "Please ship directly to the customer. Do not include invoices, prices or promotional material in the parcel. Reply with the carrier name and tracking number as soon as it is available.",

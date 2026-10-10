@@ -2,15 +2,16 @@
   const { el, fmt, cart, toast } = HL;
   const [p, cfg] = await Promise.all([HL.catalog(), HL.config()]);
   document.getElementById("price").textContent = fmt(p.priceCents);
+  HL.track("view_item", { item_id: p.id, value: p.priceCents / 100, currency: "USD" });
 
   // Gallery
   const main = document.getElementById("mainImage");
   const thumbs = document.getElementById("thumbs");
   p.images.forEach((img, i) => {
     const b = el("button", { type: "button", class: "thumb" + (i === 0 ? " active" : ""), "aria-label": `Show photo ${i + 1}: ${img.alt}`, role: "listitem" },
-      el("img", { src: img.src, alt: "", loading: "lazy" }));
+      el("img", { src: img.thumb || img.src, alt: "", loading: "lazy", width: "84", height: "64" }));
     b.addEventListener("click", () => {
-      main.src = img.src; main.alt = img.alt;
+      main.removeAttribute("srcset"); main.src = img.src; main.alt = img.alt;
       thumbs.querySelectorAll(".thumb").forEach(t => t.classList.toggle("active", t === b));
     });
     thumbs.append(b);
@@ -46,6 +47,7 @@
     if (!selected) return;
     clamp();
     cart.add(selected.id, Number(qty.value), p.maxQtyPerLine);
+    HL.track("add_to_cart", { item_id: p.id, variant: selected.id, quantity: Number(qty.value), value: p.priceCents * Number(qty.value) / 100, currency: "USD" });
     toast(`Added ${qty.value} × ${selected.name} to your cart.`);
     addBtn.innerHTML = "Added — view cart <span>↗</span>";
     addBtn.onclick = () => { location.href = "/cart"; };
