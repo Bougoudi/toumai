@@ -2,8 +2,36 @@
 
 A responsive storefront and an initial order-admin workflow built with Node.js, Express and SQLite.
 
-## Important limits
-This is a **starter project**, not a production-ready payment integration. It does not charge customers. The storefront's order modal creates clearly marked `test_unpaid` demo orders only. The admin refuses to mark those demo orders as sent to a supplier or shipped. Do not accept real orders until a real payment provider, verified webhook, product compliance review, customer email flow, final policies and deployment hardening have been implemented and tested.
+## Payment modes
+The store picks its mode automatically from the configuration:
+
+| Configuration | Storefront button | What happens |
+| --- | --- | --- |
+| No iyzico keys | "Try demo order" | `test_unpaid` demo order, no money; cannot be fulfilled |
+| iyzico **sandbox** keys + `PUBLIC_URL` | "Buy now" (TEST MODE note) | Real iyzico flow with test cards, no real money |
+| iyzico **live** keys + `PUBLIC_URL` + `LIVE_PAYMENTS_ENABLED=true` + `PRODUCT_COMPLIANCE_VERIFIED=true` | "Buy now" | Real card payments |
+
+Live keys without both confirmations keep checkout disabled (the server log says why). Do not accept real orders until product compliance, customer emails, final policies and deployment hardening are done.
+
+## iyzico checkout — how payment is verified
+1. `POST /api/checkout` validates the form, computes the price **server-side**, saves a `pending` order and opens an iyzico Checkout Form (`locale: en`, single installment).
+2. The customer pays on iyzico's hosted page (we never see card data).
+3. iyzico posts the customer's browser to `POST /api/checkout/iyzico/callback` with a token.
+4. The server **retrieves the payment from iyzico's API** and marks the order `paid` only if: status `SUCCESS`, the token and basket match the order, the currency matches, and the paid amount ≥ the order total. The redirect itself is never trusted.
+5. The customer lands on `/order-status.html`, which shows the status stored on the server.
+
+Idempotent: a replayed callback does nothing more. If a customer paid but closed the browser before the callback, open the order in `/admin` and click **Verify payment with iyzico**.
+
+### Test in sandbox
+1. Create a free account at https://sandbox-merchant.iyzipay.com and copy the sandbox API key and secret key.
+2. In `.env`: `IYZICO_API_KEY`, `IYZICO_SECRET_KEY`, `IYZICO_URI=https://sandbox-api.iyzipay.com`, `PUBLIC_URL=http://localhost:3000`.
+3. Restart; the log shows `Checkout: iyzico SANDBOX`. Pay with an iyzico test card (e.g. `5528 7900 0000 0008`, any future date, CVC `123`).
+
+### Before going live with iyzico
+- A real iyzico merchant account (registered business) enabled for `STORE_CURRENCY` and for foreign cards if you sell to the US.
+- Confirm with iyzico the buyer identity number to send for non-Turkish buyers (`IYZICO_BUYER_IDENTITY_NUMBER`).
+- Set `TRUST_PROXY=true` behind a proxy so the buyer's real IP is sent to iyzico.
+- Refunds are done from the iyzico merchant panel (not in this admin yet).
 
 ## Run locally
 Requirements: Node.js 20+. This store is self-contained in the `boutique/` folder of the Toumai repository (separate `package.json`, independent of the Toumai app).
@@ -49,7 +77,7 @@ Copy the output into `.env` as `ADMIN_PASSWORD_HASH=...`. Choose a long, unique 
 ## Before production — mandatory checklist
 - Verify the exact heated product's safety/compliance documentation for the US market. Do not invent UL/ETL/FCC/CPSC claims or electrical safety features.
 - Obtain commercial rights for supplier images. Replace generic mood imagery with accurate, authorized product photography.
-- Choose a payment provider that accepts the seller's real country/legal setup and supports payout to the seller. Implement official hosted checkout and signed webhooks. Never treat a browser redirect as payment proof.
+- iyzico is integrated (hosted checkout + server-side verification). Complete the "Before going live with iyzico" list above and test the full flow in sandbox.
 - Implement durable sessions/CSRF protection and production-grade admin auth; configure secure cookies and persistent session storage.
 - Configure order confirmation, shipping and delay emails with a real mail provider.
 - Review sales tax, privacy, consumer, returns, product liability and electrical-product obligations with qualified advice for the relevant jurisdictions.
@@ -60,7 +88,9 @@ Copy the output into `.env` as `ADMIN_PASSWORD_HASH=...`. Choose a long, unique 
 
 ## Files
 - `public/hero-concept.jpg`: hero mood image (generic lifestyle image — replace with authorised product photography before launch).
-- `server.js`: Express API, SQLite schema, admin auth, demo orders and protected admin routes.
+- `server.js`: Express API, SQLite schema (+ automatic column migrations), admin auth, demo orders, iyzico checkout and protected admin routes.
+- `iyzico.js`: iyzico Checkout Form initialize / retrieve, payment verification rules, live-mode gating.
+- `public/order-status.html`: page shown after payment.
 - `public/index.html`: storefront.
 - `public/styles.css`: visual design.
 - `public/store.js`: demo order flow.

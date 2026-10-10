@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Order status | HavenLume</title><link rel="stylesheet" href="/styles.css"></head><body><header class="site-header"><a class="brand" href="/">HavenLume<span>HOME COMFORT</span></a><a href="/">← Back to store</a></header><main class="admin-wrap" style="max-width:620px"><section class="admin-card"><p class="eyebrow" id="eyebrow">ORDER</p><h1 style="font:500 34px/1.2 'Playfair Display',serif" id="title">Checking your order…</h1><p id="text" class="muted"></p><p class="micro" id="ref"></p><a class="button" href="/">Back to the store <span>↗</span></a></section></main><script>
+// The page shows the status stored by the server, which only becomes "paid" after
+// the payment has been verified with iyzico's API — never from these URL parameters.
+const q=new URLSearchParams(location.search);const order=q.get("order");
+const set=(e,t,x)=>{document.getElementById("eyebrow").textContent=e;document.getElementById("title").textContent=t;document.getElementById("text").textContent=x};
+if(!order){set("ORDER","We could not find this payment.","If you were charged, please contact us with your email address.")}
+else{document.getElementById("ref").textContent="Order number: "+order;
+fetch("/api/orders/"+encodeURIComponent(order)+"/status").then(r=>r.ok?r.json():Promise.reject()).then(o=>{
+ if(o.payment_status==="paid")set("THANK YOU","Your payment is confirmed.","We are preparing your order. Keep your order number for any question.");
+ else if(o.payment_status==="pending")set("PAYMENT PENDING","We have not received confirmation yet.","If you completed the payment, it will be checked shortly. You will not be charged twice.");
+ else set("PAYMENT NOT COMPLETED","Your payment did not go through.","No order will be shipped. You can go back to the store and try again.");
+}).catch(()=>set("ORDER","We could not load this order.","Please try again later."))}
+</script></body></html>
