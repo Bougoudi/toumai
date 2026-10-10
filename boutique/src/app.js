@@ -93,6 +93,7 @@ function createApp({ cfg, db, log = console }) {
       returnWindowDays: cfg.returnWindowDays, supportEmail: cfg.supportEmail,
       businessName: cfg.businessName, businessAddress: cfg.businessAddress,
       analytics: { enabled: cfg.analytics.enabled, consentMode: cfg.analytics.consentMode },
+      paymentMethods: cfg.paymentMethods,
     });
   });
 

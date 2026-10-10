@@ -139,6 +139,13 @@
       cartLink);
   }
 
+  function paymentIcons(cfg, className) {
+    const list = (cfg && cfg.paymentMethods) || [];
+    if (!list.length) return null;
+    return el("ul", { class: `payment-icons ${className || ""}`, "aria-label": "Accepted payment methods" },
+      list.map(m => el("li", {}, el("img", { src: m.icon, alt: m.name, title: m.name, width: "38", height: "24", loading: "lazy" }))));
+  }
+
   function footer(cfg) {
     const year = new Date().getFullYear();
     return el("footer", {},
@@ -148,6 +155,7 @@
         [["/shipping", "Shipping"], ["/returns", "Returns"], ["/privacy", "Privacy"], ["/terms", "Terms of Sale"], ["/faq", "FAQ"], ["/contact", "Contact"]]
           .map(([href, label]) => el("a", { href, text: label })),
         el("button", { type: "button", class: "footer-link-btn", text: "Privacy choices", onclick: () => privacyPanel(true) })),
+      paymentIcons(cfg),
       el("small", { text: `© ${year} ${cfg.businessName || "HavenLume"}. All prices in USD.` }));
   }
 
@@ -171,6 +179,6 @@
     document.querySelectorAll("[data-return-days]").forEach(n => { n.textContent = cfg.returnWindowDays; });
   }
 
-  window.HL = { cart, config, catalog, fmt, el, toast, track, privacyPanel, _analyticsAllowed: analyticsAllowed };
+  window.HL = { cart, config, catalog, fmt, el, toast, track, paymentIcons, privacyPanel, _analyticsAllowed: analyticsAllowed };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount); else mount();
 })();

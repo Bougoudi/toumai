@@ -70,6 +70,15 @@ recorded when they were made in the iyzico panel. Each refund has an idempotency
 Profit = retained revenue (paid − refunds) − product − shipping − payment fees − ads − other.
 Margin = profit ÷ retained revenue × 100. Actual costs replace estimates once recorded.
 
+## Payment logos
+The footer of every page, and the checkout once payments are open, show the logos listed
+in `PAYMENT_METHODS` (default `visa,mastercard,amex`). Optional values: `apple-pay`,
+`google-pay`, `unionpay`. List only the methods your iyzico account actually accepts.
+PayPal, Shop Pay, Bancontact and iDEAL/Wero are not offered through iyzico, so they are
+not available. Icons: [activemerchant/payment_icons](https://github.com/activemerchant/payment_icons)
+(MIT, see `public/images/payment/LICENSE-activemerchant-payment_icons.txt`); the logos
+are the trademarks of their owners.
+
 ## Analytics (`/admin` → Analytics)
 First-party, cookieless statistics stored in the store's own SQLite database. There is no
 Google Analytics, no third-party script, and nothing to sign up for.

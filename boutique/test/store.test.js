@@ -358,3 +358,19 @@ test("12. pages, live-mode gate, migration and secrets", async () => {
   assert.equal(db.prepare("SELECT COUNT(*) n FROM orders").get().n, 0);
   db.close(); fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("13. payment logos: only configured, supported methods are shown, and their icons exist", async () => {
+  const ids = (env) => load(env).paymentMethods.map(m => m.id);
+  assert.deepEqual(ids({}), ["visa", "mastercard", "amex"]);
+  assert.deepEqual(ids({ PAYMENT_METHODS: "visa, paypal, shop-pay, bancontact, ideal, VISA, apple-pay" }), ["visa", "apple-pay"], "unsupported methods are ignored");
+  assert.deepEqual(ids({ PAYMENT_METHODS: "" }), [], "can be emptied");
+  const s = await startStore({ PAYMENT_METHODS: "visa,mastercard,amex,apple-pay,google-pay,unionpay" });
+  try {
+    const cfg = (await s.req("GET", "/api/config")).json;
+    assert.equal(cfg.paymentMethods.length, 6);
+    for (const m of cfg.paymentMethods) {
+      const r = await s.req("GET", m.icon);
+      assert.equal(r.status, 200, m.icon); assert.match(r.headers.get("content-type"), /svg/);
+    }
+  } finally { s.close(); }
+});

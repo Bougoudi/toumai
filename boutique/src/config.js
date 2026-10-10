@@ -9,6 +9,15 @@ function validTimezone(tz) {
   try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return tz; } catch { return null; }
 }
 
+const PAYMENT_METHODS = {
+  visa: "Visa", mastercard: "Mastercard", amex: "American Express",
+  "apple-pay": "Apple Pay", "google-pay": "Google Pay", unionpay: "UnionPay",
+};
+function paymentMethods(v) {
+  const ids = (v === undefined ? "visa,mastercard,amex" : String(v)).split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+  return [...new Set(ids)].filter(id => PAYMENT_METHODS[id]).map(id => ({ id, name: PAYMENT_METHODS[id], icon: `/images/payment/${id}.svg` }));
+}
+
 function load(env = process.env) {
   const root = path.join(__dirname, "..");
   return {
@@ -54,6 +63,10 @@ function load(env = process.env) {
       adminNotifyEmail: env.ADMIN_NOTIFY_EMAIL || "",
     },
     adminNotifyWebhookUrl: env.ADMIN_NOTIFY_WEBHOOK_URL || "",
+
+    // Payment logos shown in the footer and at checkout. List ONLY what your iyzico
+    // account really accepts (check the iyzico merchant panel). Unknown ids are ignored.
+    paymentMethods: paymentMethods(env.PAYMENT_METHODS),
 
     analytics: {
       enabled: env.ANALYTICS_ENABLED !== "false",

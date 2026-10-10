@@ -18,6 +18,9 @@
   const value = (sub + cfg.shippingCents) / 100;
   HL.track("begin_checkout", { item_id: p.id, quantity: units, value, currency: "USD" });
 
+  const icons = HL.paymentIcons(cfg, "checkout-icons");
+  if (icons && cfg.checkoutEnabled) document.getElementById("payNote").after(icons);
+
   const banner = document.getElementById("modeBanner");
   const btn = document.getElementById("payButton");
   if (cfg.checkoutMode === "sandbox") {
