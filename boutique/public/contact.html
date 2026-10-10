@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contact | HavenLume</title>
+<meta name="description" content="Contact HavenLume customer care.">
+<link rel="stylesheet" href="/styles.css">
+<script src="/js/common.js" defer></script><script src="/js/contact.js" defer></script>
+</head>
+<body>
+<div id="site-header"></div>
+<main id="main">
+<section class="page narrow">
+ <p class="eyebrow">CUSTOMER CARE</p><h1 class="page-title">Contact us</h1>
+ <p class="lede">Questions about an order or the product? Send us a message and we will reply by email, usually within 1–2 business days.</p>
+ <p class="muted">Email: <a data-support-email href="/contact">use the form below</a></p>
+ <form id="contactForm" class="stack-form">
+  <label for="cname">Name</label><input id="cname" name="name" required maxlength="120" autocomplete="name">
+  <label for="cemail">Email</label><input id="cemail" name="email" type="email" required maxlength="254" autocomplete="email">
+  <label for="corder">Order number <span class="optional">(optional)</span></label><input id="corder" name="orderNumber" maxlength="40" placeholder="HL-XXXXXXXXXX">
+  <label for="cmessage">Message</label><textarea id="cmessage" name="message" rows="6" required minlength="10" maxlength="4000"></textarea>
+  <p class="form-error" id="contactError" role="alert"></p>
+  <button class="button" type="submit">Send message <span>↗</span></button>
+ </form>
+</section>
+</main>
+<div id="site-footer"></div>
+</body>
+</html>
