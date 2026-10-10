@@ -283,3 +283,11 @@ footer small{font-size:10px;color:#c8b9aa}
 .promo-input .button{margin-top:0;padding:11px 16px}
 .discount-row{color:var(--ok)}
 .flags{margin:6px 0 0;padding-left:16px;color:var(--warn);font-size:11px;line-height:1.5}
+
+/* home launch hero */
+.hero-copy .lede{margin:0 0 12px}
+.launch-price{font-size:15px;margin:18px 0 6px;color:var(--ink)}
+.launch-price strong{font-size:26px;font-family:"DM Sans",sans-serif;margin-left:6px}
+.hero-points{list-style:none;padding:0;margin:14px 0 4px;font-size:14px;line-height:1.9}
+.hero-points li::before{content:"✓";color:var(--camel-dark);font-weight:700;margin-right:10px}
+.hero-points li[hidden]{display:none}
