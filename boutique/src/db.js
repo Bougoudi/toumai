@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const DEFAULT_SETTINGS = {
   product_cost_usd: "27.24",      // supplier price per unit (estimate)
@@ -208,6 +208,69 @@ CREATE TABLE IF NOT EXISTS analytics_events (
 );
 CREATE INDEX IF NOT EXISTS analytics_events_day ON analytics_events(day, type);
 `);
+    // v4: marketing — campaigns, content calendar, promotions, UTM attribution.
+    db.exec(`
+CREATE TABLE IF NOT EXISTS campaigns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  slug TEXT NOT NULL UNIQUE,              -- utm_campaign
+  channel TEXT NOT NULL,
+  utm_source TEXT NOT NULL,
+  utm_medium TEXT NOT NULL,
+  objective TEXT,
+  landing_path TEXT NOT NULL DEFAULT '/product',
+  budget_cents INTEGER,
+  spend_cents INTEGER NOT NULL DEFAULT 0,  -- actual ad spend, entered by the owner
+  start_date TEXT,
+  end_date TEXT,
+  notes TEXT,
+  archived INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS content_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  angle TEXT NOT NULL,
+  title TEXT NOT NULL,
+  hook TEXT,
+  script TEXT,
+  channel TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('idea','to_produce','ready','published')),
+  publish_date TEXT,
+  published_url TEXT,
+  campaign_id INTEGER REFERENCES campaigns(id) ON DELETE SET NULL,
+  utm_content TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS promotions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  description TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('percent','fixed')),
+  value INTEGER NOT NULL,                  -- percent (1-50) or cents
+  min_subtotal_cents INTEGER NOT NULL DEFAULT 0,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  max_redemptions INTEGER,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+`);
+    const addCol = (table, name, def) => {
+      const cols = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));
+      if (!cols.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${def}`);
+    };
+    for (const t of ["orders", "analytics_sessions"]) {
+      for (const c of ["utm_source", "utm_medium", "utm_campaign", "utm_content"]) addCol(t, c, "TEXT");
+    }
+    addCol("orders", "promo_code", "TEXT");
+    addCol("orders", "discount_cents", "INTEGER NOT NULL DEFAULT 0");
+    db.exec("CREATE INDEX IF NOT EXISTS analytics_sessions_campaign ON analytics_sessions(utm_campaign)");
+    db.exec("CREATE INDEX IF NOT EXISTS orders_campaign ON orders(utm_campaign)");
+
     const ins = db.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)");
     for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) ins.run(k, v);
     db.pragma(`user_version = ${SCHEMA_VERSION}`);

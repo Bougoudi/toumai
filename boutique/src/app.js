@@ -6,13 +6,16 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { catalog } = require("./catalog");
 const { getSettings, DEFAULT_SETTINGS } = require("./db");
-const { dashboard, orderProfit, referenceUnitCostCents } = require("./profit");
+const { dashboard, orderProfit, referenceUnitCostCents, unitEconomics } = require("./profit");
 const iyzico = require("./iyzico");
 const notify = require("./notify");
 const auth = require("./auth");
 const orders = require("./orders");
 const backup = require("./backup");
 const analytics = require("./analytics");
+const promotions = require("./promotions");
+const marketing = require("./marketing");
+const seo = require("./seo");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
@@ -76,6 +79,16 @@ function createApp({ cfg, db, log = console }) {
 
   // ------------------------------------------------------------- pages
   app.get(["/admin.html", "/admin"], requireAdmin, (_req, res) => res.sendFile(path.join(PUBLIC_DIR, "admin.html")));
+  // Public pages get canonical URLs, social previews and JSON-LD injected server-side.
+  app.use(seo.pageMiddleware(cfg));
+  app.get("/robots.txt", (req, res) => res.type("text/plain").send(seo.robots(cfg, req)));
+  app.get("/sitemap.xml", (req, res) => res.type("application/xml").send(seo.sitemap(cfg, req)));
+  app.get("/feeds/google-merchant.xml", (_req, res) => {
+    const xml = seo.merchantFeed(cfg);
+    if (!xml) return res.status(503).type("text/plain").send("Set PUBLIC_URL to publish the product feed.");
+    res.type("application/xml").set("Cache-Control", "public, max-age=3600").send(xml);
+  });
+  app.use("/images", express.static(path.join(PUBLIC_DIR, "images"), { maxAge: "7d" }));
   app.use(express.static(PUBLIC_DIR, { extensions: ["html"], index: "index.html" }));
 
   // ------------------------------------------------------------- public API
@@ -94,6 +107,7 @@ function createApp({ cfg, db, log = console }) {
       businessName: cfg.businessName, businessAddress: cfg.businessAddress,
       analytics: { enabled: cfg.analytics.enabled, consentMode: cfg.analytics.consentMode },
       paymentMethods: cfg.paymentMethods,
+      banner: marketing.activeBanner(db),
     });
   });
 
@@ -124,6 +138,8 @@ function createApp({ cfg, db, log = console }) {
       res.status(502).json({ error: "We could not open the secure payment page. Please try again in a moment." });
     }
   });
+  // Server-side price quote (with an optional promo code) for the checkout page.
+  app.post("/api/quote", limiter(60_000, 30), wrap(async (req, res) => res.json(orders.quote(db, cfg, req.body || {}))));
   app.post("/api/checkout", limiter(60_000, 10), startCheckout);
   app.post("/api/demo-order", limiter(60_000, 10), startCheckout); // kept for the original demo flow
 
@@ -340,6 +356,41 @@ function createApp({ cfg, db, log = console }) {
     res.json(getSettings(db));
   }));
 
+  // ------------------------------------------------------------- marketing
+  const idParam = (req) => { const id = Number.parseInt(req.params.id, 10); if (!(id > 0)) throw new marketing.MarketingError("Invalid id."); return id; };
+  app.get("/api/admin/marketing", requireAdmin, (_req, res) => {
+    res.set("Cache-Control", "no-store").json({
+      options: { channels: marketing.CHANNELS, mediums: marketing.MEDIUMS, angles: marketing.ANGLES, statuses: marketing.STATUSES, defaultSources: marketing.DEFAULT_SOURCE },
+      report: marketing.campaignReport(db, cfg),
+      content: marketing.listContent(db, cfg),
+      promotions: promotions.list(db),
+      banner: marketing.getBanner(db),
+      bannerLive: marketing.activeBanner(db),
+      settings: getSettings(db),
+      priceCents: catalog(cfg).priceCents,
+      publicUrlConfigured: Boolean(cfg.publicUrl),
+    });
+  });
+  app.post("/api/admin/marketing/campaigns", requireAdmin, adminAction("campaign_created", (req, res) => res.status(201).json({ id: marketing.saveCampaign(db, req.body || {}) })));
+  app.post("/api/admin/marketing/campaigns/:id", requireAdmin, adminAction("campaign_updated", (req, res) => res.json({ id: marketing.saveCampaign(db, req.body || {}, idParam(req)) })));
+  app.post("/api/admin/marketing/content", requireAdmin, adminAction("content_created", (req, res) => res.status(201).json({ id: marketing.saveContent(db, req.body || {}) })));
+  app.post("/api/admin/marketing/content/:id", requireAdmin, adminAction("content_updated", (req, res) => res.json({ id: marketing.saveContent(db, req.body || {}, idParam(req)) })));
+  app.post("/api/admin/marketing/content/:id/delete", requireAdmin, adminAction("content_deleted", (req, res) => {
+    const n = db.prepare("DELETE FROM content_items WHERE id=?").run(idParam(req)).changes;
+    res.status(n ? 200 : 404).json(n ? { ok: true } : { error: "Content item not found." });
+  }));
+  app.post("/api/admin/marketing/content-starters", requireAdmin, adminAction("content_starters_added", (_req, res) => res.json({ created: marketing.addStarters(db).length })));
+  app.post("/api/admin/marketing/promotions", requireAdmin, adminAction("promotion_created", (req, res) => res.status(201).json({ id: promotions.save(db, req.body || {}) })));
+  app.post("/api/admin/marketing/promotions/:id", requireAdmin, adminAction("promotion_updated", (req, res) => res.json({ id: promotions.save(db, req.body || {}, idParam(req)) })));
+  app.post("/api/admin/marketing/banner", requireAdmin, adminAction("banner_updated", (req, res) => res.json(marketing.saveBanner(db, req.body || {}))));
+  app.post("/api/admin/marketing/unit-economics", requireAdmin, (req, res) => {
+    const b = req.body || {};
+    const c = (v, max) => { const n = Number(v || 0); if (!Number.isFinite(n) || n < 0 || n > max) throw new marketing.MarketingError("Invalid amount."); return Math.round(n * 100); };
+    res.json(unitEconomics({ priceCents: b.price === undefined || b.price === "" ? catalog(cfg).priceCents : c(b.price, 10000),
+      units: Number(b.units) || 1, discountCents: c(b.discount, 10000), shippingChargedCents: Math.round(cfg.shippingUsd * 100),
+      settings: getSettings(db), adPerOrderCents: c(b.adPerOrder, 10000), otherCents: c(b.other, 10000) }));
+  });
+
   app.get("/api/admin/notifications", requireAdmin, (_req, res) => res.json(db.prepare("SELECT * FROM notifications ORDER BY id DESC LIMIT 100").all()));
   app.post("/api/admin/notifications/read", requireAdmin, (_req, res) => {
     db.prepare("UPDATE notifications SET read_at=? WHERE read_at IS NULL").run(new Date().toISOString()); res.json({ ok: true });
@@ -359,7 +410,9 @@ function createApp({ cfg, db, log = console }) {
   app.use("/api/", (_req, res) => res.status(404).json({ error: "Not found." }));
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
-    if (err instanceof orders.OrderError) return res.status(err.status).json({ error: err.message });
+    if (err instanceof orders.OrderError || err instanceof promotions.PromoError || err instanceof marketing.MarketingError) {
+      return res.status(err.status).json({ error: err.message });
+    }
     if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid JSON." });
     if (err.type === "entity.too.large") return res.status(413).json({ error: "Request too large." });
     const ref = crypto.randomBytes(4).toString("hex");

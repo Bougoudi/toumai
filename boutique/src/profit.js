@@ -53,7 +53,7 @@ function orderProfit(o) {
 }
 
 function dashboard(orders) {
-  const t = { paid_orders: 0, pending_orders: 0, failed_orders: 0, test_orders: 0, gross_paid_cents: 0, refunds_cents: 0,
+  const t = { paid_orders: 0, pending_orders: 0, failed_orders: 0, test_orders: 0, gross_paid_cents: 0, refunds_cents: 0, discounts_cents: 0,
     revenue_cents: 0, product_cost_cents: 0, shipping_cost_cents: 0, fees_cents: 0, ads_cents: 0, other_cents: 0,
     total_cost_cents: 0, profit_cents: 0, estimated_components: 0, to_fulfil: 0 };
   for (const o of orders) {
@@ -64,6 +64,7 @@ function dashboard(orders) {
     t.paid_orders++;
     t.gross_paid_cents += o.paid_cents;
     t.refunds_cents += o.refunded_cents;
+    t.discounts_cents += o.discount_cents || 0;
     t.revenue_cents += p.revenue_cents;
     t.product_cost_cents += p.product_cost.cents;
     t.shipping_cost_cents += p.shipping_cost.cents;
@@ -79,4 +80,29 @@ function dashboard(orders) {
   return t;
 }
 
-module.exports = { orderProfit, dashboard, referenceUnitCostCents, estimateFeeCents, toCents, PAID_STATES };
+/**
+ * Per-order margin simulation ("what if"): price actually charged after discount, minus
+ * supplier product + shipping, payment fees, ad cost per order and other costs.
+ * Returns cents; break-even ad cost = the most you can spend to acquire one order.
+ */
+function unitEconomics({ priceCents, units = 1, discountCents = 0, shippingChargedCents = 0, settings, adPerOrderCents = 0, otherCents = 0 }) {
+  const u = Math.max(1, Math.min(100, Math.round(units)));
+  const subtotal = priceCents * u;
+  const discount = Math.max(0, Math.min(discountCents, subtotal));
+  const charged = subtotal - discount + shippingChargedCents;
+  const product = toCents(settings.product_cost_usd) * u;
+  const shipping = toCents(settings.shipping_cost_usd) * u;
+  const fees = estimateFeeCents(charged, settings);
+  const beforeAds = charged - product - shipping - fees - otherCents;
+  const profit = beforeAds - adPerOrderCents;
+  return {
+    charged_cents: charged, discount_cents: discount, product_cost_cents: product, shipping_cost_cents: shipping,
+    payment_fee_cents: fees, other_cents: otherCents, ad_cents: adPerOrderCents,
+    profit_before_ads_cents: beforeAds, profit_cents: profit,
+    margin_percent: charged > 0 ? Math.round(profit / charged * 10000) / 100 : null,
+    break_even_ad_cents: Math.max(0, beforeAds),
+    fee_configured: Number(settings.payment_fee_percent) > 0 || Number(settings.payment_fee_fixed_usd) > 0,
+  };
+}
+
+module.exports = { unitEconomics, orderProfit, dashboard, referenceUnitCostCents, estimateFeeCents, toCents, PAID_STATES };

@@ -8,11 +8,36 @@
   p.states.forEach(s => state.append(el("option", { value: s, text: s })));
 
   const sub = items.reduce((s, i) => s + p.priceCents * i.quantity, 0);
+  let promoCode = "";
+  // Totals shown here always come from the server quote (the same calculation as the order).
+  async function refreshQuote(code) {
+    const r = await fetch("/api/quote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items, promoCode: code || undefined }) });
+    const q = await r.json();
+    if (!r.ok) throw new Error(q.error || "Could not apply this code.");
+    document.getElementById("subtotal").textContent = fmt(q.subtotal_cents);
+    document.getElementById("shipping").textContent = q.shipping_cents > 0 ? fmt(q.shipping_cents) : "Free";
+    document.getElementById("total").textContent = fmt(q.total_cents);
+    const row = document.getElementById("discountRow");
+    row.hidden = !q.discount_cents;
+    document.getElementById("discount").textContent = `−${fmt(q.discount_cents)}`;
+    document.getElementById("discountLabel").textContent = q.promo ? `Discount (${q.promo.code})` : "Discount";
+    document.getElementById("promoTerms").textContent = q.promo ? q.promo.conditions : "";
+    promoCode = q.promo ? q.promo.code : "";
+    return q;
+  }
+  document.getElementById("promoForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const err = document.getElementById("promoError"); err.textContent = "";
+    const code = document.getElementById("promoCode").value.trim();
+    try { await refreshQuote(code); if (code) HL.toast("Promo code applied."); }
+    catch (e2) { err.textContent = e2.message; await refreshQuote("").catch(() => {}); }
+  });
   document.getElementById("summaryLines").replaceChildren(...items.map(i => el("div", { class: "summary-row" },
     el("span", { text: `${i.quantity} × ${p.name} — ${p.variants.find(v => v.id === i.variantId).name}` }), el("span", { text: fmt(p.priceCents * i.quantity) }))));
   document.getElementById("subtotal").textContent = fmt(sub);
   document.getElementById("shipping").textContent = cfg.shippingCents > 0 ? fmt(cfg.shippingCents) : "Free";
   document.getElementById("total").textContent = fmt(sub + cfg.shippingCents);
+  refreshQuote("").catch(() => {});
 
   const units = items.reduce((n, i) => n + i.quantity, 0);
   const value = (sub + cfg.shippingCents) / 100;
@@ -40,7 +65,7 @@
     btn.disabled = true;
     HL.track("add_payment_info", { item_id: p.id, quantity: units, value, currency: "USD" });
     try {
-      const r = await fetch("/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customer, items }) });
+      const r = await fetch("/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customer, items, promoCode: promoCode || undefined, utm: HL.campaign() || undefined }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Checkout failed. Please try again.");
       if (j.paymentPageUrl) { location.href = j.paymentPageUrl; return; }

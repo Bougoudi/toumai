@@ -89,7 +89,32 @@
     const p = { t: "event", n: name, d: cleanProps(props) };
     if (!analyticsCfg) queue.push(p); else send(p);
   }
-  function pageview() { send({ t: "pageview", r: document.referrer || "" }); }
+  // Campaign tags (utm_*) from the landing URL are kept for this browser session only, and
+  // only when analytics are allowed. They are attached to the first page view and to the
+  // order, so campaigns can be compared. Format is checked again on the server.
+  const UTM_KEY = "hl_utm";
+  const UTM_RE = /^[a-z0-9][a-z0-9._-]{0,59}$/;
+  function readUtm() {
+    const q = new URLSearchParams(location.search); const u = {};
+    for (const k of ["source", "medium", "campaign", "content"]) {
+      const v = (q.get(`utm_${k}`) || "").trim().toLowerCase();
+      if (UTM_RE.test(v)) u[k] = v;
+    }
+    return u.source || u.campaign ? u : null;
+  }
+  function campaign() {
+    if (!analyticsAllowed()) return null;
+    try { return JSON.parse(sessionStorage.getItem(UTM_KEY) || "null"); } catch { return null; }
+  }
+  function pageview() {
+    let u = null;
+    const fresh = readUtm();
+    if (fresh && analyticsAllowed()) {
+      try { if (!sessionStorage.getItem(UTM_KEY)) sessionStorage.setItem(UTM_KEY, JSON.stringify(fresh)); } catch { /* ignore */ }
+      u = fresh;
+    }
+    send({ t: "pageview", r: document.referrer || "", ...(u ? { u } : {}) });
+  }
 
   function privacyPanel(force) {
     if (!analyticsCfg || !analyticsCfg.enabled) return;
@@ -169,9 +194,21 @@
     analyticsCfg = cfg.analytics || { enabled: false };
     if (analyticsAllowed()) { pageview(); queue.splice(0).forEach(send); } else { queue.length = 0; }
     privacyPanel(false);
-    if (cfg.checkoutMode === "sandbox" || cfg.checkoutMode === "demo") {
-      const bar = document.querySelector(".announcement");
-      if (bar) bar.textContent = cfg.checkoutMode === "sandbox" ? "Test mode — payments use the iyzico sandbox, no real charges" : "Preview store — orders are not charged or shipped yet";
+    const bar = document.querySelector(".announcement");
+    if (bar && cfg.banner) {
+      // Promo banner set in the admin; it only exists while its dates (and its code) are valid.
+      const b = cfg.banner;
+      const content = [b.link ? el("a", { href: b.link, text: b.text }) : el("span", { text: b.text })];
+      if (b.promo) {
+        content.push(el("span", { class: "promo-chip", text: `Code ${b.promo.code}` }));
+        const det = el("details", { class: "promo-terms" }, el("summary", { text: "Terms" }), el("span", { text: b.promo.conditions }));
+        content.push(det);
+      }
+      bar.replaceChildren(...content); bar.classList.add("promo");
+    }
+    if (bar && (cfg.checkoutMode === "sandbox" || cfg.checkoutMode === "demo")) {
+      const note = cfg.checkoutMode === "sandbox" ? "Test mode — payments use the iyzico sandbox, no real charges" : "Preview store — orders are not charged or shipped yet";
+      if (cfg.banner) bar.after(el("div", { class: "preview-bar", text: note })); else bar.textContent = note;
     }
     document.querySelectorAll("[data-support-email]").forEach(n => {
       if (cfg.supportEmail) { n.textContent = cfg.supportEmail; if (n.tagName === "A") n.href = `mailto:${cfg.supportEmail}`; }
@@ -179,6 +216,6 @@
     document.querySelectorAll("[data-return-days]").forEach(n => { n.textContent = cfg.returnWindowDays; });
   }
 
-  window.HL = { cart, config, catalog, fmt, el, toast, track, paymentIcons, privacyPanel, _analyticsAllowed: analyticsAllowed };
+  window.HL = { cart, config, catalog, fmt, el, toast, track, paymentIcons, campaign, privacyPanel, _analyticsAllowed: analyticsAllowed };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount); else mount();
 })();

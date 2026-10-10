@@ -267,3 +267,19 @@ footer small{font-size:10px;color:#c8b9aa}
 .payment-icons li{display:flex;background:#fff;border-radius:4px}
 .payment-icons img{width:38px;height:24px}
 .checkout-icons{justify-content:flex-start;margin:10px 0 0}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.hero-art img,.gallery-main img{height:100%;width:100%}
+
+/* promo banner & codes */
+.announcement.promo{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:6px 10px;text-transform:none;letter-spacing:.04em;font-size:12px;line-height:1.5}
+.announcement.promo a{color:#fff;text-decoration:underline}
+.promo-chip{background:#f7f2ea;color:var(--espresso);padding:2px 8px;font-weight:700;letter-spacing:.08em;border-radius:2px}
+.promo-terms summary{cursor:pointer;text-decoration:underline;list-style:none}
+.promo-terms[open]{flex-basis:100%;font-size:11px}
+.preview-bar{background:#efe6da;color:#5a420f;text-align:center;font-size:11px;padding:6px 12px;letter-spacing:.06em}
+.promo-form{margin-top:14px;border-top:1px solid var(--line);padding-top:6px}
+.promo-input{display:flex;gap:8px}
+.promo-input input{flex:1;min-width:0;padding:11px;border:1px solid #d7cbbd;text-transform:uppercase;font:inherit}
+.promo-input .button{margin-top:0;padding:11px 16px}
+.discount-row{color:var(--ok)}
+.flags{margin:6px 0 0;padding-left:16px;color:var(--warn);font-size:11px;line-height:1.5}

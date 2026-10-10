@@ -11,6 +11,7 @@
 // - "purchase" is recorded only by the server, after iyzico has confirmed the payment.
 const crypto = require("crypto");
 const geoip = require("./geoip");
+const { cleanUtm } = require("./utm");
 
 const CLIENT_EVENTS = new Set(["view_item", "add_to_cart", "begin_checkout", "add_payment_info"]);
 const FUNNEL = ["view_item", "add_to_cart", "begin_checkout", "add_payment_info", "purchase"];
@@ -143,8 +144,11 @@ function collect(db, cfg, req, isAdmin) {
   db.transaction(() => {
     let s = db.prepare("SELECT * FROM analytics_sessions WHERE visitor=? AND last_seen>=? ORDER BY id DESC LIMIT 1").get(visitor, now - SESSION_GAP_MS);
     if (!s) {
-      const id = db.prepare("INSERT INTO analytics_sessions(visitor,day,started_at,last_seen,country,entry_path,referrer,pageviews) VALUES(?,?,?,?,?,?,?,0)")
-        .run(visitor, day, now, now, country, path, cleanReferrer(b.r, req.get("host"))).lastInsertRowid;
+      // Campaign tags are attributed to the session they start (first touch per session).
+      const u = cleanUtm(b.u) || {};
+      const id = db.prepare(`INSERT INTO analytics_sessions(visitor,day,started_at,last_seen,country,entry_path,referrer,pageviews,utm_source,utm_medium,utm_campaign,utm_content)
+        VALUES(?,?,?,?,?,?,?,0,?,?,?,?)`)
+        .run(visitor, day, now, now, country, path, cleanReferrer(b.r, req.get("host")), u.source || null, u.medium || null, u.campaign || null, u.content || null).lastInsertRowid;
       s = { id };
     }
     db.prepare("UPDATE analytics_sessions SET last_seen=?, pageviews=pageviews+? WHERE id=?").run(now, type === "pageview" ? 1 : 0, s.id);

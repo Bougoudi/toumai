@@ -54,9 +54,17 @@ async function initializeCheckout(cfg, order, items, buyerIp) {
   const address = [order.address1, order.address2, `${order.city}, ${order.state} ${order.postal_code}`].filter(Boolean).join(", ");
   const country = order.country === "US" ? "United States" : order.country;
   const place = { contactName: order.customer_name, city: order.city, country, address, zipCode: order.postal_code };
-  const basketItems = items.map((it) => ({
+  // A promo discount is spread over the product lines so the basket adds up exactly to
+  // the (discounted) amount charged.
+  const lines = items.map(it => ({ ...it }));
+  let left = order.discount_cents || 0;
+  lines.forEach((l, i) => {
+    const share = i === lines.length - 1 ? left : Math.floor((order.discount_cents || 0) * l.line_total_cents / order.subtotal_cents);
+    left -= share; l.charged_cents = l.line_total_cents - share;
+  });
+  const basketItems = lines.map((it) => ({
     id: `${it.sku}-${it.variant_id}`, name: `${it.product_name} - ${it.variant_name} x${it.quantity}`,
-    category1: "Home", itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL, price: money(it.line_total_cents),
+    category1: "Home", itemType: Iyzipay.BASKET_ITEM_TYPE.PHYSICAL, price: money(it.charged_cents),
   }));
   if (order.shipping_cents > 0) {
     basketItems.push({ id: "SHIPPING", name: "Shipping", category1: "Shipping", itemType: Iyzipay.BASKET_ITEM_TYPE.VIRTUAL, price: money(order.shipping_cents) });

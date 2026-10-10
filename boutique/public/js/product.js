@@ -9,9 +9,9 @@
   const thumbs = document.getElementById("thumbs");
   p.images.forEach((img, i) => {
     const b = el("button", { type: "button", class: "thumb" + (i === 0 ? " active" : ""), "aria-label": `Show photo ${i + 1}: ${img.alt}`, role: "listitem" },
-      el("img", { src: img.src, alt: "", loading: "lazy" }));
+      el("img", { src: img.thumb || img.src, alt: "", loading: "lazy", width: "84", height: "64" }));
     b.addEventListener("click", () => {
-      main.src = img.src; main.alt = img.alt;
+      main.removeAttribute("srcset"); main.src = img.src; main.alt = img.alt;
       thumbs.querySelectorAll(".thumb").forEach(t => t.classList.toggle("active", t === b));
     });
     thumbs.append(b);

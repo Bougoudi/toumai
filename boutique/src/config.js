@@ -67,6 +67,8 @@ function load(env = process.env) {
     // Payment logos shown in the footer and at checkout. List ONLY what your iyzico
     // account really accepts (check the iyzico merchant panel). Unknown ids are ignored.
     paymentMethods: paymentMethods(env.PAYMENT_METHODS),
+    // Search Console / Merchant Center "HTML tag" verification token (content="..." only).
+    googleSiteVerification: /^[A-Za-z0-9_-]{10,100}$/.test(env.GOOGLE_SITE_VERIFICATION || "") ? env.GOOGLE_SITE_VERIFICATION : "",
 
     analytics: {
       enabled: env.ANALYTICS_ENABLED !== "false",

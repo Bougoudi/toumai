@@ -21,7 +21,7 @@
   const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body || {}) });
 
   // ------------------------------------------------------------ tabs
-  const loaders = { dashboard: loadDashboard, analytics: loadAnalytics, orders: loadOrders, messages: loadMessages, settings: loadSettings, activity: loadActivity };
+  const loaders = { dashboard: loadDashboard, analytics: loadAnalytics, marketing: () => window.HLMarketing.load(), orders: loadOrders, messages: loadMessages, settings: loadSettings, activity: loadActivity };
   document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
   function showTab(name) {
     document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
@@ -54,6 +54,7 @@
           <tr><td>Advertising attributed</td><td>${money(t.ads_cents)}</td></tr>
           <tr><td>Other expenses</td><td>${money(t.other_cents)}</td></tr>
           <tr><td>Refunds (reduce revenue)</td><td>${money(t.refunds_cents)}</td></tr>
+          <tr><td>Promo discounts given (already deducted from the amount paid)</td><td>${money(t.discounts_cents)}</td></tr>
         </tbody></table>
         <p class="micro">Reference logistics cost per unit: <b>${money(d.referenceUnitCostCents)}</b> (product ${money(Math.round(d.settings.product_cost_usd * 100))} + shipping ${money(Math.round(d.settings.shipping_cost_usd * 100))}). Actual costs replace estimates once you record them on an order. Failed, pending and demo orders are excluded.</p>
       </div>`;
@@ -261,10 +262,11 @@
           <p>${esc(o.customer_email)}<br>${o.customer_phone ? esc(o.customer_phone) : '<span class="muted">No phone</span>'}</p></div>
         <div class="admin-card"><h3>Items</h3>
           ${o.items.map(i => `<p>${i.quantity} × ${esc(i.product_name)} — <b>${esc(i.variant_name)}</b><br><span class="muted">Supplier ref ${esc(i.supplier_sku)} · ${money(i.unit_price_cents)} each</span></p>`).join("")}
-          <p>Subtotal ${money(o.subtotal_cents)} · Shipping ${money(o.shipping_cents)}<br><b>Total ${money(o.total_cents)}</b> · Paid ${money(o.paid_cents)}${o.refunded_cents ? ` · Refunded ${money(o.refunded_cents)}` : ""}</p></div>
+          <p>Subtotal ${money(o.subtotal_cents)}${o.discount_cents ? ` · Discount ${esc(o.promo_code || "")} −${money(o.discount_cents)}` : ""} · Shipping ${money(o.shipping_cents)}<br><b>Total ${money(o.total_cents)}</b> · Paid ${money(o.paid_cents)}${o.refunded_cents ? ` · Refunded ${money(o.refunded_cents)}` : ""}</p></div>
       </div>
 
       <div class="admin-card"><h3>Payment</h3>
+        <p class="micro">Source: ${o.utm_campaign || o.utm_source ? esc([o.utm_source, o.utm_medium, o.utm_campaign, o.utm_content].filter(Boolean).join(" / ")) : "no campaign tag (direct, untagged link, or visitor declined analytics)"}</p>
         <p>Provider: ${esc(o.payment_provider || "none (demo)")}${o.iyzico_payment_id ? ` · iyzico payment <b>${esc(o.iyzico_payment_id)}</b>` : ""}${o.paid_at ? ` · paid ${date(o.paid_at)}` : ""}</p>
         ${o.iyzico_token && !["paid", "partially_refunded", "refunded"].includes(o.payment_status) ? `<button class="admin-btn" id="verify">Re-check payment with iyzico</button>` : ""}
         ${paid ? `<form id="refundForm" class="admin-form inline-form">
@@ -415,6 +417,9 @@
   });
 
   $("#logout").addEventListener("click", async () => { try { await post("/api/admin/logout"); } finally { location.href = "/admin-login.html"; } });
+
+  // Shared with admin-marketing.js (same CSRF-protected API helper).
+  window.HLAdmin = { api, post, toast, esc, money, dollars, date };
 
   api("/api/admin/session").then(s => { csrf = s.csrf; showTab("dashboard"); setInterval(() => loadDashboard().catch(() => {}), 60_000); }).catch(() => {});
 })();

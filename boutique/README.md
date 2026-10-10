@@ -79,6 +79,70 @@ not available. Icons: [activemerchant/payment_icons](https://github.com/activeme
 (MIT, see `public/images/payment/LICENSE-activemerchant-payment_icons.txt`); the logos
 are the trademarks of their owners.
 
+## Marketing (`/admin` → Marketing)
+Nothing is posted to TikTok, Instagram, Facebook, YouTube or Google from the store, and
+no ad platform is connected. Ad spend is entered by hand.
+
+**Campaigns**
+- Each campaign records a name, channel, objective, budget, dates, actual ad spend and a
+  UTM tag. It generates a tracking link: `/product?utm_source=…&utm_medium=…&utm_campaign=…`.
+- Results are shown in separate columns, never merged:
+  - **visits**, product views, add to cart and checkout (from the store's own analytics);
+  - **orders created**;
+  - **paid orders**, confirmed by iyzico;
+  - revenue, recorded spend, **cost per customer** (spend ÷ paid orders), ROAS and profit
+    after ads.
+- A metric with no data shows "—" with an explicit flag, for example "No ad spend
+  recorded" or "No confirmed payment yet — profitability not demonstrated". The store
+  never recommends raising a budget.
+
+**Attribution**
+- `utm_*` tags from the landing URL are stored on the analytics session (first touch) and
+  on the order. This only happens if the visitor has not opted out of analytics.
+- Values are strictly formatted (`[a-z0-9._-]`, 60 characters), and anything else is
+  dropped.
+- Record ad spend **on the campaign**. Recording it on orders as well triggers a
+  double-count warning.
+
+**Content calendar**
+- The three angles: comfort while working from home, relaxing at home, cold-season gifts.
+- Each item has a hook, script, channel, status (idea → to produce → ready → published),
+  publish date, published URL (https, required to mark it published), linked campaign
+  and `utm_content`, which gives each post its own tracking link.
+- "Add 3 starter ideas" creates drafts that make no product claims.
+
+**Promo codes**
+- Percentage (1–50%) or fixed amount, applied to the product subtotal (shipping
+  excluded). Optional minimum subtotal, real start and end dates, and an optional cap on
+  paid orders.
+- The discount is computed on the server (`/api/quote` and again at checkout) and spread
+  across the iyzico basket lines, so **iyzico charges the discounted amount**. Payment
+  verification checks that amount.
+- An invalid or expired code refuses the checkout; it never silently charges full price.
+  Customers see the exact conditions.
+- No countdowns, no struck-through "was" prices.
+
+**Banner**: text, optional link and code, real start and end dates. It is hidden
+automatically outside its dates, or when its code stops being valid.
+
+**Margin calculator**: amount charged after discount − 42.24 USD (27.24 + 15) per unit −
+configured payment fees − ad cost − other costs, with the break-even ad cost per order.
+It is a simulation; real results are in the dashboard and the campaign table.
+
+## SEO & sharing
+- Title and description per page.
+- Canonical URLs, Open Graph and Twitter cards with 1200×630 images, injected by the
+  server.
+- `robots.txt` (admin, API, cart, checkout and order status excluded) and `sitemap.xml`.
+- WebP images in two sizes, with explicit dimensions and long cache headers.
+- **Product JSON-LD** with name, images, price, availability, and the store's own
+  published return and shipping policies. Delivery time is added only when
+  `DELIVERY_ESTIMATE_VERIFIED=true`. **No ratings, reviews, certifications or GTIN.**
+- **Google Merchant Center feed**: `/feeds/google-merchant.xml`, listing available colors
+  only (requires `PUBLIC_URL`).
+- Search Console / Merchant Center site verification via `GOOGLE_SITE_VERIFICATION`.
+- Setup steps: `docs/GOOGLE_MERCHANT_CENTER.md`.
+
 ## Analytics (`/admin` → Analytics)
 First-party, cookieless statistics stored in the store's own SQLite database. There is no
 Google Analytics, no third-party script, and nothing to sign up for.
@@ -168,8 +232,13 @@ start `cd boutique && node server.js`.
 - `src/backup.js`: backups.
 - `src/analytics.js`: analytics collection, privacy rules and admin reports.
 - `src/geoip.js`: IP → country with DB-IP Lite, in memory.
+- `src/marketing.js`: campaigns, content calendar, banner and campaign report.
+- `src/promotions.js`: promo codes, validated and computed server-side.
+- `src/utm.js`: UTM validation and tracking links.
+- `src/seo.js`: canonical, Open Graph, JSON-LD, robots, sitemap, Merchant feed.
+- `public/js/admin-marketing.js`: the Marketing tab.
 - `src/config.js`: environment configuration.
 - `public/`: storefront pages and `js/`, admin (`admin.html`, `js/admin.js`).
-- `test/store.test.js`, `test/analytics.test.js`: API tests (`test/helpers.js` is the shared harness).
-- `test/e2e.cjs`, `test/e2e-analytics.cjs`: browser tests.
+- `test/store.test.js`, `test/analytics.test.js`, `test/marketing.test.js`: API tests (`test/helpers.js` is the shared harness).
+- `test/e2e.cjs`, `test/e2e-analytics.cjs`, `test/e2e-marketing.cjs`: browser tests.
 - `docs/PRODUCT_COMPLIANCE.md`: documents required before live payments.

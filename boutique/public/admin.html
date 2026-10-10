@@ -6,6 +6,7 @@
 <title>HavenLume Admin</title>
 <link rel="stylesheet" href="/styles.css">
 <script src="/js/admin.js" defer></script>
+<script src="/js/admin-marketing.js" defer></script>
 </head>
 <body class="admin-body">
 <header class="admin-top">
@@ -13,6 +14,7 @@
  <nav class="admin-tabs" aria-label="Admin">
   <button data-tab="dashboard" class="active">Dashboard</button>
   <button data-tab="analytics">Analytics</button>
+  <button data-tab="marketing">Marketing</button>
   <button data-tab="orders">Orders</button>
   <button data-tab="messages">Messages <span class="badge" id="msgBadge" hidden></span></button>
   <button data-tab="settings">Settings</button>
@@ -40,6 +42,7 @@
   </div>
   <div id="analytics"></div>
  </section>
+ <section data-panel="marketing" hidden><div id="marketing"></div></section>
  <section data-panel="orders" hidden>
   <div class="admin-card filters">
    <input id="q" placeholder="Search order, name, email" aria-label="Search">
