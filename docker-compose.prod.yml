@@ -1,0 +1,46 @@
+# Surcouche de production, à appliquer par-dessus docker-compose.yml :
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Ce que cette surcouche change, et pourquoi :
+#
+#   • PostgreSQL et Redis ne publient plus de port sur l'hôte. En développement,
+#     `ports: 5432` est commode ; sur un serveur exposé à Internet, c'est une
+#     base de données offerte au premier balayage de ports venu. Les deux
+#     services restent joignables par l'API via le réseau interne `touma`.
+#   • Les pièces jointes vivent sur un volume nommé. Sans lui, un
+#     `docker compose down` emporterait les factures et les photos de lots.
+#   • Le serveur ne redémarre plus « unless-stopped » mais « always » : après un
+#     redémarrage de la machine, TOUMA remonte seul.
+#   • Les journaux sont bornés. Un serveur qui remplit son disque de logs
+#     s'arrête aussi sûrement qu'un serveur en panne.
+
+services:
+  postgres:
+    ports: !override []
+    restart: always
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+
+  redis:
+    ports: !override []
+    restart: always
+    logging: *logging
+
+  api:
+    restart: always
+    logging: *logging
+    environment:
+      # Le disque persistant des pièces jointes, monté ci-dessous.
+      TOUMA_ATTACHMENT_DIR: /data/touma-attachments
+      # Renseigner PUBLIC_URL : les URL absolues (reçus, liens d'e-mail) en
+      # dépendent, et le référencement des pages publiques aussi.
+      PUBLIC_URL: ${PUBLIC_URL:?définissez PUBLIC_URL (ex. https://touma.example)}
+    volumes:
+      - touma-fichiers:/data
+
+volumes:
+  touma-fichiers:

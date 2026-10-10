@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="TOUMA">
+  <defs>
+    <linearGradient id="e-fond" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f7274"/><stop offset="1" stop-color="#063536"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#e-fond)"/>
+  <!-- Une seule barre, taillée en pointe aux deux bouts. Les tiers extérieurs
+       sont orange : la pointe n'est pas collée, elle fait partie de la barre. -->
+  <path d="M10 22.5 19 16h26l9 6.5-9 6.5H19z" fill="#faf8f2"/>
+  <path d="M10 22.5 19 16v13z" fill="#e07a3f"/>
+  <path d="M54 22.5 45 16v13z" fill="#e07a3f"/>
+  <rect x="27.5" y="29" width="9" height="20" rx="2.5" fill="#faf8f2"/>
+</svg>

@@ -1,0 +1,40 @@
+{
+  "name": "TOUMA — place de marché du commerce africain",
+  "short_name": "TOUMA",
+  "description": "Acheter et vendre entre pays africains : catalogue, panier multi-vendeurs, paiement, livraison, appels d'offres et négociation. Corridor pilote Tchad ↔ Cameroun.",
+  "id": "/touma/",
+  "start_url": "/touma/",
+  "scope": "/touma/",
+  "display": "standalone",
+  "background_color": "#faf8f2",
+  "theme_color": "#0b5d5e",
+  "lang": "fr",
+  "dir": "ltr",
+  "orientation": "portrait-primary",
+  "categories": ["shopping", "business"],
+  "icons": [
+    { "src": "/touma/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/touma/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/touma/img/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Catalogue",
+      "short_name": "Catalogue",
+      "url": "/touma/produits",
+      "icons": [{ "src": "/touma/img/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Mes commandes",
+      "short_name": "Commandes",
+      "url": "/touma/commandes",
+      "icons": [{ "src": "/touma/img/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Messagerie",
+      "short_name": "Messages",
+      "url": "/touma/messages",
+      "icons": [{ "src": "/touma/img/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}
