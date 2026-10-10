@@ -60,7 +60,44 @@
   });
 
   const ship = cfg.shippingCents > 0 ? `Shipping ${fmt(cfg.shippingCents)}` : "Free shipping";
-  document.getElementById("shipNote").textContent = `${ship} to the United States · Secure card checkout · ${cfg.returnWindowDays}-day returns`;
-  if (cfg.deliveryVerified) document.getElementById("shipDetail").innerHTML =
-    `Usually delivered in ${cfg.deliveryMinDays}–${cfg.deliveryMaxDays} business days after dispatch. See <a href="/shipping">shipping</a> and <a href="/returns">returns</a>.`;
+  document.getElementById("shipNote").textContent = `${ship} to the United States · ${cfg.returnWindowDays}-day returns · tracking by email`;
+  document.getElementById("payNote").textContent = HL.paymentText(cfg);
+  document.getElementById("priceLabel").textContent = "Launch price";
+  if (cfg.deliveryVerified) document.getElementById("shipDetail").textContent =
+    `We ship to addresses in the United States. Most orders arrive within ${cfg.deliveryMinDays}–${cfg.deliveryMaxDays} business days after dispatch. ${cfg.shippingCents > 0 ? `Shipping is ${fmt(cfg.shippingCents)} per order.` : "Shipping is included in the price."}`;
+
+  // Confirmed product facts. Anything missing stays visibly "being confirmed".
+  const f = p.facts || {};
+  document.querySelectorAll("[data-fact]").forEach(n => { const v = f[n.dataset.fact]; if (v) n.textContent = v; });
+  document.querySelectorAll('[data-fact-answer="powerBankIncluded"]').forEach(n => { n.textContent = HL.powerBankText(f); });
+
+  const specRows = ["dimensions", "weight", "materials", "powerInput", "powerSource", "powerBankIncluded", "cableLength", "heatSettings", "controls", "autoShutoff", "warranty", "countryOfOrigin"];
+  const choice = { yes: "Yes — included", no: "No — sold separately" };
+  document.getElementById("specTable").replaceChildren(...specRows.map(k => {
+    const v = k === "powerBankIncluded" ? choice[f[k]] : f[k];
+    return el("tr", { class: v ? "" : "tbc" }, el("th", { scope: "row", text: (p.factLabels && p.factLabels[k]) || k }),
+      el("td", { text: v || HL.TBC }));
+  }));
+  if (Array.isArray(f.inBox) && f.inBox.length) document.getElementById("boxList").replaceChildren(...f.inBox.map(t => el("li", { text: t })));
+  if (f.care) document.getElementById("fitCare").textContent = `${f.care.replace(/\n+/g, " ")} Always disconnect the USB cable first.`;
+  if (f.manufacturerWarnings) {
+    document.getElementById("mfrWarningsList").replaceChildren(...f.manufacturerWarnings.split("\n").map(t => t.trim()).filter(Boolean).map(t => el("li", { text: t })));
+    document.getElementById("mfrWarnings").hidden = false;
+  }
+  HL.renderFaq(document.getElementById("productFaq"), HL.productFaq(f, cfg));
+
+  // Sticky buy bar (mobile): mirrors the main button, shown once it scrolls out of view.
+  const sticky = document.getElementById("stickyBuy");
+  document.getElementById("stickyPrice").textContent = fmt(p.priceCents);
+  const syncSticky = () => { document.getElementById("stickyVariant").textContent = selected ? ` · ${selected.name}` : ""; };
+  syncSticky(); wrap.addEventListener("click", syncSticky);
+  document.getElementById("stickyAdd").addEventListener("click", () => {
+    if (addBtn.disabled) return;
+    if (addBtn.textContent.startsWith("Added")) { location.href = "/cart"; return; }
+    addBtn.click();
+    document.getElementById("stickyAdd").textContent = "View cart";
+  });
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(([e]) => sticky.classList.toggle("visible", !e.isIntersecting)).observe(addBtn);
+  } else sticky.classList.add("visible");
 })().catch(() => HL.toast("Could not load the product. Please refresh."));

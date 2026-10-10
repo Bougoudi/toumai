@@ -37,10 +37,10 @@ const auth = require("../src/auth");
     for (const page of ["/", "/product", "/cart", "/faq", "/contact", "/shipping", "/returns", "/privacy", "/terms"]) {
       await p.goto(B + page); await p.waitForLoadState("networkidle"); await noOverflow(p, page);
     }
-    await p.goto(B + "/"); await p.waitForSelector(".payment-icons img");
-    await p.locator(".payment-icons").scrollIntoViewIfNeeded();
-    await p.waitForFunction(() => [...document.querySelectorAll(".payment-icons img")].every(i => i.complete && i.naturalWidth > 0));
-    const icons = await p.$$eval(".payment-icons img", n => n.map(i => [i.alt, i.complete && i.naturalWidth > 0]));
+    await p.goto(B + "/"); await p.waitForSelector("footer .payment-icons img");
+    await p.locator("footer .payment-icons").scrollIntoViewIfNeeded();
+    await p.waitForFunction(() => [...document.querySelectorAll("footer .payment-icons img")].every(i => i.complete && i.naturalWidth > 0));
+    const icons = await p.$$eval("footer .payment-icons img", n => n.map(i => [i.alt, i.complete && i.naturalWidth > 0]));
     assert.deepEqual(icons, [["Visa", true], ["Mastercard", true], ["American Express", true]], "footer payment logos load");
     await p.click(".menu-toggle");
     assert.equal(await p.getAttribute(".menu-toggle", "aria-expanded"), "true");

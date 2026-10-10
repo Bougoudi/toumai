@@ -21,7 +21,7 @@
   const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body || {}) });
 
   // ------------------------------------------------------------ tabs
-  const loaders = { dashboard: loadDashboard, analytics: loadAnalytics, marketing: () => window.HLMarketing.load(), orders: loadOrders, messages: loadMessages, settings: loadSettings, activity: loadActivity };
+  const loaders = { dashboard: loadDashboard, analytics: loadAnalytics, marketing: () => window.HLMarketing.load(), orders: loadOrders, product: loadProductFacts, messages: loadMessages, settings: loadSettings, activity: loadActivity };
   document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
   function showTab(name) {
     document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
@@ -35,10 +35,12 @@
     const t = d.totals;
     $("#notifBadge").hidden = !d.unreadNotifications; $("#notifBadge").textContent = d.unreadNotifications;
     $("#msgBadge").hidden = !d.openMessages; $("#msgBadge").textContent = d.openMessages;
+    $("#factsBadge").hidden = !d.productFactsMissing; $("#factsBadge").textContent = d.productFactsMissing;
     const mode = d.checkout.enabled ? (d.checkout.mode === "live" ? "LIVE payments (iyzico)" : "iyzico SANDBOX (test cards)") : `Demo only — ${d.checkout.reason}`;
     $("#statusBar").innerHTML = `<div class="admin-card status-line"><span><b>Payments:</b> ${esc(mode)}</span><span><b>Emails:</b> ${d.emailConfigured ? "sent via Resend" : "not configured — emails are prepared for you to send manually"}</span></div>`;
     const tile = (label, value, sub = "") => `<div class="tile"><p class="micro">${label}</p><p class="tile-value">${value}</p>${sub ? `<p class="micro">${sub}</p>` : ""}</div>`;
     $("#dashboard").innerHTML = `
+      ${d.productFactsMissing ? `<div class="admin-card warn-card"><b>${d.productFactsMissing} product detail(s) still to confirm.</b> The store shows them as “being confirmed with our supplier” until you fill them in. <button type="button" class="text-link" data-goto="product">Open Product info</button></div>` : ""}
       <div class="tiles">
         ${tile("Paid orders", t.paid_orders, `${t.to_fulfil} to fulfil · ${t.pending_orders} awaiting payment`)}
         ${tile("Revenue retained", money(t.revenue_cents), `${money(t.gross_paid_cents)} paid − ${money(t.refunds_cents)} refunded`)}
@@ -380,6 +382,28 @@
   }
 
   // ------------------------------------------------------------ other tabs
+  // ------------------------------------------------------------ product facts
+  // Only what the supplier's documentation confirms for this exact model. Empty = "being confirmed" on the store.
+  async function loadProductFacts() {
+    const d = await api("/api/admin/product-facts");
+    const field = f => {
+      const v = d.facts[f.key] || "";
+      const input = f.choices
+        ? `<select name="${f.key}">${Object.entries(f.choices).map(([k, l]) => `<option value="${esc(k)}"${k === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`
+        : f.multiline ? `<textarea name="${f.key}" rows="4" maxlength="${f.max}" placeholder="${esc(f.hint)}">${esc(v)}</textarea>`
+        : `<input name="${f.key}" maxlength="${f.max}" value="${esc(v)}" placeholder="${esc(f.hint)}">`;
+      return `<label class="${f.multiline ? "span2" : ""}">${esc(f.label)} ${v ? "" : '<span class="pill pill-pending">to confirm</span>'}${input}</label>`;
+    };
+    $("#product").innerHTML = `<div class="admin-card"><h2 class="admin-h2">Product information</h2>
+      <p class="micro">Fill in only what the supplier's documentation (manual, label, spec sheet) confirms for this exact model. Leave a field empty if you're not sure — the store then shows “being confirmed with our supplier” instead of a guess. Never enter certifications, medical benefits or performance claims you can't document.</p>
+      ${d.missing.length ? `<p class="micro"><b>Still to confirm (${d.missing.length}):</b> ${d.missing.map(m => esc(m.label)).join(" · ")}</p>` : '<p class="micro"><b>All product details are filled in.</b></p>'}
+      <form id="factsForm" class="admin-form grid-form">${d.fields.map(field).join("")}<button class="admin-btn span2">Save product information</button></form></div>`;
+    $("#factsForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      try { await post("/api/admin/product-facts", Object.fromEntries(new FormData(e.target))); toast("Product information saved."); loadProductFacts(); loadDashboard(); } catch (err) { toast(err.message); }
+    });
+  }
+
   async function loadMessages() {
     const rows = await api("/api/admin/messages");
     $("#messages").innerHTML = rows.length ? rows.map(m => `<div class="admin-card ${m.handled_at ? "muted" : ""}"><p><b>${esc(m.name)}</b> · <a href="mailto:${esc(m.email)}">${esc(m.email)}</a>${m.order_number ? ` · order ${esc(m.order_number)}` : ""} <span class="muted">${date(m.created_at)}</span></p><p class="pre">${esc(m.message)}</p>${m.handled_at ? `<p class="micro">Handled ${date(m.handled_at)}</p>` : `<button class="admin-btn" data-handled="${m.id}">Mark handled</button>`}</div>`).join("") : `<div class="admin-card muted">No messages yet.</div>`;
@@ -415,6 +439,8 @@
     document.querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => openOrder(Number(b.dataset.open))));
     await post("/api/admin/notifications/read"); loadDashboard();
   });
+
+  document.addEventListener("click", e => { const g = e.target.closest("[data-goto]"); if (g) showTab(g.dataset.goto); });
 
   $("#logout").addEventListener("click", async () => { try { await post("/api/admin/logout"); } finally { location.href = "/admin-login.html"; } });
 

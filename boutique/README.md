@@ -70,8 +70,28 @@ recorded when they were made in the iyzico panel. Each refund has an idempotency
 Profit = retained revenue (paid − refunds) − product − shipping − payment fees − ads − other.
 Margin = profit ÷ retained revenue × 100. Actual costs replace estimates once recorded.
 
+## Product information (`/admin` → Product info)
+
+Every technical detail customers see (specs table, "How USB power works", box contents,
+"Is it right for you?", FAQ answers) comes from this form. **Nothing is pre-filled**: an
+empty field is shown on the store as "Being confirmed with our supplier", never guessed.
+Fill a field only from the supplier's documentation for the exact model (manual, label,
+spec sheet). The dashboard shows how many details are still to confirm.
+
+Still to confirm before launch: dimensions, weight, materials, power input, compatible
+power sources, whether a power bank is included, USB cable length, heat settings,
+controls, automatic shut-off, exact box contents, care instructions, the manufacturer's
+safety instructions, warranty, country of origin — plus a verified delivery estimate
+(`DELIVERY_ESTIMATE_VERIFIED`), a real photo of the Pearl White color and a home-office
+photo (the home page shows a labeled "Photo coming soon" placeholder).
+
+Fixed precautions are always shown (never while sleeping, not for infants/children or
+anyone who can't remove it, disconnect before cleaning). `test/product-facts.test.js`
+fails if a public page claims a certification, a medical benefit, reviews, fake urgency
+or use while sleeping.
+
 ## Payment logos
-The footer of every page, and the checkout once payments are open, show the logos listed
+Once checkout is open (sandbox or live), the footer, home page and checkout show the logos listed
 in `PAYMENT_METHODS` (default `visa,mastercard,amex`). Optional values: `apple-pay`,
 `google-pay`, `unionpay`. List only the methods your iyzico account actually accepts.
 PayPal, Shop Pay, Bancontact and iDEAL/Wero are not offered through iyzico, so they are

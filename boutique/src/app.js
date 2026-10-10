@@ -16,6 +16,7 @@ const analytics = require("./analytics");
 const promotions = require("./promotions");
 const marketing = require("./marketing");
 const seo = require("./seo");
+const productFacts = require("./product-facts");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
@@ -37,7 +38,7 @@ function createApp({ cfg, db, log = console }) {
         "script-src": ["'self'"],
         "style-src": ["'self'", "https://fonts.googleapis.com", "'unsafe-inline'"],
         "font-src": ["'self'", "https://fonts.gstatic.com"],
-        "img-src": ["'self'", "data:", "https://images.unsplash.com"],
+        "img-src": ["'self'", "data:"],
         "connect-src": ["'self'"],
         "form-action": ["'self'"],
         "frame-ancestors": ["'none'"],
@@ -114,7 +115,10 @@ function createApp({ cfg, db, log = console }) {
   app.get("/api/catalog", (_req, res) => {
     const p = catalog(cfg);
     res.json({ id: p.id, name: p.name, priceCents: p.priceCents, maxQtyPerLine: p.maxQtyPerLine, images: p.images,
-      variants: p.variants.map(v => ({ id: v.id, name: v.name, available: v.available, hasPhoto: Boolean(v.hasPhoto), swatch: v.swatch })), states: orders.US_STATES });
+      variants: p.variants.map(v => ({ id: v.id, name: v.name, available: v.available, hasPhoto: Boolean(v.hasPhoto), swatch: v.swatch })), states: orders.US_STATES,
+      // Only facts confirmed by the owner; anything absent is shown as "being confirmed".
+      facts: productFacts.publicFacts(productFacts.get(db)),
+      factLabels: Object.fromEntries(productFacts.FIELDS.map(f => [f.key, f.label])) });
   });
 
   const startCheckout = wrap(async (req, res) => {
@@ -249,6 +253,7 @@ function createApp({ cfg, db, log = console }) {
       checkout: iyzico.checkoutStatus(cfg), emailConfigured: notify.emailConfigured(cfg),
       unreadNotifications: db.prepare("SELECT COUNT(*) n FROM notifications WHERE read_at IS NULL").get().n,
       openMessages: db.prepare("SELECT COUNT(*) n FROM messages WHERE handled_at IS NULL").get().n,
+      productFactsMissing: productFacts.missing(productFacts.get(db)).length,
     });
   });
 
@@ -391,6 +396,16 @@ function createApp({ cfg, db, log = console }) {
       settings: getSettings(db), adPerOrderCents: c(b.adPerOrder, 10000), otherCents: c(b.other, 10000) }));
   });
 
+  // ------------------------------------------------------------- product facts
+  app.get("/api/admin/product-facts", requireAdmin, (_req, res) => {
+    const facts = productFacts.get(db);
+    res.set("Cache-Control", "no-store").json({ fields: productFacts.FIELDS, facts, missing: productFacts.missing(facts) });
+  });
+  app.post("/api/admin/product-facts", requireAdmin, adminAction("product_facts_updated", (req, res) => {
+    const facts = productFacts.save(db, req.body || {});
+    res.json({ facts, missing: productFacts.missing(facts) });
+  }));
+
   app.get("/api/admin/notifications", requireAdmin, (_req, res) => res.json(db.prepare("SELECT * FROM notifications ORDER BY id DESC LIMIT 100").all()));
   app.post("/api/admin/notifications/read", requireAdmin, (_req, res) => {
     db.prepare("UPDATE notifications SET read_at=? WHERE read_at IS NULL").run(new Date().toISOString()); res.json({ ok: true });
@@ -410,7 +425,7 @@ function createApp({ cfg, db, log = console }) {
   app.use("/api/", (_req, res) => res.status(404).json({ error: "Not found." }));
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
-    if (err instanceof orders.OrderError || err instanceof promotions.PromoError || err instanceof marketing.MarketingError) {
+    if (err instanceof orders.OrderError || err instanceof promotions.PromoError || err instanceof marketing.MarketingError || err instanceof productFacts.FactsError) {
       return res.status(err.status).json({ error: err.message });
     }
     if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid JSON." });

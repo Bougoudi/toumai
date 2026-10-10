@@ -164,7 +164,9 @@
       cartLink);
   }
 
+  // Payment logos only while card payment is actually open (never in demo mode).
   function paymentIcons(cfg, className) {
+    if (!cfg || !cfg.checkoutEnabled) return null;
     const list = (cfg && cfg.paymentMethods) || [];
     if (!list.length) return null;
     return el("ul", { class: `payment-icons ${className || ""}`, "aria-label": "Accepted payment methods" },
@@ -216,6 +218,48 @@
     document.querySelectorAll("[data-return-days]").forEach(n => { n.textContent = cfg.returnWindowDays; });
   }
 
-  window.HL = { cart, config, catalog, fmt, el, toast, track, paymentIcons, campaign, privacyPanel, _analyticsAllowed: analyticsAllowed };
+  // Product facts: confirmed values only. Missing ones are shown as "being confirmed".
+  const TBC = "Being confirmed with our supplier";
+  function factOr(facts, key, fallback = TBC) { const v = facts && facts[key]; return v && (!Array.isArray(v) || v.length) ? v : fallback; }
+  function powerBankText(facts) {
+    const v = facts && facts.powerBankIncluded;
+    if (v === "yes") return "Yes — a power bank is included in the box.";
+    if (v === "no") return "No — a power bank is not included. You need a compatible USB power source" + (facts.powerSource ? ` (${facts.powerSource}).` : ".");
+    return "We're confirming this with our supplier. Please contact us before ordering if you need to know.";
+  }
+  function paymentText(cfg) {
+    if (!cfg.checkoutEnabled) return "Online card payment is opening soon. Orders placed today are previews only: no payment is taken and nothing is shipped.";
+    const names = (cfg.paymentMethods || []).map(m => m.name).join(", ");
+    return `${cfg.checkoutMode === "sandbox" ? "Test mode: " : ""}card payment on the hosted page of our payment provider, iyzico${names ? ` (${names})` : ""}. We never see or store your card number.`;
+  }
+
+  // The objection FAQ shared by the product page and /faq. Answers use confirmed facts only.
+  function productFaq(facts, cfg) {
+    const f = facts || {};
+    const tbc = what => `${what} is being confirmed with our supplier. Contact us if you need it before ordering.`;
+    return [
+      { id: "how-it-works", q: "How does the USB-powered blanket work?",
+        a: `Connect the throw's USB cable to a compatible USB power source${f.powerSource ? ` (${f.powerSource})` : ""}, then switch it on${f.controls ? `: ${f.controls}` : " as described in the instructions supplied with the product"}.`
+          + (f.heatSettings ? ` Heat settings: ${f.heatSettings}.` : " The heat settings are being confirmed with our supplier.")
+          + (f.powerInput ? ` Power input: ${f.powerInput}.` : "") },
+      { id: "power-bank", q: "Is a power bank included?", a: powerBankText(f) },
+      { id: "dimensions", q: "What are the exact dimensions?", a: f.dimensions ? `${f.dimensions}.${f.weight ? ` Weight: ${f.weight}.` : ""}` : tbc("The exact size") },
+      { id: "shipping-time", q: "How long does shipping take?",
+        a: "We ship to addresses in the United States. " + (cfg && cfg.deliveryVerified
+          ? `Most orders arrive within ${cfg.deliveryMinDays}–${cfg.deliveryMaxDays} business days after dispatch.`
+          : "Delivery estimates depend on the shipping service and destination; we only publish an estimate once it's verified. See our shipping policy.") },
+      { id: "tracking", q: "Can I track my order?", a: "Yes. When your order ships, we email you a tracking link. You can also check your order status from the link in your confirmation email." },
+      { id: "returns", q: "What is your return policy?", a: `You can request a return within ${cfg ? cfg.returnWindowDays : 30} days of delivery, under the conditions in our returns policy. Approved refunds go back to the original payment method.` },
+      { id: "care", q: "How should I care for the blanket?", a: (f.care ? f.care.replace(/\n+/g, " ") + " " : "Follow the care label and the instructions supplied with the product. ") + "Always switch it off and disconnect the USB cable before cleaning." },
+      { id: "safety", q: "What safety instructions should I follow?",
+        a: "Never use it while sleeping, on infants or young children, or on anyone who can't remove it or switch it off on their own. Use only a compatible USB power source, never use it wet, and disconnect it when not in use."
+          + (f.manufacturerWarnings ? ` The manufacturer also says: ${f.manufacturerWarnings.replace(/\n+/g, " ")}` : " Always follow the safety instructions supplied with the product.") },
+    ];
+  }
+  function renderFaq(container, items) {
+    container.replaceChildren(...items.map(it => el("details", { id: "q-" + it.id }, el("summary", { text: it.q }), el("p", { text: it.a }))));
+  }
+
+  window.HL = { TBC, factOr, powerBankText, paymentText, productFaq, renderFaq, cart, config, catalog, fmt, el, toast, track, paymentIcons, campaign, privacyPanel, _analyticsAllowed: analyticsAllowed };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount); else mount();
 })();

@@ -33,6 +33,12 @@ unless a document for this exact model (same model number) proves it.
    products).
 10. **Commercial rights to the product photos**, and photos of every colour actually sold.
 
+## Publish the confirmed details
+
+Once you have the documents, enter the confirmed details in `/admin` → **Product info**.
+Only what you enter there appears on the product page and FAQ; everything else stays
+"being confirmed". Copy the manufacturer's safety instructions and care label word for word.
+
 ## When everything is verified
 - Update `src/catalog.js` (confirmed variants, supplier SKU) and the product details page.
 - Set `PRODUCT_COMPLIANCE_VERIFIED=true` only after the review, then `LIVE_PAYMENTS_ENABLED=true`
