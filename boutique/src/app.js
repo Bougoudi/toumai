@@ -18,6 +18,7 @@ const marketing = require("./marketing");
 const seo = require("./seo");
 const productFacts = require("./product-facts");
 const orderChecks = require("./order-checks");
+const reviews = require("./reviews");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
@@ -109,6 +110,8 @@ function createApp({ cfg, db, log = console }) {
       businessName: cfg.businessName, businessAddress: cfg.businessAddress,
       analytics: { enabled: cfg.analytics.enabled, consentMode: cfg.analytics.consentMode },
       paymentMethods: cfg.paymentMethods,
+      // Verified Purchase links need a working e-mail provider; the review form says so when it's missing.
+      reviewVerificationAvailable: notify.emailConfigured(cfg) && Boolean(cfg.publicUrl),
       banner: marketing.activeBanner(db),
     });
   });
@@ -211,6 +214,17 @@ function createApp({ cfg, db, log = console }) {
     res.status(204).end();
   });
 
+  // ------------------------------------------------------------- reviews (public)
+  // Only approved reviews and public fields are ever returned here.
+  app.get("/api/reviews", (req, res) => res.set("Cache-Control", "no-store").json(reviews.publicList(db, cfg, req.query)));
+  app.post("/api/reviews", limiter(15 * 60_000, cfg.reviewSubmitLimit), limiter(24 * 3_600_000, cfg.reviewSubmitLimit * 4), wrap(async (req, res) => {
+    res.status(201).json(reviews.submit(db, cfg, req.body));
+  }));
+  app.post("/api/reviews/verification-request", limiter(3_600_000, cfg.reviewVerifyLimit), wrap(async (req, res) => {
+    res.json(await reviews.requestVerification(db, cfg, req.body || {}));
+  }));
+  app.get("/api/reviews/verification", limiter(60_000, 20), (req, res) => res.set("Cache-Control", "no-store").json(reviews.tokenStatus(db, req.query.token)));
+
   app.post("/api/contact", limiter(10 * 60_000, 5), wrap(async (req, res) => {
     const b = req.body || {};
     const name = String(b.name || "").trim().slice(0, 120);
@@ -255,6 +269,7 @@ function createApp({ cfg, db, log = console }) {
       unreadNotifications: db.prepare("SELECT COUNT(*) n FROM notifications WHERE read_at IS NULL").get().n,
       openMessages: db.prepare("SELECT COUNT(*) n FROM messages WHERE handled_at IS NULL").get().n,
       productFactsMissing: productFacts.missing(productFacts.get(db)).length,
+      reviewsPending: db.prepare("SELECT COUNT(*) n FROM reviews WHERE moderation_status='pending'").get().n,
       ordersOnHold: db.prepare("SELECT COUNT(*) n FROM orders WHERE on_hold=1 AND is_test=0").get().n,
     });
   });
@@ -324,6 +339,26 @@ function createApp({ cfg, db, log = console }) {
     catch (err) { return res.status(502).json({ error: `iyzico lookup failed: ${err.message || err}` }); }
     res.status(v.outcome === "paid" ? 200 : 409).json(v.outcome === "paid" ? { ok: true } : { error: `Not paid: ${v.reason}` });
   }));
+  // ------------------------------------------------------------- reviews (admin)
+  const reviewId = (req) => {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) throw new reviews.ReviewError(400, "Invalid review id.");
+    return id;
+  };
+  app.get("/api/admin/reviews", requireAdmin, (req, res) => res.set("Cache-Control", "no-store").json(reviews.adminList(db, req.query)));
+  app.get("/api/admin/reviews/:id/moderation-history", requireAdmin, wrap(async (req, res) => res.json(reviews.history(db, reviewId(req)))));
+  for (const action of Object.keys(reviews.TRANSITIONS)) {
+    app.post(`/api/admin/reviews/:id/${action}`, requireAdmin, wrap(async (req, res) => {
+      const id = reviewId(req);
+      const status = reviews.moderate(db, id, action, req.body || {}, req.admin.username);
+      auth.audit(db, req.admin.username, `review_${action}`, `review:${id}`, req.body?.reason ? String(req.body.reason).slice(0, 40) : null, req.ip);
+      res.json({ ok: true, status });
+    }));
+  }
+  app.post("/api/admin/orders/:id/review-request", requireAdmin, adminAction("review_request", async (req, res) => {
+    res.json(await reviews.requestReview(db, cfg, orderId(req), req.admin.username));
+  }));
+
   // Supplier preparation checklist and anomalies (holds block supplier order and shipment).
   const loadOrder = (req) => {
     const o = orders.getOrder(db, orderId(req));
@@ -356,6 +391,8 @@ function createApp({ cfg, db, log = console }) {
 
   app.post("/api/admin/emails/:emailId/send", requireAdmin, wrap(async (req, res) => {
     if (!notify.emailConfigured(cfg)) return res.status(409).json({ error: "No email provider configured (RESEND_API_KEY, EMAIL_FROM). Copy the email and send it yourself." });
+    const kind = db.prepare("SELECT kind FROM emails WHERE id=?").get(Number(req.params.emailId));
+    if (kind && kind.kind.startsWith("review_")) return res.status(409).json({ error: "Review e-mails contain a single-use link that is not stored. Send a new review request instead." });
     const e = await notify.trySend(db, cfg, Number(req.params.emailId));
     if (!e) return res.status(404).json({ error: "Email not found." });
     auth.audit(db, req.admin.username, "email_send", `email:${e.id}`, e.status, req.ip);
@@ -366,6 +403,7 @@ function createApp({ cfg, db, log = console }) {
     const id = Number(req.params.emailId);
     const e = db.prepare("SELECT * FROM emails WHERE id=?").get(id);
     if (!e) return res.status(404).json({ error: "Email not found." });
+    if (e.kind.startsWith("review_")) return res.status(409).json({ error: "Review e-mails can't be sent manually: their single-use link is not stored." });
     db.prepare("UPDATE emails SET status='sent', provider_id='manual', sent_at=? WHERE id=?").run(new Date().toISOString(), id);
     auth.audit(db, req.admin.username, "email_marked_sent_manually", `email:${id}`, null, req.ip);
     if (e.order_id) orders.event(db, e.order_id, "email_sent_manually", `${e.subject} → ${e.to_addr} (sent by the owner)`, req.admin.username);
@@ -450,6 +488,7 @@ function createApp({ cfg, db, log = console }) {
   app.use("/api/", (_req, res) => res.status(404).json({ error: "Not found." }));
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
+    if (err instanceof reviews.ReviewError) return res.status(err.status).json({ error: err.message, ...(err.errors ? { errors: err.errors } : {}) });
     if (err instanceof orders.OrderError || err instanceof promotions.PromoError || err instanceof marketing.MarketingError || err instanceof productFacts.FactsError || err instanceof orderChecks.CheckError) {
       return res.status(err.status).json({ error: err.message });
     }

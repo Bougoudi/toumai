@@ -102,6 +102,24 @@ filled automatically; "customer informed" is yours to tick. Anomalies can put an
 in the order history and the activity log. These are records of your checks, not a
 physical inspection of the parcel.
 
+## Customer reviews (product page + `/admin` → Reviews)
+
+- Customers submit a review on the product page (rating, public name, optional title, comment,
+  "Did you purchase…", "Would you recommend…", required honesty/publication consent). The same
+  rules run in the browser and on the server (`public/js/review-rules.js`).
+- Every review is **pending** until you approve it. Only approved reviews are public, with the real
+  average, count and 1–5 distribution. No demo or seeded reviews exist.
+- Moderation: approve, reject, hide, erase content — with fixed reasons (spam, insults, personal
+  information, off-topic, conflict of interest, duplicate, customer request). Never reject a review
+  for being negative. Every action is in the review's history and the activity log.
+- **Verified Purchase** only via a single-use link e-mailed to the address of a paid, shipped or
+  delivered, non-refunded, non-test order. Needs `RESEND_API_KEY` + `EMAIL_FROM` + `PUBLIC_URL`;
+  without them the form says verification isn't available and nothing is sent.
+- Post-delivery review request: button in the order drawer (delivered orders, e-mail configured,
+  sent once, honest review, no reward).
+- Rules for customers: `/review-policy`. Details: `docs/reviews/`, tracking: `docs/implementation-tracking.md`.
+- Limits: `REVIEW_SUBMIT_LIMIT` (default 5 per 15 min per IP), `REVIEW_VERIFY_LIMIT` (default 5 link requests per hour).
+
 ## Payment logos
 Once checkout is open (sandbox or live), the footer, home page and checkout show the logos listed
 in `PAYMENT_METHODS` (default `visa,mastercard,amex`). Optional values: `apple-pay`,

@@ -40,6 +40,23 @@ async function trySend(db, cfg, id) {
   return db.prepare("SELECT * FROM emails WHERE id=?").get(id);
 }
 
+/**
+ * Sends immediately through the provider; the stored copy uses `storedBody` so secrets
+ * (single-use links) never sit in the e-mail log. Requires a configured provider.
+ */
+async function sendNow(db, cfg, { orderId = null, kind, to, subject, body, storedBody }) {
+  if (!emailConfigured(cfg)) throw new Error("No email provider configured.");
+  const id = db.prepare("INSERT INTO emails(order_id,kind,to_addr,subject,body,status,created_at) VALUES(?,?,?,?,?,'prepared',?)")
+    .run(orderId, kind, to, subject, storedBody, now()).lastInsertRowid;
+  try {
+    const providerId = await sendViaResend(cfg, to, subject, body);
+    db.prepare("UPDATE emails SET status='sent', provider_id=?, sent_at=?, error=NULL WHERE id=?").run(providerId, now(), id);
+  } catch (err) {
+    db.prepare("UPDATE emails SET status='failed', error=? WHERE id=?").run(String(err.message || err).slice(0, 500), id);
+  }
+  return db.prepare("SELECT * FROM emails WHERE id=?").get(id);
+}
+
 /** In-dashboard notification, plus email / webhook when configured. Never throws. */
 async function notifyAdmin(db, cfg, { kind, title, body, orderId = null }) {
   db.prepare("INSERT INTO notifications(kind,title,body,order_id,created_at) VALUES(?,?,?,?,?)").run(kind, title, body || "", orderId, now());
@@ -53,4 +70,4 @@ async function notifyAdmin(db, cfg, { kind, title, body, orderId = null }) {
   }
 }
 
-module.exports = { emailConfigured, queueEmail, trySend, notifyAdmin, setFetchForTests };
+module.exports = { emailConfigured, queueEmail, sendNow, trySend, notifyAdmin, setFetchForTests };

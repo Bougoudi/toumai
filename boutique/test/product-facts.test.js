@@ -72,7 +72,8 @@ const FORBIDDEN = [
   /\b(UL|ETL|FCC|FDA|CE|CPSC)[ -]?(listed|certified|approved|compliant)\b/i,
   /\bcertified\b/i,
   /circulation|pain relief|relieves? pain|therapeutic|therapy|\bcures?\b|\bheals?\b|arthritis|cramps/i,
-  /\d[\d,.]*\s*(\+\s*)?(reviews|happy customers|sold)\b|★|rated \d/i,
+  // Ratings and review counts may only come from /api/reviews (approved reviews), never from static text.
+  /\d[\d,.]*\s*(\+\s*)?(reviews|happy customers|sold)\b|rated \d|\b[1-5](\.\d)?\s*(\/|out of)\s*5\b|aggregateRating|ratingValue/i,
   /only \d+ left|selling fast|hurry|ends (tonight|soon)|countdown|limited stock/i,
   /safe (for|while) sleep|sleep with it|overnight use|all night/i,
   /\b\d+\s*(hours?|hrs?) (of )?(battery|warmth|heat)\b/i,
@@ -89,6 +90,8 @@ test("public pages and scripts make no unverified claims", () => {
   for (const file of files) {
     const text = fs.readFileSync(file, "utf8");
     for (const re of FORBIDDEN) assert.doesNotMatch(text, re, `${path.relative(pub, file)} matches ${re}`);
+    // Star glyphs are drawn only by the review script from real data, never written into a page.
+    if (file.endsWith(".html")) assert.doesNotMatch(text, /★|☆|&#9733;|&starf;/, `${path.relative(pub, file)} contains a hardcoded star rating`);
     // "sleep" may only appear in a prohibition (or in a question that is answered with one)
     for (const m of text.matchAll(/[^.!?<>]*\bsleep\w*[^.!?<>]*/gi)) {
       if (text[m.index + m[0].length] === "?") continue;

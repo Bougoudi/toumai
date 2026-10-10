@@ -63,6 +63,10 @@ function load(env = process.env) {
       adminNotifyEmail: env.ADMIN_NOTIFY_EMAIL || "",
     },
     adminNotifyWebhookUrl: env.ADMIN_NOTIFY_WEBHOOK_URL || "",
+    // Review submissions allowed per visitor IP per 15 minutes (×4 per day).
+    // Purchase-verification link requests allowed per visitor IP per hour.
+    reviewVerifyLimit: Math.max(1, Math.min(100, Number.parseInt(env.REVIEW_VERIFY_LIMIT, 10) || 5)),
+    reviewSubmitLimit: Math.max(1, Math.min(100, Number.parseInt(env.REVIEW_SUBMIT_LIMIT, 10) || 5)),
 
     // Payment logos shown in the footer and at checkout. List ONLY what your iyzico
     // account really accepts (check the iyzico merchant panel). Unknown ids are ignored.

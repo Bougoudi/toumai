@@ -8,6 +8,7 @@
   const dayInput = (s) => s ? new Date(s).toISOString().slice(0, 10) : "";
   const pill = (s) => `<span class="pill pill-${esc(s)}">${esc(String(s).replace(/_/g, " "))}</span>`;
   let csrf = "";
+  let emailOn = false;
 
   function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 4500); }
 
@@ -21,7 +22,7 @@
   const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body || {}) });
 
   // ------------------------------------------------------------ tabs
-  const loaders = { dashboard: loadDashboard, analytics: loadAnalytics, marketing: () => window.HLMarketing.load(), orders: loadOrders, product: loadProductFacts, messages: loadMessages, settings: loadSettings, activity: loadActivity };
+  const loaders = { dashboard: loadDashboard, analytics: loadAnalytics, marketing: () => window.HLMarketing.load(), orders: loadOrders, reviews: loadReviews, product: loadProductFacts, messages: loadMessages, settings: loadSettings, activity: loadActivity };
   document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
   function showTab(name) {
     document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
@@ -35,11 +36,14 @@
     const t = d.totals;
     $("#notifBadge").hidden = !d.unreadNotifications; $("#notifBadge").textContent = d.unreadNotifications;
     $("#msgBadge").hidden = !d.openMessages; $("#msgBadge").textContent = d.openMessages;
+    $("#reviewsBadge").hidden = !d.reviewsPending; $("#reviewsBadge").textContent = d.reviewsPending;
+    emailOn = d.emailConfigured;
     $("#factsBadge").hidden = !d.productFactsMissing; $("#factsBadge").textContent = d.productFactsMissing;
     const mode = d.checkout.enabled ? (d.checkout.mode === "live" ? "LIVE payments (iyzico)" : "iyzico SANDBOX (test cards)") : `Demo only — ${d.checkout.reason}`;
     $("#statusBar").innerHTML = `<div class="admin-card status-line"><span><b>Payments:</b> ${esc(mode)}</span><span><b>Emails:</b> ${d.emailConfigured ? "sent via Resend" : "not configured — emails are prepared for you to send manually"}</span></div>`;
     const tile = (label, value, sub = "") => `<div class="tile"><p class="micro">${label}</p><p class="tile-value">${value}</p>${sub ? `<p class="micro">${sub}</p>` : ""}</div>`;
     $("#dashboard").innerHTML = `
+      ${d.reviewsPending ? `<div class="admin-card warn-card"><b>${d.reviewsPending} review(s) waiting for moderation.</b> <button type="button" class="text-link" data-goto="reviews">Open Reviews</button></div>` : ""}
       ${d.ordersOnHold ? `<div class="admin-card warn-card"><b>${d.ordersOnHold} order(s) on hold</b> because of an open anomaly. <button type="button" class="text-link" data-goto="orders">Open orders</button></div>` : ""}
       ${d.productFactsMissing ? `<div class="admin-card warn-card"><b>${d.productFactsMissing} product detail(s) still to confirm.</b> The store shows them as “being confirmed with our supplier” until you fill them in. <button type="button" class="text-link" data-goto="product">Open Product info</button></div>` : ""}
       <div class="tiles">
@@ -360,6 +364,13 @@
         </form>
       </div>
 
+      <div class="admin-card"><h3>Review request</h3>
+        ${o.review_requested_at ? `<p>Review request sent ${date(o.review_requested_at)}. It is never sent twice.</p>`
+          : f !== "delivered" || !paid || o.payment_status !== "paid" ? '<p class="muted">Available once a paid, non-refunded order is marked delivered.</p>'
+          : !emailOn ? '<p class="muted">Needs an email provider (RESEND_API_KEY, EMAIL_FROM). Nothing is sent without one.</p>'
+          : '<p class="micro">Sends one email with a single-use link asking for an honest review, positive or negative. No reward is offered.</p><button class="admin-btn" id="requestReview">Send review request</button>'}
+      </div>
+
       <div class="admin-card"><h3>Internal notes</h3><textarea id="notes" rows="3" maxlength="4000">${esc(o.notes || "")}</textarea><button class="admin-btn" id="saveNotes">Save notes</button></div>
       <div class="admin-card"><h3>History</h3>${o.events.map(e => `<p class="micro">${date(e.created_at)} · <b>${esc(e.event)}</b> ${esc(e.details || "")} <span class="muted">(${esc(e.actor)})</span></p>`).join("")}</div>`;
 
@@ -400,6 +411,9 @@
     });
     form("#statusForm", async (d) => { await post(`/api/admin/orders/${id}/status`, d); reload("Status updated."); });
     form("#costForm", async (d) => { await post(`/api/admin/orders/${id}/costs`, d); reload("Costs saved."); });
+    $("#requestReview")?.addEventListener("click", async () => {
+      try { await post(`/api/admin/orders/${id}/review-request`); reload("Review request sent."); } catch (e) { toast(e.message); }
+    });
     $("#saveNotes").addEventListener("click", async () => { try { await post(`/api/admin/orders/${id}/notes`, { notes: $("#notes").value }); toast("Notes saved."); } catch (e) { toast(e.message); } });
     document.querySelectorAll("[data-email-copy]").forEach(b => b.addEventListener("click", async () => {
       const e = o.emails.find(x => x.id === Number(b.dataset.emailCopy));
@@ -420,6 +434,49 @@
   }
 
   // ------------------------------------------------------------ other tabs
+  // ------------------------------------------------------------ reviews
+  // Moderation never edits a review's text or rating, and never changes its purchase verification.
+  let reviewFilter = "pending";
+  const ACTIONS = { pending: ["approve", "reject"], approved: ["hide"], rejected: ["hide"], hidden: ["approve"] };
+  const ACTION_LABEL = { approve: "Approve & publish", reject: "Reject", hide: "Hide", erase: "Erase content" };
+  async function loadReviews() {
+    const d = await api(`/api/admin/reviews${reviewFilter ? `?status=${reviewFilter}` : ""}`);
+    const stars = n => "★".repeat(n) + "☆".repeat(5 - n);
+    const verif = r => r.verification === "verified" ? `<span class="pill pill-paid">Verified Purchase · ${esc(r.orderNumber || "")}</span>`
+      : r.verification === "ineligible" ? '<span class="pill pill-failed">link used, order not eligible</span>' : '<span class="pill">not verified</span>';
+    const reasonSelect = `<select name="reason"><option value="">Reason…</option>${Object.entries(d.reasons).map(([k, l]) => `<option value="${esc(k)}">${esc(l)}</option>`).join("")}</select>`;
+    $("#reviews").innerHTML = `<div class="admin-card">
+        <div class="seg" role="group" aria-label="Filter by status">${["pending", "approved", "rejected", "hidden", ""].map(st => `<button type="button" data-rfilter="${st}" aria-pressed="${st === reviewFilter}">${st ? esc(st) : "all"} (${st ? d.counts[st] : Object.values(d.counts).reduce((a, b) => a + b, 0)})</button>`).join("")}</div>
+        <p class="micro">Publish positive and negative reviews alike. Refuse or hide only for the listed content reasons (spam, insults, personal information, off-topic, conflict of interest, duplicate, customer request). You can't edit a review or its verification. “Erase content” removes the text permanently (personal data or a customer's removal request).</p></div>
+      ${d.reviews.length ? d.reviews.map(r => `<div class="admin-card review-mod" data-review="${r.id}">
+        <p><span class="mod-stars" aria-label="${r.rating} out of 5">${stars(r.rating)}</span> <b>${esc(r.title || "(no title)")}</b> ${pill(r.status)} ${verif(r)}</p>
+        <p class="pre">${esc(r.comment)}</p>
+        <p class="micro">${esc(r.displayName)} · received ${date(r.createdAt)}${r.publishedAt ? ` · published ${date(r.publishedAt)}` : ""} · says bought from HavenLume: <b>${esc(r.purchasedFromHavenLume)}</b> (not proof) · recommends: ${esc(r.wouldRecommend || "—")}${r.moderationReason ? ` · reason: ${esc(d.reasons[r.moderationReason] || r.moderationReason)}` : ""}</p>
+        ${r.erased ? '<p class="micro">Content erased.</p>' : `<form class="admin-form inline-form mod-form">${[...(ACTIONS[r.status] || []), "erase"].map(a => `<button type="submit" class="admin-btn ${a === "approve" ? "" : a === "erase" ? "danger-btn" : "ghost"}" value="${a}">${ACTION_LABEL[a]}</button>`).join("")}
+          <label class="sr">Reason ${reasonSelect}</label><label class="sr">Note<input name="note" maxlength="500" placeholder="Note (required for “Other”)"></label></form>`}
+        <button type="button" class="text-link" data-history="${r.id}">Moderation history</button><div class="mod-history" hidden></div>
+      </div>`).join("") : `<div class="admin-card muted">No ${reviewFilter ? esc(reviewFilter) + " " : ""}reviews.</div>`}`;
+    document.querySelectorAll("[data-rfilter]").forEach(b => b.addEventListener("click", () => { reviewFilter = b.dataset.rfilter; loadReviews().catch(e => toast(e.message)); }));
+    document.querySelectorAll(".mod-form").forEach(fm => fm.addEventListener("submit", async e => {
+      e.preventDefault();
+      const action = e.submitter && e.submitter.value;
+      const id = fm.closest("[data-review]").dataset.review;
+      const d2 = Object.fromEntries(new FormData(fm));
+      if (action === "erase" && !confirm("Erase this review's content permanently?")) return;
+      try {
+        await post(`/api/admin/reviews/${id}/${action}`, action === "approve" ? {} : { reason: d2.reason, note: d2.note });
+        toast(action === "approve" ? "Review published." : "Review updated."); loadReviews(); loadDashboard().catch(() => {});
+      } catch (err) { toast(err.message); }
+    }));
+    document.querySelectorAll("[data-history]").forEach(b => b.addEventListener("click", async () => {
+      const box = b.nextElementSibling;
+      if (!box.hidden) { box.hidden = true; return; }
+      const h = await api(`/api/admin/reviews/${b.dataset.history}/moderation-history`);
+      box.innerHTML = h.length ? `<ul class="micro">${h.map(x => `<li>${date(x.created_at)} — ${esc(x.admin_user)}: ${esc(x.action)} (${esc(x.previous_status)} → ${esc(x.new_status)})${x.note ? ` — ${esc(x.note)}` : ""}</li>`).join("")}</ul>` : '<p class="micro">No moderation yet.</p>';
+      box.hidden = false;
+    }));
+  }
+
   // ------------------------------------------------------------ product facts
   // Only what the supplier's documentation confirms for this exact model. Empty = "being confirmed" on the store.
   async function loadProductFacts() {

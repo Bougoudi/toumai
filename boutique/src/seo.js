@@ -17,6 +17,7 @@ const PAGES = {
   "/shipping": { file: "shipping.html", priority: "0.3" },
   "/returns": { file: "returns.html", priority: "0.3" },
   "/privacy": { file: "privacy.html", priority: "0.2" },
+  "/review-policy": { file: "review-policy.html", priority: "0.2" },
   "/terms": { file: "terms.html", priority: "0.2" },
 };
 // Private or transactional pages: reachable, never indexed.

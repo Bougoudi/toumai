@@ -179,7 +179,7 @@
       el("a", { class: "brand footer-brand", href: "/" }, "HavenLume", el("span", { text: "HOME COMFORT" })),
       el("p", { text: "Comfort for the moments that matter." }),
       el("div", { class: "footer-links" },
-        [["/shipping", "Shipping"], ["/returns", "Returns"], ["/privacy", "Privacy"], ["/terms", "Terms of Sale"], ["/faq", "FAQ"], ["/contact", "Contact"]]
+        [["/shipping", "Shipping"], ["/returns", "Returns"], ["/privacy", "Privacy"], ["/terms", "Terms of Sale"], ["/review-policy", "Review rules"], ["/faq", "FAQ"], ["/contact", "Contact"]]
           .map(([href, label]) => el("a", { href, text: label })),
         el("button", { type: "button", class: "footer-link-btn", text: "Privacy choices", onclick: () => privacyPanel(true) })),
       paymentIcons(cfg),
