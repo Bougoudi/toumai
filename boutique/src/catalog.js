@@ -18,7 +18,7 @@ function catalog(cfg) {
     images: [
       { src: "/images/throw-lifestyle.webp", thumb: "/images/throw-lifestyle-800.webp", width: 1400, height: 700, alt: "USB heated throw blanket in Camel Brown, draped over a person relaxing on a sofa" },
       { src: "/images/throw-texture.webp", thumb: "/images/throw-texture-800.webp", width: 900, height: 727, alt: "Close-up of the heated throw's raised square plush texture" },
-      { src: "/images/throw-detail.webp", thumb: "/images/throw-detail-800.webp", width: 900, height: 822, alt: "Detail of the heated throw with its control button visible on the fabric" },
+      { src: "/images/throw-detail.webp", thumb: "/images/throw-detail-800.webp", width: 900, height: 822, alt: "Detail of the heated throw with a button visible on the fabric" },
     ],
     variants: [
       { id: "camel-brown", name: "Camel Brown", supplierVariant: "Camel Brown", available: true, hasPhoto: true, swatch: "#b38e6d" },

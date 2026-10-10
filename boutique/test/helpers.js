@@ -10,6 +10,8 @@ const iyzico = require("../src/iyzico");
 const auth = require("../src/auth");
 
 const SECRET = "sandbox-secret-key";
+// Orders snapshot the supplier SKU from the environment (src/catalog.js).
+process.env.SUPPLIER_PRODUCT_SKU = process.env.SUPPLIER_PRODUCT_SKU || "CJ-123";
 const PASSWORD = "correct horse battery staple";
 
 // ---------------------------------------------------------------- fake iyzico
@@ -100,5 +102,12 @@ async function paidOrder(s, items) {
   return s.db.prepare("SELECT * FROM orders WHERE id=?").get(o.id);
 }
 
+/** Ticks the five pre-supplier checks (no SKU / box contents confirmed in tests, so a note is given). */
+async function completeChecklist(s, h, id) {
+  for (const item of ["sku", "variant", "quantity", "accessories", "address"]) {
+    const r = await s.req("POST", `/api/admin/orders/${id}/checks`, { item, checked: true, note: "Verified against the supplier listing" }, h);
+    assert.equal(r.status, 200, r.text);
+  }
+}
 
-module.exports = { SECRET, PASSWORD, CUSTOMER, startStore, placeOrder, signedWebhook, paidOrder, fakeIyzico };
+module.exports = { completeChecklist, SECRET, PASSWORD, CUSTOMER, startStore, placeOrder, signedWebhook, paidOrder, fakeIyzico };

@@ -70,8 +70,40 @@ recorded when they were made in the iyzico panel. Each refund has an idempotency
 Profit = retained revenue (paid − refunds) − product − shipping − payment fees − ads − other.
 Margin = profit ÷ retained revenue × 100. Actual costs replace estimates once recorded.
 
+## Product information (`/admin` → Product info)
+
+Every technical detail customers see (specs table, "How USB power works", box contents,
+"Is it right for you?", FAQ answers) comes from this form. **Nothing is pre-filled**: an
+empty field is shown on the store as "Being confirmed with our supplier", never guessed.
+Fill a field only from the supplier's documentation for the exact model (manual, label,
+spec sheet). The dashboard shows how many details are still to confirm.
+
+The full list of questions to send the supplier (SKU, power input, power bank and tested
+runtime, heat settings and zones, box contents, cleaning, manual, processing vs transit
+time, compliance documents) is in `docs/SUPPLIER_FACT_SHEET.md`. Internal fields (SKU,
+manual received, compliance documents) are never published.
+
+The product page answers the main buyer objections in **Common Questions, Clear Answers**
+and shows a **Before You Order** block (key specs, power source, box contents, safety,
+delivery & returns, contact) in the buy box, on the cart and at checkout.
+
+Fixed precautions are always shown (never while sleeping, not for infants/children or
+anyone who can't remove it, disconnect before cleaning). `test/product-facts.test.js`
+fails if a public page claims a certification, a medical benefit, reviews, fake urgency
+or use while sleeping.
+
+## Supplier checklist, anomalies and holds (order drawer)
+
+Each paid order has a preparation checklist: SKU, color/variant, quantity, expected
+accessories and address must be ticked before the supplier order can be saved (a confirmed
+SKU that differs from the order's SKU is refused; set `SUPPLIER_PRODUCT_SKU`). Tracking is
+filled automatically; "customer informed" is yours to tick. Anomalies can put an order
+**on hold**, which blocks the supplier and shipment steps until resolved. Every action is
+in the order history and the activity log. These are records of your checks, not a
+physical inspection of the parcel.
+
 ## Payment logos
-The footer of every page, and the checkout once payments are open, show the logos listed
+Once checkout is open (sandbox or live), the footer, home page and checkout show the logos listed
 in `PAYMENT_METHODS` (default `visa,mastercard,amex`). Optional values: `apple-pay`,
 `google-pay`, `unionpay`. List only the methods your iyzico account actually accepts.
 PayPal, Shop Pay, Bancontact and iDEAL/Wero are not offered through iyzico, so they are

@@ -38,6 +38,7 @@
   document.getElementById("shipping").textContent = cfg.shippingCents > 0 ? fmt(cfg.shippingCents) : "Free";
   document.getElementById("total").textContent = fmt(sub + cfg.shippingCents);
   refreshQuote("").catch(() => {});
+  document.getElementById("beforeOrder").append(HL.beforeYouOrder(p.facts, cfg));
 
   const units = items.reduce((n, i) => n + i.quantity, 0);
   const value = (sub + cfg.shippingCents) / 100;
@@ -53,6 +54,7 @@
   } else if (!cfg.checkoutEnabled) {
     banner.hidden = false; banner.textContent = "PREVIEW — online payment is not open yet. Submitting creates a demo order: no payment is taken and nothing is shipped.";
     btn.innerHTML = "Place demo order (no payment) <span>↗</span>";
+    document.getElementById("checkoutEyebrow").textContent = "CHECKOUT PREVIEW";
     document.getElementById("payNote").textContent = "Demo orders are for testing only and are never charged or shipped.";
   }
 

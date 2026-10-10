@@ -11,7 +11,7 @@ const { open } = require("../src/db");
 const iyzico = require("../src/iyzico");
 const { orderProfit, referenceUnitCostCents, dashboard } = require("../src/profit");
 
-const { SECRET, PASSWORD, CUSTOMER, startStore, placeOrder, signedWebhook, paidOrder } = require("./helpers");
+const { SECRET, PASSWORD, CUSTOMER, startStore, placeOrder, signedWebhook, paidOrder, completeChecklist } = require("./helpers");
 
 // ---------------------------------------------------------------- 1. order creation
 test("1. creates a pending order with server-side totals and opens iyzico", async () => {
@@ -200,6 +200,9 @@ test("7. supplier order and tracking are recorded; shipping needs tracking or a 
     const tooEarly = await s.req("POST", `/api/admin/orders/${o.id}/shipment`, { carrier: "USPS", trackingNumber: "9400" }, h);
     assert.equal(tooEarly.status, 409, "cannot ship before the supplier order");
     assert.equal((await s.req("POST", `/api/admin/orders/${o.id}/supplier-order`, { supplierReference: "" }, h)).status, 400);
+    const unchecked = await s.req("POST", `/api/admin/orders/${o.id}/supplier-order`, { supplierReference: "AE-12345" }, h);
+    assert.equal(unchecked.status, 409, "supplier checklist required"); assert.match(unchecked.json.error, /checklist/);
+    await completeChecklist(s, h, o.id);
     const sup = await s.req("POST", `/api/admin/orders/${o.id}/supplier-order`,
       { supplierOrderedAt: "2026-10-11", supplierReference: "AE-12345", actualProductCost: "26.90", actualShippingCost: "14.50", supplierConfirmation: "Confirmed by email" }, h);
     assert.equal(sup.status, 200);
@@ -229,6 +232,7 @@ test("7. supplier order and tracking are recorded; shipping needs tracking or a 
 
     // Shipping without tracking needs a verified justification
     const o2 = await paidOrder(s);
+    await completeChecklist(s, h, o2.id);
     await s.req("POST", `/api/admin/orders/${o2.id}/supplier-order`, { supplierReference: "AE-2" }, h);
     const just = await s.req("POST", `/api/admin/orders/${o2.id}/shipment`, { carrier: "Local courier", justification: "Supplier sent dispatch photo and courier receipt #5521" }, h);
     assert.equal(just.status, 200);
