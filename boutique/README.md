@@ -70,6 +70,50 @@ recorded when they were made in the iyzico panel. Each refund has an idempotency
 Profit = retained revenue (paid − refunds) − product − shipping − payment fees − ads − other.
 Margin = profit ÷ retained revenue × 100. Actual costs replace estimates once recorded.
 
+## Analytics (`/admin` → Analytics)
+First-party, cookieless statistics stored in the store's own SQLite database. There is no
+Google Analytics, no third-party script, and nothing to sign up for.
+
+**Why this choice** (October 2026):
+- **GA4** is free, but it uses cookies (a consent banner is required for EU/UK visitors
+  and advisable elsewhere), is often blocked by ad blockers, and needs a Google Cloud
+  service account plus the Data API to show figures in this admin.
+- **Umami Cloud's** free *Hobby* plan has **no API access** (it starts with Pro at
+  $20/month), so it can't feed this admin. Self-hosting Umami on Render needs PostgreSQL
+  and a second service.
+- **Internal** (chosen): $0, works immediately, no cookies and no third party. Data lives
+  with your orders, so on Render it needs the same persistent disk.
+
+**What it measures**:
+- Unique visitors, estimated per day: SHA-256 of a daily random salt + IP + user agent.
+  The salt is deleted the next day, so a person visiting on 3 days counts 3 times.
+- Sessions (30-minute inactivity gap), page views, and active visitors (last 5 minutes).
+- Countries, top pages and referrers.
+- Events: `page_view`, `view_item`, `add_to_cart` (the buy button), `begin_checkout`,
+  `add_payment_info` (the "Continue to payment" click) and `purchase`.
+- Commerce figures from the order database: orders started, paid orders, revenue.
+
+**Rules**:
+- `purchase` is written **only by the server**, once, when iyzico confirms a non-test
+  payment. The browser cannot send it.
+- Event properties are whitelisted: product id, variant id, quantity, value, currency.
+- Paths lose their query strings. Admin pages and the logged-in admin's own browsing are
+  never counted, and bots are filtered out.
+
+**Country** is estimated with the free **DB-IP Lite** database (CC BY 4.0, downloaded
+automatically each month, attribution shown). The IP is looked up in memory and never
+stored. Estimates can be wrong with VPNs, proxies, corporate and mobile networks.
+
+**Privacy choices**:
+- `ANALYTICS_CONSENT_MODE=opt-out` (default): visitors are measured unless they decline
+  with the "Privacy choices" link in the footer.
+- `ANALYTICS_CONSENT_MODE=opt-in`: a banner is shown, and nothing is sent before the
+  visitor accepts.
+- Global Privacy Control and Do Not Track are honoured in the browser and on the server.
+
+The privacy policy describes all of this. Whether opt-out is enough for your audience is
+a legal question: use opt-in if you target EU/UK visitors, and have the policy reviewed.
+
 ## Security
 - Admin: scrypt password hash, server-side sessions in SQLite (only a SHA-256 of the
   token is stored), `HttpOnly; SameSite=Strict` cookie (`__Host-`, `Secure` in
@@ -113,7 +157,10 @@ start `cd boutique && node server.js`.
 - `src/notify.js`: emails (Resend) and admin alerts.
 - `src/catalog.js`: product, variants, supplier SKU.
 - `src/backup.js`: backups.
+- `src/analytics.js`: analytics collection, privacy rules and admin reports.
+- `src/geoip.js`: IP → country with DB-IP Lite, in memory.
 - `src/config.js`: environment configuration.
 - `public/`: storefront pages and `js/`, admin (`admin.html`, `js/admin.js`).
-- `test/store.test.js`: API tests. `test/e2e.cjs`: browser tests.
+- `test/store.test.js`, `test/analytics.test.js`: API tests (`test/helpers.js` is the shared harness).
+- `test/e2e.cjs`, `test/e2e-analytics.cjs`: browser tests.
 - `docs/PRODUCT_COMPLIANCE.md`: documents required before live payments.

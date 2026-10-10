@@ -6,6 +6,7 @@ const { getSettings } = require("./db");
 const { toCents, estimateFeeCents, orderProfit, PAID_STATES } = require("./profit");
 const iyzico = require("./iyzico");
 const notify = require("./notify");
+const analytics = require("./analytics");
 
 const now = () => new Date().toISOString();
 const usd = (c) => `$${(c / 100).toFixed(2)}`;
@@ -130,6 +131,8 @@ async function confirmPayment(db, cfg, order, source) {
     if (changed) {
       event(db, order.id, "payment_verified", `iyzico payment ${verdict.paymentId}, ${usd(verdict.paidCents)} (via ${source})`);
       const o = getOrder(db, order.id);
+      // Analytics "purchase" exists only here: once, after iyzico confirmed a real payment.
+      try { analytics.recordPurchase(db, cfg, o, getItems(db, order.id).reduce((n, i) => n + i.quantity, 0)); } catch { /* never block an order */ }
       const items = getItems(db, order.id).map(i => `${i.quantity} × ${i.variant_name}`).join(", ");
       await notify.notifyAdmin(db, cfg, { kind: "new_paid_order", orderId: order.id,
         title: `New paid order ${o.order_number} — ${usd(o.paid_cents)}`,

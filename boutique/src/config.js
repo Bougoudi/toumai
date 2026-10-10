@@ -4,6 +4,11 @@ const path = require("path");
 const bool = (v) => String(v || "").toLowerCase() === "true";
 const num = (v, d) => { const n = Number(v); return Number.isFinite(n) ? n : d; };
 
+function validTimezone(tz) {
+  if (!tz) return null;
+  try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return tz; } catch { return null; }
+}
+
 function load(env = process.env) {
   const root = path.join(__dirname, "..");
   return {
@@ -49,6 +54,20 @@ function load(env = process.env) {
       adminNotifyEmail: env.ADMIN_NOTIFY_EMAIL || "",
     },
     adminNotifyWebhookUrl: env.ADMIN_NOTIFY_WEBHOOK_URL || "",
+
+    analytics: {
+      enabled: env.ANALYTICS_ENABLED !== "false",
+      // "opt-out": collected unless the visitor declines (or sends GPC / Do Not Track).
+      // "opt-in": nothing is collected until the visitor accepts in the banner.
+      consentMode: env.ANALYTICS_CONSENT_MODE === "opt-in" ? "opt-in" : "opt-out",
+      timezone: validTimezone(env.ANALYTICS_TIMEZONE) || "America/New_York",
+      retentionDays: Math.max(30, Math.min(800, num(env.ANALYTICS_RETENTION_DAYS, 395))),
+      allowHeadlessForTests: env.ANALYTICS_ALLOW_HEADLESS === "true",
+    },
+    geoip: {
+      path: env.GEOIP_DB_PATH || path.join(path.dirname(env.DB_PATH || path.join(root, "data", "x")), "geoip", "dbip-country-lite.csv.gz"),
+      autoDownload: env.GEOIP_AUTO_DOWNLOAD !== "false",
+    },
 
     supplierInstructions: env.SUPPLIER_INSTRUCTIONS ||
       "Please ship directly to the customer. Do not include invoices, prices or promotional material in the parcel. Reply with the carrier name and tracking number as soon as it is available.",

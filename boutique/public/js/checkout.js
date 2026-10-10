@@ -14,6 +14,10 @@
   document.getElementById("shipping").textContent = cfg.shippingCents > 0 ? fmt(cfg.shippingCents) : "Free";
   document.getElementById("total").textContent = fmt(sub + cfg.shippingCents);
 
+  const units = items.reduce((n, i) => n + i.quantity, 0);
+  const value = (sub + cfg.shippingCents) / 100;
+  HL.track("begin_checkout", { item_id: p.id, quantity: units, value, currency: "USD" });
+
   const banner = document.getElementById("modeBanner");
   const btn = document.getElementById("payButton");
   if (cfg.checkoutMode === "sandbox") {
@@ -31,6 +35,7 @@
     if (!form.checkValidity()) { form.reportValidity(); return; }
     const customer = Object.fromEntries(new FormData(form).entries());
     btn.disabled = true;
+    HL.track("add_payment_info", { item_id: p.id, quantity: units, value, currency: "USD" });
     try {
       const r = await fetch("/api/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customer, items }) });
       const j = await r.json();

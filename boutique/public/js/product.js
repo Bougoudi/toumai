@@ -2,6 +2,7 @@
   const { el, fmt, cart, toast } = HL;
   const [p, cfg] = await Promise.all([HL.catalog(), HL.config()]);
   document.getElementById("price").textContent = fmt(p.priceCents);
+  HL.track("view_item", { item_id: p.id, value: p.priceCents / 100, currency: "USD" });
 
   // Gallery
   const main = document.getElementById("mainImage");
@@ -46,6 +47,7 @@
     if (!selected) return;
     clamp();
     cart.add(selected.id, Number(qty.value), p.maxQtyPerLine);
+    HL.track("add_to_cart", { item_id: p.id, variant: selected.id, quantity: Number(qty.value), value: p.priceCents * Number(qty.value) / 100, currency: "USD" });
     toast(`Added ${qty.value} × ${selected.name} to your cart.`);
     addBtn.innerHTML = "Added — view cart <span>↗</span>";
     addBtn.onclick = () => { location.href = "/cart"; };

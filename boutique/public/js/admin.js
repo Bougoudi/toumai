@@ -21,7 +21,7 @@
   const post = (path, body) => api(path, { method: "POST", body: JSON.stringify(body || {}) });
 
   // ------------------------------------------------------------ tabs
-  const loaders = { dashboard: loadDashboard, orders: loadOrders, messages: loadMessages, settings: loadSettings, activity: loadActivity };
+  const loaders = { dashboard: loadDashboard, analytics: loadAnalytics, orders: loadOrders, messages: loadMessages, settings: loadSettings, activity: loadActivity };
   document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
   function showTab(name) {
     document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
@@ -57,6 +57,161 @@
         </tbody></table>
         <p class="micro">Reference logistics cost per unit: <b>${money(d.referenceUnitCostCents)}</b> (product ${money(Math.round(d.settings.product_cost_usd * 100))} + shipping ${money(Math.round(d.settings.shipping_cost_usd * 100))}). Actual costs replace estimates once you record them on an order. Failed, pending and demo orders are excluded.</p>
       </div>`;
+  }
+
+  // ------------------------------------------------------------ analytics
+  // Every number shown here comes from the server's analytics tables or the order
+  // database. Nothing is simulated: an empty period shows zeros and an explicit notice.
+  const nf = new Intl.NumberFormat("en-US");
+  let anRange = "7d"; let anTimer = null; let anSeq = 0; let lastSeries = null; let resizeT;
+  window.addEventListener("resize", () => { clearTimeout(resizeT); resizeT = setTimeout(() => { const c = $("#anChart"); if (lastSeries && c) drawChart(c, lastSeries); }, 150); });
+  document.querySelectorAll("#anRanges [data-range]").forEach(b => b.addEventListener("click", () => {
+    anRange = b.dataset.range;
+    document.querySelectorAll("#anRanges [data-range]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    $("#anCustom").hidden = anRange !== "custom";
+    if (anRange === "custom") {
+      const today = new Date().toISOString().slice(0, 10);
+      if (!$("#anTo").value) $("#anTo").value = today;
+      if (!$("#anFrom").value) $("#anFrom").value = new Date(Date.now() - 13 * 86400_000).toISOString().slice(0, 10);
+      $("#anTo").max = today; $("#anFrom").max = today;
+    } else loadAnalytics();
+  }));
+  $("#anApply").addEventListener("click", () => loadAnalytics());
+  $("#anRefresh").addEventListener("click", () => loadAnalytics());
+
+  async function loadAnalytics() {
+    const seq = ++anSeq;
+    const box = $("#analytics");
+    const p = new URLSearchParams({ range: anRange });
+    if (anRange === "custom") { p.set("from", $("#anFrom").value); p.set("to", $("#anTo").value); }
+    box.setAttribute("aria-busy", "true");
+    if (!box.dataset.loaded) box.innerHTML = '<div class="admin-card an-state">Loading analytics…</div>';
+    let d;
+    try { d = await api(`/api/admin/analytics?${p}`); }
+    catch (e) {
+      if (seq !== anSeq) return;
+      box.removeAttribute("aria-busy");
+      box.innerHTML = `<div class="admin-card an-state error" role="alert">Could not load analytics: ${esc(e.message)} <button class="admin-btn ghost" id="anRetry">Retry</button></div>`;
+      $("#anRetry").addEventListener("click", () => loadAnalytics());
+      $("#anUpdated").textContent = "";
+      return;
+    }
+    if (seq !== anSeq) return;
+    box.removeAttribute("aria-busy"); box.dataset.loaded = "1";
+    renderAnalytics(d);
+    $("#anUpdated").textContent = `Last updated ${new Date(d.generatedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "medium" })}`;
+    clearTimeout(anTimer);
+    anTimer = setTimeout(() => { if (!document.querySelector('[data-panel="analytics"]').hidden) loadAnalytics(); }, 60_000);
+  }
+
+  const EVENT_LABELS = { view_item: "Product page views", add_to_cart: "Add-to-cart clicks (buy button)", begin_checkout: "Checkout opened",
+    add_payment_info: "“Continue to payment” clicks", purchase: "Purchases confirmed by iyzico" };
+
+  function renderAnalytics(d) {
+    const s = d.summary; const r = d.range;
+    const period = r.from === r.to ? r.from : `${r.from} → ${r.to}`;
+    const tile = (label, value, sub) => `<div class="tile"><p class="micro">${label}</p><p class="tile-value">${value}</p><p class="micro">${sub}</p></div>`;
+    const geoNote = d.geo.loaded ? "" : `<p class="micro" role="status">Country database not loaded yet (${esc(d.geo.error || "loading")}) — new visits are counted as “Unknown” country until it is available.</p>`;
+    const empty = !d.hasData ? `<div class="admin-card an-state">No visits recorded for ${esc(period)} yet. Numbers appear as soon as real visitors browse the store — nothing here is simulated.</div>` : "";
+    const c = d.commerce;
+    $("#analytics").innerHTML = `
+      <div class="tiles">
+        ${tile("Unique visitors (estimated)", nf.format(s.visitors), "counted per day, without cookies")}
+        ${tile("Sessions", nf.format(s.sessions), "30 min of inactivity ends a session")}
+        ${tile("Page views", nf.format(s.pageviews), esc(period) + " · " + esc(r.timezone))}
+        ${tile("Active now", nf.format(s.active), `visitors seen in the last ${s.activeWindowMinutes} min`)}
+      </div>
+      ${empty}
+      <div class="admin-card"><h2 class="admin-h2">Unique visitors per ${d.series.unit === "hour" ? "hour" : "day"}</h2>
+        <div class="chart-wrap" id="anChart"></div>
+        <button type="button" class="text-link" id="anTableToggle" aria-expanded="false">Show as table</button>
+        <div id="anTable" hidden></div></div>
+      <div class="grid2">
+        <div class="admin-card"><h2 class="admin-h2">Countries</h2>
+          ${d.countries.length ? `<table class="admin-table compact"><thead><tr><th>Country</th><th class="num">Visitors</th><th>Share of traffic</th></tr></thead><tbody>
+          ${d.countries.map(x => `<tr><td>${esc(x.name)}${x.code ? ` <span class="muted">${esc(x.code)}</span>` : ""}</td><td class="num">${nf.format(x.visitors)}</td>
+            <td><div class="share"><div class="share-track"><div class="share-fill" style="width:${Math.min(100, x.percent)}%"></div></div><span class="num">${x.percent}%</span></div></td></tr>`).join("")}
+          </tbody></table>` : '<p class="muted">No country data for this period.</p>'}
+          <p class="micro">Country is estimated from the visitor's IP address, which is then discarded. It can be wrong with VPNs, proxies, corporate and mobile networks. <a href="https://db-ip.com" target="_blank" rel="noopener">IP Geolocation by DB-IP</a></p>
+          ${geoNote}</div>
+        <div class="admin-card"><h2 class="admin-h2">Most viewed pages</h2>
+          ${d.pages.length ? `<table class="admin-table compact"><thead><tr><th>Page</th><th class="num">Views</th><th class="num">Visitors</th></tr></thead><tbody>
+          ${d.pages.map(x => `<tr><td>${esc(x.path)}</td><td class="num">${nf.format(x.views)}</td><td class="num">${nf.format(x.visitors)}</td></tr>`).join("")}</tbody></table>` : '<p class="muted">No page views for this period.</p>'}</div>
+      </div>
+      <div class="grid2">
+        <div class="admin-card"><h2 class="admin-h2">Shopping events</h2>
+          <table class="admin-table compact"><thead><tr><th>Event</th><th class="num">Count</th><th class="num">Visitors</th></tr></thead><tbody>
+          ${d.events.map(e => `<tr><td>${esc(EVENT_LABELS[e.name] || e.name)} <span class="muted">${esc(e.name)}</span></td><td class="num">${nf.format(e.count)}</td><td class="num">${e.visitors === null ? "—" : nf.format(e.visitors)}</td></tr>`).join("")}
+          </tbody></table>
+          <p class="micro">Browser events are only counted for visitors who did not opt out (and are missing when blockers stop them), so they undercount. “purchase” is recorded by the server only after iyzico confirms a real payment.</p></div>
+        <div class="admin-card"><h2 class="admin-h2">Orders (verified, from your order database)</h2>
+          <table class="admin-table compact"><tbody>
+            <tr><td>Orders started (checkout submitted)</td><td class="num">${nf.format(c.ordersStarted)}</td></tr>
+            <tr><td>Paid orders confirmed by iyzico</td><td class="num">${nf.format(c.paidOrders)}</td></tr>
+            <tr><td>Paid revenue</td><td class="num">${money(c.paidRevenueCents)}</td></tr>
+            <tr><td>Paid orders ÷ sessions</td><td class="num">${c.conversionPercent === null ? "—" : c.conversionPercent + "%"}</td></tr>
+          </tbody></table>
+          <p class="micro">Demo orders and unpaid orders are never counted.</p>
+          ${d.referrers.length ? `<h3 style="margin-top:16px">Top referrers</h3><table class="admin-table compact"><tbody>${d.referrers.map(x => `<tr><td>${esc(x.referrer)}</td><td class="num">${nf.format(x.sessions)} sessions</td></tr>`).join("")}</tbody></table>` : ""}</div>
+      </div>`;
+    drawChart($("#anChart"), d.series);
+    lastSeries = d.series;
+    const tbl = $("#anTable");
+    tbl.innerHTML = `<table class="admin-table compact"><thead><tr><th>${d.series.unit === "hour" ? "Hour" : "Day"}</th><th class="num">Visitors</th><th class="num">Sessions</th><th class="num">Page views</th></tr></thead><tbody>
+      ${d.series.points.map(x => `<tr><td>${esc(x.key)}</td><td class="num">${x.visitors}</td><td class="num">${x.sessions}</td><td class="num">${x.pageviews}</td></tr>`).join("")}</tbody></table>`;
+    $("#anTableToggle").addEventListener("click", (e) => {
+      tbl.hidden = !tbl.hidden; e.target.setAttribute("aria-expanded", String(!tbl.hidden)); e.target.textContent = tbl.hidden ? "Show as table" : "Hide table";
+    });
+  }
+
+  // Single-series column chart: <=24px columns, 4px rounded tops, hairline grid,
+  // clean ticks, per-column hover/focus tooltip. Text uses ink tokens, not the bar color.
+  function drawChart(host, series) {
+    const pts = series.points;
+    // Drawn at the container's real width (1 unit = 1px) so bars and text keep their specs.
+    const W = Math.max(300, Math.round(host.clientWidth || 860)), H = 240, L = 40, R = 8, T = 12, B = 28;
+    const max = Math.max(...pts.map(p => p.visitors), 0);
+    const step = max <= 4 ? 1 : Math.pow(10, Math.floor(Math.log10(max / 4)));
+    const nice = [1, 2, 5, 10].map(m => m * step).find(m => Math.ceil(max / m) <= 4) || step * 10;
+    const top = Math.max(nice * Math.ceil(max / nice), nice);
+    const y = v => T + (H - T - B) * (1 - v / top);
+    const band = (W - L - R) / pts.length;
+    const bw = Math.max(2, Math.min(24, band - 2));
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("class", "chart-svg"); svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", `Unique visitors per ${series.unit}, peak ${max}`);
+    const add = (tag, attrs, text) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (text !== undefined) n.textContent = text; svg.append(n); return n; };
+    for (let v = 0; v <= top; v += nice) {
+      add("line", { x1: L, x2: W - R, y1: y(v), y2: y(v), class: "grid" });
+      add("text", { x: L - 8, y: y(v) + 4, "text-anchor": "end", class: "axis-label" }, nf.format(v));
+    }
+    const labelEvery = Math.ceil(pts.length / (series.unit === "hour" ? 8 : 10));
+    const tip = document.createElement("div"); tip.className = "chart-tip"; tip.hidden = true;
+    pts.forEach((p, i) => {
+      const cx = L + band * i + band / 2;
+      const x0 = cx - bw / 2; const h = (H - T - B) * (p.visitors / top);
+      const hit = add("rect", { x: L + band * i, y: T, width: band, height: H - T - B, class: "hit", tabindex: "0",
+        "aria-label": `${p.key}: ${p.visitors} visitors, ${p.sessions} sessions, ${p.pageviews} page views` });
+      if (h > 0) {
+        const r = Math.min(4, bw / 2, h); const yb = H - B; const yt = yb - h;
+        add("path", { class: "bar", d: `M${x0},${yb} V${yt + r} Q${x0},${yt} ${x0 + r},${yt} H${x0 + bw - r} Q${x0 + bw},${yt} ${x0 + bw},${yt + r} V${yb} Z` });
+      } else add("rect", { x: x0, y: H - B, width: bw, height: 0, class: "bar" });
+      if (i % labelEvery === 0) add("text", { x: cx, y: H - 8, "text-anchor": "middle", class: "axis-label" }, series.unit === "hour" ? p.key.slice(0, 2) : p.key.slice(5));
+      const show = () => {
+        tip.replaceChildren();
+        const b = document.createElement("b"); b.textContent = `${p.visitors} visitors`;
+        const l2 = document.createElement("div"); l2.textContent = `${p.sessions} sessions · ${p.pageviews} page views`;
+        const l3 = document.createElement("div"); l3.className = "muted"; l3.textContent = p.key;
+        tip.append(b, l2, l3);
+        const box = svg.getBoundingClientRect(); const k = box.width / W;
+        tip.style.left = `${cx * k}px`; tip.style.top = `${Math.max(0, y(p.visitors) * k - 6)}px`; tip.hidden = false;
+      };
+      hit.addEventListener("pointerenter", show); hit.addEventListener("focus", show);
+      hit.addEventListener("pointerleave", () => { tip.hidden = true; }); hit.addEventListener("blur", () => { tip.hidden = true; });
+    });
+    add("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, class: "grid" });
+    host.replaceChildren(svg, tip);
   }
 
   // ------------------------------------------------------------ orders

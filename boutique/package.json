@@ -2,13 +2,13 @@
   "name": "havenlume-store",
   "version": "2.0.0",
   "private": true,
-  "description": "HavenLume \u2014 US storefront for a USB heated throw: cart, iyzico checkout, manual-assisted dropshipping order desk",
+  "description": "HavenLume — US storefront for a USB heated throw: cart, iyzico checkout, manual-assisted dropshipping order desk",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test test/*.test.js",
-    "test:e2e": "node test/e2e.cjs",
+    "test:e2e": "node test/e2e.cjs && node test/e2e-analytics.cjs",
     "hash-password": "node -e \"const p=process.argv[1];if(!p||p.length<12){console.error('Usage: npm run hash-password -- \\\"a long password (12+ chars)\\\"');process.exit(1)}console.log(require('./src/auth').hashPassword(p))\""
   },
   "engines": {
