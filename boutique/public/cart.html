@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Cart | HavenLume</title>
+<meta name="description" content="Your HavenLume shopping cart.">
+<link rel="stylesheet" href="/styles.css">
+<script src="/js/common.js" defer></script><script src="/js/cart.js" defer></script>
+</head>
+<body>
+<div id="site-header"></div>
+<main id="main">
+<section class="page narrow">
+ <p class="eyebrow">YOUR CART</p><h1 class="page-title">Shopping cart</h1>
+ <div id="cartLines" class="cart-lines"><p class="muted">Loading…</p></div>
+ <div id="cartSummary" class="summary" hidden>
+  <div class="summary-row"><span>Subtotal</span><span id="subtotal"></span></div>
+  <div class="summary-row"><span>Shipping</span><span id="shipping"></span></div>
+  <div class="summary-row total"><span>Total</span><span id="total"></span></div>
+  <p class="micro">Sales tax is not added at checkout. Prices are in USD.</p>
+  <a class="button full" href="/checkout" id="toCheckout">Checkout <span>↗</span></a>
+ </div>
+</section>
+</main>
+<div id="site-footer"></div>
+</body>
+</html>

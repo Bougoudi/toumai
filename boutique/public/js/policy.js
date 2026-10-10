@@ -1,0 +1,9 @@
+HL.config().then(c => {
+  const fmt = HL.fmt;
+  const d = document.getElementById("deliveryText");
+  if (d && c.deliveryVerified) d.textContent = `Most orders are delivered within ${c.deliveryMinDays}–${c.deliveryMaxDays} business days after dispatch. You will receive your carrier and tracking link by email as soon as your order ships.`;
+  const s = document.getElementById("shippingCostText");
+  if (s) s.textContent = c.shippingCents > 0 ? `Shipping is ${fmt(c.shippingCents)} per order, shown at checkout before you pay.` : "Shipping is free on all orders to the United States.";
+  const seller = document.getElementById("sellerText");
+  if (seller && c.businessName) seller.textContent = `These terms apply to purchases made on this website from ${c.businessName}${c.businessAddress ? `, ${c.businessAddress}` : ""}.`;
+}).catch(() => {});

@@ -1,100 +1,119 @@
-# HavenLume Boutique Starter
+# HavenLume store
 
-A responsive storefront and an initial order-admin workflow built with Node.js, Express and SQLite.
+US storefront (English, USD) for the USB Heated Wearable Throw, with a cart, iyzico card
+checkout, and an order desk for manual-assisted dropshipping: the owner receives paid
+orders, places the supplier order personally, then records tracking.
 
-## Payment modes
-The store picks its mode automatically from the configuration:
-
-| Configuration | Storefront button | What happens |
-| --- | --- | --- |
-| No iyzico keys | "Try demo order" | `test_unpaid` demo order, no money; cannot be fulfilled |
-| iyzico **sandbox** keys + `PUBLIC_URL` | "Buy now" (TEST MODE note) | Real iyzico flow with test cards, no real money |
-| iyzico **live** keys + `PUBLIC_URL` + `LIVE_PAYMENTS_ENABLED=true` + `PRODUCT_COMPLIANCE_VERIFIED=true` | "Buy now" | Real card payments |
-
-Live keys without both confirmations keep checkout disabled (the server log says why). Do not accept real orders until product compliance, customer emails, final policies and deployment hardening are done.
-
-## iyzico checkout — how payment is verified
-1. `POST /api/checkout` validates the form, computes the price **server-side**, saves a `pending` order and opens an iyzico Checkout Form (`locale: en`, single installment).
-2. The customer pays on iyzico's hosted page (we never see card data).
-3. iyzico posts the customer's browser to `POST /api/checkout/iyzico/callback` with a token.
-4. The server **retrieves the payment from iyzico's API** and marks the order `paid` only if: status `SUCCESS`, the token and basket match the order, the currency matches, and the paid amount ≥ the order total. The redirect itself is never trusted.
-5. The customer lands on `/order-status.html`, which shows the status stored on the server.
-
-Idempotent: a replayed callback does nothing more. If a customer paid but closed the browser before the callback, open the order in `/admin` and click **Verify payment with iyzico**.
-
-### Test in sandbox
-1. Create a free account at https://sandbox-merchant.iyzipay.com and copy the sandbox API key and secret key.
-2. In `.env`: `IYZICO_API_KEY`, `IYZICO_SECRET_KEY`, `IYZICO_URI=https://sandbox-api.iyzipay.com`, `PUBLIC_URL=http://localhost:3000`.
-3. Restart; the log shows `Checkout: iyzico SANDBOX`. Pay with an iyzico test card (e.g. `5528 7900 0000 0008`, any future date, CVC `123`).
-
-### Before going live with iyzico
-- A real iyzico merchant account (registered business) enabled for `STORE_CURRENCY` and for foreign cards if you sell to the US.
-- Confirm with iyzico the buyer identity number to send for non-Turkish buyers (`IYZICO_BUYER_IDENTITY_NUMBER`).
-- Set `TRUST_PROXY=true` behind a proxy so the buyer's real IP is sent to iyzico.
-- Refunds are done from the iyzico merchant panel (not in this admin yet).
+Node.js 20+, Express, SQLite (better-sqlite3). No build step.
 
 ## Run locally
-Requirements: Node.js 20+. This store is self-contained in the `boutique/` folder of the Toumai repository (separate `package.json`, independent of the Toumai app).
-
 ```bash
 cd boutique
 npm install
 cp .env.example .env
-npm start
-```
-Open `http://localhost:3000`.
-
-## Configure administrator password
-Set `ADMIN_USERNAME` and generate `ADMIN_PASSWORD_HASH` using this one-time command in your terminal:
-
-```bash
-node -e "const c=require('crypto');const salt=c.randomBytes(16).toString('hex');const hash=c.scryptSync(process.argv[1],salt,64).toString('hex');console.log('scrypt$'+salt+'$'+hash)" "YOUR-STRONG-PASSWORD"
+npm run hash-password -- "a long admin password"   # paste the output into ADMIN_PASSWORD_HASH
+npm start            # http://localhost:3000  — admin: /admin
+npm test             # API tests (node:test)
+npm run test:e2e     # browser tests (needs Playwright)
 ```
 
-Copy the output into `.env` as `ADMIN_PASSWORD_HASH=...`. Choose a long, unique password. Do not commit `.env`. For production, the session store should be persistent and reviewed; this starter uses in-memory admin sessions and therefore is not appropriate for multi-instance production deployments without replacement.
+## Payment modes (automatic)
+| Configuration | Checkout | Money |
+|---|---|---|
+| No iyzico keys | Demo orders (`HL-TEST-…`) | None. Demo orders can never be fulfilled |
+| iyzico **sandbox** keys + `PUBLIC_URL` | iyzico hosted page, test cards | None |
+| iyzico **live** keys + `PUBLIC_URL` + `LIVE_PAYMENTS_ENABLED=true` + `PRODUCT_COMPLIANCE_VERIFIED=true` | iyzico hosted page | Real |
 
-## Demo order flow
-1. From the storefront click “Try demo order”.
-2. Enter sample information.
-3. The demo order is saved as `test_unpaid` and explicitly says no payment was collected.
-4. Visit `/admin` and sign in.
-5. Review order details and test copying the supplier text.
-6. The backend intentionally rejects supplier fulfillment/tracking for unpaid demo orders.
+Live keys without both flags keep checkout in demo mode. See `docs/PRODUCT_COMPLIANCE.md`.
 
-## Security already in place
-- `/admin` and `/api/admin/*` require an admin session; `/admin.html` cannot be opened directly.
-- Admin cookie `HttpOnly; SameSite=Strict` (+ `Secure` when `NODE_ENV=production`).
-- Cross-origin POST requests are rejected (origin check). Set `PUBLIC_URL` and, behind a proxy, `TRUST_PROXY=true`.
-- Rate limits on the API, login and demo orders. Expired sessions are purged.
+### Why iyzico
+The seller operates from Turkey. Stripe (stripe.com/global) and Shopify Payments
+(help.shopify.com supported countries) do not list Turkey as of October 2026. iyzico is a
+licensed Turkish payment institution that pays out to a Turkish bank account and supports
+USD.
 
-## Values
-- Reference supplier product cost: $27.24/unit.
-- Reference shipping to customer: $15/unit.
-- Reference logistics cost: $42.24/unit before fees, taxes, advertising, returns or other costs.
-- Supplier has indicated 2–8 days; confirm for the actual carrier, destination and shipping method before promising this to buyers.
-- Default preview price: $74.99. Change `STORE_PRICE_USD` in `.env` after market research.
+### How a payment is confirmed
+1. `POST /api/checkout` validates the cart and the US address, **computes the total on the
+   server**, saves a `pending` order and opens an iyzico Checkout Form.
+2. The customer pays on iyzico's page. Card data never reaches this server.
+3. iyzico returns the customer to `POST /api/checkout/iyzico/callback`, and can also call
+   `POST /api/webhooks/iyzico`. Webhooks need a valid `X-IYZ-SIGNATURE-V3` (HMAC-SHA256
+   with the secret key), are de-duplicated, and only *trigger* a check.
+4. The order becomes `paid` only after the server **retrieves the payment from iyzico's
+   authenticated API** and confirms: status SUCCESS, same token and basket, currency USD,
+   paid amount ≥ total, and fraud status approved. Declined → `failed`. Anything unclear
+   stays `pending`, with the reason in the order history.
+5. The admin gets an alert (dashboard + optional email/Discord/Slack).
 
-## Before production — mandatory checklist
-- Verify the exact heated product's safety/compliance documentation for the US market. Do not invent UL/ETL/FCC/CPSC claims or electrical safety features.
-- Obtain commercial rights for supplier images. Replace generic mood imagery with accurate, authorized product photography.
-- iyzico is integrated (hosted checkout + server-side verification). Complete the "Before going live with iyzico" list above and test the full flow in sandbox.
-- Implement durable sessions/CSRF protection and production-grade admin auth; configure secure cookies and persistent session storage.
-- Configure order confirmation, shipping and delay emails with a real mail provider.
-- Review sales tax, privacy, consumer, returns, product liability and electrical-product obligations with qualified advice for the relevant jurisdictions.
-- Verify delivery estimate 2–8 days for the actual US service and ZIP codes.
-- Test checkout, refunds, idempotency, duplicate webhooks, rate limits, backups, monitoring and mobile accessibility.
-- Remove placeholder contact email `support@example.com` and finish all policy pages.
-- Configure HTTPS, production secrets, database persistence and backups on the selected host.
+Refunds (partial or full) run through iyzico's refund API from the order page, or can be
+recorded when they were made in the iyzico panel. Each refund has an idempotency key.
+
+## Order desk (`/admin`)
+- **Dashboard**: paid orders, revenue retained, refunds, costs (estimated vs actual),
+  estimated profit and margin.
+- **Order**: customer and address, items, payment, refunds, history.
+- **Copy Supplier Order**: order reference, supplier SKU, colour, quantity, recipient and
+  address. Phone only when ticked, with the supplier instructions. No email, prices or
+  payment data.
+- **Supplier order**: date, supplier reference, actual product and shipping cost,
+  confirmation.
+- **Shipment**: carrier, tracking number, https tracking link, ship date. Without a
+  tracking number, a verified justification is required. The customer email is prepared,
+  and sent only if Resend is configured; otherwise it is marked "prepared — NOT sent".
+- **Statuses**: payment `pending · paid · failed · partially_refunded · refunded`;
+  logistics `unfulfilled · supplier_order_prepared · supplier_ordered · shipped · delivered
+  · cancelled · return_requested · returned`. Transitions are enforced on the server, and
+  only verified paid orders can move toward shipping.
+- **Settings**: cost estimates (27.24 + 15.00 = **42.24 USD/unit** by default), payment-fee
+  estimate, database backup download. **Activity**: audit log of admin actions.
+
+Profit = retained revenue (paid − refunds) − product − shipping − payment fees − ads − other.
+Margin = profit ÷ retained revenue × 100. Actual costs replace estimates once recorded.
+
+## Security
+- Admin: scrypt password hash, server-side sessions in SQLite (only a SHA-256 of the
+  token is stored), `HttpOnly; SameSite=Strict` cookie (`__Host-`, `Secure` in
+  production), CSRF token on every admin write, origin check, login rate limit, audit log.
+- Every admin route is checked on the server; `/admin.html` is not public.
+- Helmet with a strict Content-Security-Policy (no inline scripts), HSTS in production.
+- Input validation (US states, ZIP, email, quantities, https tracking links),
+  parameterised SQL only, request size limits, rate limits.
+- No secrets in the code or sent to the browser; errors are logged with a reference
+  instead of request bodies.
+- Daily SQLite backups (rotated) plus an on-demand download in Settings.
+
+## Deploy on Render
+Already created: service `havenlume`. Build `cd boutique && npm ci --omit=dev`,
+start `cd boutique && node server.js`.
+1. **Persistent disk (required for real orders)**: plan Starter or higher, add a disk
+   mounted at `/var/data`, then set `DB_PATH=/var/data/havenlume.sqlite`. On the free plan
+   the database is wiped at every deploy or restart.
+2. Environment: see `.env.example` (`NODE_ENV=production`, `TRUST_PROXY=true`,
+   `PUBLIC_URL`, `ADMIN_PASSWORD_HASH`, `STATUS_LINK_SECRET`, iyzico keys…).
+
+## iyzico account steps
+1. Sandbox: create an account at https://sandbox-merchant.iyzipay.com, copy the API key
+   and secret key, and test with card `5528 7900 0000 0008` (any future date, CVC 123).
+2. Webhook: in the merchant panel, set the notification URL to
+   `https://<your-domain>/api/webhooks/iyzico`, and ask iyzico (entegrasyon@iyzico.com) to
+   enable **X-IYZ-SIGNATURE-V3**.
+3. Live: open a merchant account (registered business), enable **USD** and **foreign
+   cards**, confirm what identity number to send for US buyers
+   (`IYZICO_BUYER_IDENTITY_NUMBER`), then set the live keys and
+   `IYZICO_URI=https://api.iyzipay.com`.
 
 ## Files
-- `public/hero-concept.jpg`: hero mood image (generic lifestyle image — replace with authorised product photography before launch).
-- `server.js`: Express API, SQLite schema (+ automatic column migrations), admin auth, demo orders, iyzico checkout and protected admin routes.
-- `iyzico.js`: iyzico Checkout Form initialize / retrieve, payment verification rules, live-mode gating.
-- `public/order-status.html`: page shown after payment.
-- `public/index.html`: storefront.
-- `public/styles.css`: visual design.
-- `public/store.js`: demo order flow.
-- `public/admin-login.html`, `public/admin.html`: admin UI.
-- `public/policies.html`: draft policies.
-- `.env.example`: environment configuration template.
-- `docs/CLAUDE_NEXT_STEPS.md`: prompt/checklist for Claude Code.
+- `server.js`: entry point.
+- `src/app.js`: routes and security middleware.
+- `src/orders.js`: order rules (checkout, payment confirmation, refunds, logistics, supplier text, emails).
+- `src/iyzico.js`: iyzico checkout, retrieval, webhook signature, refunds, live-mode gate.
+- `src/profit.js`: profit and dashboard maths (integer cents).
+- `src/db.js`: SQLite schema and migrations.
+- `src/auth.js`: admin sessions, CSRF and audit log.
+- `src/notify.js`: emails (Resend) and admin alerts.
+- `src/catalog.js`: product, variants, supplier SKU.
+- `src/backup.js`: backups.
+- `src/config.js`: environment configuration.
+- `public/`: storefront pages and `js/`, admin (`admin.html`, `js/admin.js`).
+- `test/store.test.js`: API tests. `test/e2e.cjs`: browser tests.
+- `docs/PRODUCT_COMPLIANCE.md`: documents required before live payments.

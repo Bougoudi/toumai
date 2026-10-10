@@ -1,1 +1,24 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HavenLume Admin Login</title><link rel="stylesheet" href="/styles.css"></head><body><div class="admin-wrap" style="max-width:480px;margin-top:12vh"><div class="admin-card"><a class="brand" href="/">HavenLume<span>ADMINISTRATION</span></a><h2 style="font-size:32px;margin-top:35px">Sign in</h2><form id="login" class="admin-form"><label>Username</label><input name="username" autocomplete="username" required><label>Password</label><input name="password" type="password" autocomplete="current-password" required><button class="button full" type="submit">Sign in</button><p id="error" class="danger"></p></form><p class="micro">Set ADMIN_USERNAME and ADMIN_PASSWORD_HASH in your private environment configuration.</p></div></div><script>document.getElementById("login").addEventListener("submit",async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.target));const r=await fetch("/api/admin/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});const j=await r.json();if(r.ok)location.href="/admin";else document.getElementById("error").textContent=j.error||"Login failed";});</script></body></html>
+<!doctype html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>HavenLume Admin — Sign in</title>
+<link rel="stylesheet" href="/styles.css">
+<script src="/js/admin-login.js" defer></script>
+</head>
+<body class="admin-body">
+<main class="admin-wrap login-wrap">
+ <div class="admin-card">
+  <a class="brand" href="/">HavenLume<span>ADMINISTRATION</span></a>
+  <h1 class="admin-h1">Sign in</h1>
+  <form id="login" class="admin-form">
+   <label for="u">Username</label><input id="u" name="username" autocomplete="username" required>
+   <label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password" required>
+   <button class="button full" type="submit">Sign in</button>
+   <p id="error" class="form-error" role="alert"></p>
+  </form>
+ </div>
+</main>
+</body>
+</html>
