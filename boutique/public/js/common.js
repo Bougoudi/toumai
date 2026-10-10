@@ -46,6 +46,77 @@
     clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 4200);
   }
 
+  // ------------------------------------------------------------ analytics & privacy choices
+  // First-party and cookieless. Nothing is sent when the visitor declines, when the
+  // browser sends Global Privacy Control or Do Not Track, or — in opt-in mode — before
+  // the visitor accepts. Only whitelisted, non-personal properties are ever sent.
+  const CHOICE_KEY = "hl_analytics_choice";
+  const choice = {
+    get() { try { return localStorage.getItem(CHOICE_KEY); } catch { return null; } },
+    set(v) { try { localStorage.setItem(CHOICE_KEY, v); } catch { /* private mode: choice lasts for this page */ } choice.memory = v; },
+    memory: null,
+  };
+  const browserOptOut = () => navigator.globalPrivacyControl === true || navigator.doNotTrack === "1" || window.doNotTrack === "1";
+  let analyticsCfg = null;
+  const queue = [];
+  function analyticsAllowed() {
+    if (!analyticsCfg || !analyticsCfg.enabled || browserOptOut()) return false;
+    const c = choice.memory || choice.get();
+    if (c === "denied") return false;
+    return analyticsCfg.consentMode === "opt-in" ? c === "granted" : true;
+  }
+  const PROP_RULES = { item_id: "id", variant: "id", quantity: "int", value: "money", currency: "currency" };
+  function cleanProps(d) {
+    const out = {};
+    for (const [k, kind] of Object.entries(PROP_RULES)) {
+      const v = d && d[k];
+      if (kind === "id" && typeof v === "string" && /^[a-z0-9-]{1,40}$/.test(v)) out[k] = v;
+      if (kind === "int" && Number.isInteger(v) && v > 0 && v <= 100) out[k] = v;
+      if (kind === "money" && typeof v === "number" && Number.isFinite(v) && v >= 0) out[k] = Math.round(v * 100) / 100;
+      if (kind === "currency" && v === "USD") out[k] = v;
+    }
+    return out;
+  }
+  function send(payload) {
+    if (!analyticsAllowed()) return;
+    const body = JSON.stringify({ ...payload, p: location.pathname });
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon("/api/collect", new Blob([body], { type: "application/json" }))) return;
+    } catch { /* fall back */ }
+    fetch("/api/collect", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true, credentials: "same-origin" }).catch(() => {});
+  }
+  function track(name, props) {
+    const p = { t: "event", n: name, d: cleanProps(props) };
+    if (!analyticsCfg) queue.push(p); else send(p);
+  }
+  function pageview() { send({ t: "pageview", r: document.referrer || "" }); }
+
+  function privacyPanel(force) {
+    if (!analyticsCfg || !analyticsCfg.enabled) return;
+    document.getElementById("privacy-choices")?.remove();
+    const c = choice.memory || choice.get();
+    if (!force && (analyticsCfg.consentMode !== "opt-in" || c || browserOptOut())) return;
+    const status = browserOptOut() ? "Your browser sends a privacy signal (Global Privacy Control or Do Not Track), so analytics stay off."
+      : analyticsAllowed() ? "Analytics are currently ON." : "Analytics are currently OFF.";
+    const panel = el("section", { id: "privacy-choices", class: "privacy-choices", role: "dialog", "aria-label": "Privacy choices" },
+      el("p", { class: "privacy-title", text: "Privacy choices" }),
+      el("p", { text: "We'd like to measure visits with our own cookie-free analytics: pages viewed, approximate country and shopping steps. No cookies, no advertising, and no names, emails or addresses. " },
+        el("a", { href: "/privacy#analytics", text: "Learn more" })),
+      force ? el("p", { class: "micro", text: status }) : null,
+      el("div", { class: "privacy-actions" },
+        el("button", { type: "button", class: "button", "data-choice": "granted", text: "Allow analytics", disabled: browserOptOut() }),
+        el("button", { type: "button", class: "button secondary", "data-choice": "denied", text: "Decline" })));
+    panel.addEventListener("click", (e) => {
+      const v = e.target.getAttribute && e.target.getAttribute("data-choice");
+      if (!v) return;
+      const before = analyticsAllowed();
+      choice.set(v); panel.remove();
+      if (!before && analyticsAllowed()) { pageview(); queue.splice(0).forEach(send); }
+      toast(v === "granted" ? "Thanks — analytics allowed." : "Analytics declined. Nothing will be measured on this browser.");
+    });
+    document.body.append(panel);
+  }
+
   const NAV = [["/product", "Shop"], ["/#story", "Our Story"], ["/faq", "FAQ"], ["/contact", "Contact"]];
 
   function header() {
@@ -75,7 +146,8 @@
       el("p", { text: "Comfort for the moments that matter." }),
       el("div", { class: "footer-links" },
         [["/shipping", "Shipping"], ["/returns", "Returns"], ["/privacy", "Privacy"], ["/terms", "Terms of Sale"], ["/faq", "FAQ"], ["/contact", "Contact"]]
-          .map(([href, label]) => el("a", { href, text: label }))),
+          .map(([href, label]) => el("a", { href, text: label })),
+        el("button", { type: "button", class: "footer-link-btn", text: "Privacy choices", onclick: () => privacyPanel(true) })),
       el("small", { text: `© ${year} ${cfg.businessName || "HavenLume"}. All prices in USD.` }));
   }
 
@@ -86,6 +158,9 @@
     const cfg = await config().catch(() => ({}));
     const bottom = document.getElementById("site-footer");
     if (bottom) bottom.replaceWith(footer(cfg));
+    analyticsCfg = cfg.analytics || { enabled: false };
+    if (analyticsAllowed()) { pageview(); queue.splice(0).forEach(send); } else { queue.length = 0; }
+    privacyPanel(false);
     if (cfg.checkoutMode === "sandbox" || cfg.checkoutMode === "demo") {
       const bar = document.querySelector(".announcement");
       if (bar) bar.textContent = cfg.checkoutMode === "sandbox" ? "Test mode — payments use the iyzico sandbox, no real charges" : "Preview store — orders are not charged or shipped yet";
@@ -96,6 +171,6 @@
     document.querySelectorAll("[data-return-days]").forEach(n => { n.textContent = cfg.returnWindowDays; });
   }
 
-  window.HL = { cart, config, catalog, fmt, el, toast };
+  window.HL = { cart, config, catalog, fmt, el, toast, track, privacyPanel, _analyticsAllowed: analyticsAllowed };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount); else mount();
 })();

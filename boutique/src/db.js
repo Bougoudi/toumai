@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const DEFAULT_SETTINGS = {
   product_cost_usd: "27.24",      // supplier price per unit (estimate)
@@ -173,6 +173,40 @@ CREATE TABLE IF NOT EXISTS emails (
   sent_at TEXT
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+-- v3: first-party, cookieless analytics. No IP address, name or email is stored.
+-- "visitor" is a SHA-256 of a DAILY random salt + IP + user agent; the salt is deleted
+-- the next day, so a visitor can't be recognised across days or linked to a person.
+CREATE TABLE IF NOT EXISTS analytics_salts (day TEXT PRIMARY KEY, salt TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS analytics_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  visitor TEXT NOT NULL,
+  day TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  last_seen INTEGER NOT NULL,
+  country TEXT,
+  entry_path TEXT,
+  referrer TEXT,
+  pageviews INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS analytics_sessions_day ON analytics_sessions(day);
+CREATE INDEX IF NOT EXISTS analytics_sessions_visitor ON analytics_sessions(visitor, last_seen);
+CREATE INDEX IF NOT EXISTS analytics_sessions_seen ON analytics_sessions(last_seen);
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  day TEXT NOT NULL,
+  hour INTEGER NOT NULL,
+  session_id INTEGER,
+  visitor TEXT,
+  type TEXT NOT NULL CHECK (type IN ('pageview','event')),
+  name TEXT NOT NULL,
+  path TEXT,
+  country TEXT,
+  props TEXT,
+  source TEXT NOT NULL CHECK (source IN ('client','server'))
+);
+CREATE INDEX IF NOT EXISTS analytics_events_day ON analytics_events(day, type);
 `);
     const ins = db.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)");
     for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) ins.run(k, v);

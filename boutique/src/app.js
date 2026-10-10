@@ -12,6 +12,7 @@ const notify = require("./notify");
 const auth = require("./auth");
 const orders = require("./orders");
 const backup = require("./backup");
+const analytics = require("./analytics");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
@@ -91,6 +92,7 @@ function createApp({ cfg, db, log = console }) {
       deliveryMinDays: cfg.deliveryMinDays, deliveryMaxDays: cfg.deliveryMaxDays, deliveryVerified: cfg.deliveryVerified,
       returnWindowDays: cfg.returnWindowDays, supportEmail: cfg.supportEmail,
       businessName: cfg.businessName, businessAddress: cfg.businessAddress,
+      analytics: { enabled: cfg.analytics.enabled, consentMode: cfg.analytics.consentMode },
     });
   });
 
@@ -179,6 +181,14 @@ function createApp({ cfg, db, log = console }) {
     });
   });
 
+  // First-party analytics beacon (cookieless). Always 204: the client learns nothing.
+  app.post("/api/collect", limiter(60_000, 60), (req, res) => {
+    try {
+      analytics.collect(db, cfg, req, Boolean(auth.getSession(db, cfg, req)));
+    } catch (err) { log.error(`analytics collect failed: ${err.message || err}`); }
+    res.status(204).end();
+  });
+
   app.post("/api/contact", limiter(10 * 60_000, 5), wrap(async (req, res) => {
     const b = req.body || {};
     const name = String(b.name || "").trim().slice(0, 120);
@@ -223,6 +233,15 @@ function createApp({ cfg, db, log = console }) {
       unreadNotifications: db.prepare("SELECT COUNT(*) n FROM notifications WHERE read_at IS NULL").get().n,
       openMessages: db.prepare("SELECT COUNT(*) n FROM messages WHERE handled_at IS NULL").get().n,
     });
+  });
+
+  app.get("/api/admin/analytics", requireAdmin, (req, res) => {
+    try {
+      res.set("Cache-Control", "no-store").json(analytics.report(db, cfg, req.query));
+    } catch (err) {
+      if (err instanceof analytics.RangeError400) return res.status(400).json({ error: err.message });
+      throw err;
+    }
   });
 
   app.get("/api/admin/orders", requireAdmin, (req, res) => {

@@ -226,3 +226,38 @@ footer small{font-size:10px;color:#c8b9aa}
  .admin-top{padding:12px 14px}
  .drawer-panel{padding:16px 14px 60px}
 }
+
+/* privacy choices */
+.privacy-choices{position:fixed;left:16px;right:16px;bottom:16px;max-width:520px;margin-left:auto;background:var(--white);border:1px solid var(--line);box-shadow:0 18px 50px rgba(57,44,37,.18);padding:18px 20px;z-index:55;font-size:13px}
+.privacy-choices p{margin:0 0 10px}
+.privacy-title{font-weight:700;font-size:14px}
+.privacy-actions{display:flex;gap:10px;flex-wrap:wrap}
+.privacy-actions .button{margin-top:4px;padding:12px 16px}
+.button.secondary{background:transparent;color:var(--ink);border:1px solid var(--espresso)}
+.button.secondary:hover{background:#efe6da}
+.footer-link-btn{background:none;border:0;color:inherit;font:inherit;font-size:12px;cursor:pointer;padding:0;text-decoration:underline}
+
+/* analytics admin */
+.an-controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.an-controls .seg{display:inline-flex;border:1px solid var(--line);background:#fff}
+.an-controls .seg button{border:0;background:none;padding:9px 12px;font:600 12px "DM Sans",sans-serif;cursor:pointer;color:var(--muted)}
+.an-controls .seg button[aria-pressed="true"]{background:var(--espresso);color:#fff}
+.an-controls input[type=date]{padding:8px;border:1px solid var(--line);font:inherit;font-size:12px}
+.an-updated{margin-left:auto;font-size:12px;color:var(--muted)}
+.an-state{padding:28px;text-align:center;color:var(--muted)}
+.an-state.error{color:var(--danger)}
+.chart-wrap{position:relative}
+.chart-svg{width:100%;height:auto;display:block;overflow:visible}
+.chart-svg .grid{stroke:#ece5db;stroke-width:1}
+.chart-svg .axis-label{fill:var(--muted);font-size:11px;font-family:"DM Sans",sans-serif}
+.chart-svg .bar{fill:#a9652e}
+.chart-svg .hit{fill:transparent;cursor:default}
+.chart-svg .hit:hover+.bar,.chart-svg .hit:focus+.bar{fill:#c27c44}
+.chart-svg .hit:focus{outline:none}
+.chart-tip{position:absolute;pointer-events:none;background:var(--white);border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.08);padding:8px 10px;font-size:12px;white-space:nowrap;transform:translate(-50%,-100%);z-index:3}
+.chart-tip b{font-size:14px}
+.share{display:flex;align-items:center;gap:8px;min-width:120px}
+.share-track{flex:1;height:6px;background:#efe8de;border-radius:3px;overflow:hidden}
+.share-fill{height:100%;background:#a9652e;border-radius:3px}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.sr{display:inline;font-size:12px;font-weight:600;margin:0}

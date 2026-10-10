@@ -12,6 +12,7 @@
  <a class="brand" href="/">HavenLume<span>ORDER DESK</span></a>
  <nav class="admin-tabs" aria-label="Admin">
   <button data-tab="dashboard" class="active">Dashboard</button>
+  <button data-tab="analytics">Analytics</button>
   <button data-tab="orders">Orders</button>
   <button data-tab="messages">Messages <span class="badge" id="msgBadge" hidden></span></button>
   <button data-tab="settings">Settings</button>
@@ -25,6 +26,20 @@
 <main class="admin-wrap">
  <div id="statusBar"></div>
  <section data-panel="dashboard"><div id="dashboard">Loading…</div></section>
+ <section data-panel="analytics" hidden>
+  <div class="admin-card an-controls" role="group" aria-label="Period">
+   <div class="seg" id="anRanges">
+    <button type="button" data-range="today" aria-pressed="false">Today</button>
+    <button type="button" data-range="7d" aria-pressed="true">7 days</button>
+    <button type="button" data-range="30d" aria-pressed="false">30 days</button>
+    <button type="button" data-range="custom" aria-pressed="false">Custom</button>
+   </div>
+   <span id="anCustom" hidden><label class="sr">From <input type="date" id="anFrom"></label> <label class="sr">To <input type="date" id="anTo"></label> <button type="button" class="admin-btn" id="anApply">Apply</button></span>
+   <button type="button" class="admin-btn ghost" id="anRefresh">Refresh</button>
+   <span class="an-updated" id="anUpdated" aria-live="polite"></span>
+  </div>
+  <div id="analytics"></div>
+ </section>
  <section data-panel="orders" hidden>
   <div class="admin-card filters">
    <input id="q" placeholder="Search order, name, email" aria-label="Search">
