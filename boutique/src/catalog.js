@@ -1,7 +1,8 @@
 // Product catalog. Only list facts confirmed by the supplier for the exact SKU.
 // A variant is offered for sale only when `available` is true.
-// Camel Brown is the colour shown in the product photo we have. Pearl White stays
-// unavailable until the supplier confirms stock and provides a real photo of it.
+// The product exists in two colors: brown (Camel Brown) and white (Pearl White), confirmed
+// by the owner. `hasPhoto` is true only when real photos of that color are in the gallery:
+// customers are told otherwise, and the color is kept out of the Google Merchant feed.
 
 const cents = (usd) => Math.round(Number(usd) * 100);
 
@@ -20,8 +21,8 @@ function catalog(cfg) {
       { src: "/images/throw-detail.webp", thumb: "/images/throw-detail-800.webp", width: 900, height: 822, alt: "Detail of the heated throw with its control button visible on the fabric" },
     ],
     variants: [
-      { id: "camel-brown", name: "Camel Brown", supplierVariant: "Camel Brown", available: true, swatch: "#b38e6d" },
-      { id: "pearl-white", name: "Pearl White", supplierVariant: "Pearl White", available: false, swatch: "#efe8dc" },
+      { id: "camel-brown", name: "Camel Brown", supplierVariant: "Camel Brown", available: true, hasPhoto: true, swatch: "#b38e6d" },
+      { id: "pearl-white", name: "Pearl White", supplierVariant: "Pearl White", available: true, hasPhoto: false, swatch: "#efe8dc" },
     ],
   };
 }

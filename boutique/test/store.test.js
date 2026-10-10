@@ -32,7 +32,6 @@ test("1. creates a pending order with server-side totals and opens iyzico", asyn
     assert.equal(sent.callbackUrl, "http://127.0.0.1/api/checkout/iyzico/callback");
 
     for (const [items, msg] of [
-      [[{ variantId: "pearl-white", quantity: 1 }], /not available/],
       [[{ variantId: "gold", quantity: 1 }], /Unknown product/],
       [[{ variantId: "camel-brown", quantity: 9 }], /Maximum 5/],
       [[], /cart is empty/],
@@ -40,6 +39,11 @@ test("1. creates a pending order with server-side totals and opens iyzico", asyn
       const bad = await s.req("POST", "/api/checkout", { customer: CUSTOMER, items });
       assert.equal(bad.status, 400); assert.match(bad.json.error, msg);
     }
+    // Both colors can be ordered, in the same cart
+    const both = await s.req("POST", "/api/checkout", { customer: CUSTOMER, items: [{ variantId: "camel-brown", quantity: 1 }, { variantId: "pearl-white", quantity: 2 }] });
+    assert.equal(both.status, 201);
+    const lines = s.db.prepare("SELECT variant_name, quantity FROM order_items WHERE order_id=(SELECT id FROM orders WHERE order_number=?) ORDER BY id").all(both.json.orderNumber);
+    assert.deepEqual(lines, [{ variant_name: "Camel Brown", quantity: 1 }, { variant_name: "Pearl White", quantity: 2 }]);
     const badZip = await s.req("POST", "/api/checkout", { customer: { ...CUSTOMER, postalCode: "ABCDE" }, items: [{ variantId: "camel-brown", quantity: 1 }] });
     assert.equal(badZip.status, 400);
     const badState = await s.req("POST", "/api/checkout", { customer: { ...CUSTOMER, state: "ZZ" }, items: [{ variantId: "camel-brown", quantity: 1 }] });

@@ -291,3 +291,4 @@ footer small{font-size:10px;color:#c8b9aa}
 .hero-points{list-style:none;padding:0;margin:14px 0 4px;font-size:14px;line-height:1.9}
 .hero-points li::before{content:"✓";color:var(--camel-dark);font-weight:700;margin-right:10px}
 .hero-points li[hidden]{display:none}
+.photo-warning{color:var(--warn);background:#f4ead6;padding:8px 10px}

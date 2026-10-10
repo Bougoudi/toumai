@@ -46,7 +46,12 @@ const auth = require("../src/auth");
     assert.equal(await p.getAttribute(".menu-toggle", "aria-expanded"), "true");
     await p.click('.site-nav a[href="/product"]'); await p.waitForURL("**/product");
     await p.waitForSelector(".swatch");
-    assert.equal(await p.isDisabled(".swatch >> nth=1"), true, "unconfirmed colour cannot be bought");
+    // Both colors can be chosen; the page says when photos don't show the chosen color
+    await p.click(".swatch >> nth=1");
+    assert.match(await p.textContent("#photoNote"), /No photo of Pearl White yet/);
+    assert.equal(await p.textContent("#variantName"), "Pearl White");
+    await p.click(".swatch >> nth=0");
+    assert.equal(await p.textContent("#photoNote"), "Photos show the Camel Brown color.");
     await p.click("#plus"); await p.click("#addToCart");
     assert.equal(await p.textContent("[data-cart-count]"), "2");
     await p.goto(B + "/cart"); await p.waitForSelector(".cart-line");

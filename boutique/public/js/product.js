@@ -31,6 +31,12 @@
       return b;
     }));
     name.textContent = selected ? selected.name : "Unavailable";
+    // Be explicit when the gallery doesn't show the color being bought.
+    const note = document.getElementById("photoNote");
+    if (note) note.textContent = selected && !selected.hasPhoto
+      ? `No photo of ${selected.name} yet — the photos show the Camel Brown color. Same product, ${selected.name.toLowerCase()} color.`
+      : "Photos show the Camel Brown color.";
+    note?.classList.toggle("photo-warning", Boolean(selected && !selected.hasPhoto));
     addBtn.disabled = !selected;
   }
   renderVariants();
