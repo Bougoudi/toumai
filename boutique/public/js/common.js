@@ -233,33 +233,88 @@
     return `${cfg.checkoutMode === "sandbox" ? "Test mode: " : ""}card payment on the hosted page of our payment provider, iyzico${names ? ` (${names})` : ""}. We never see or store your card number.`;
   }
 
-  // The objection FAQ shared by the product page and /faq. Answers use confirmed facts only.
+  // Delivery wording: processing and transit are shown separately, and only once confirmed.
+  function deliveryText(facts, cfg) {
+    const f = facts || {};
+    if (f.handlingTime || f.transitTime) {
+      return [f.handlingTime && `Order processing: ${f.handlingTime} after your payment is confirmed.`,
+        f.transitTime && `Transit to US addresses: ${f.transitTime} after dispatch.`,
+        "These are estimates, not guaranteed delivery dates."].filter(Boolean).join(" ");
+    }
+    if (cfg && cfg.deliveryVerified) return `Most orders arrive within ${cfg.deliveryMinDays}–${cfg.deliveryMaxDays} business days after dispatch. This is an estimate, not a guaranteed date.`;
+    return "Processing and transit times are being confirmed with our supplier, so we don't promise a delivery date yet. Delivery depends on the carrier and your address.";
+  }
+
+  // "Common Questions, Clear Answers": the objections buyers raise about USB heated throws,
+  // answered only with what is confirmed for our exact model. Shared by /product and /faq.
   function productFaq(facts, cfg) {
     const f = facts || {};
-    const tbc = what => `${what} is being confirmed with our supplier. Contact us if you need it before ordering.`;
+    const days = cfg ? cfg.returnWindowDays : 30;
+    const warmData = [f.heatSettings && `Heat settings: ${f.heatSettings}.`, f.heatingZones && `Heating zones: ${f.heatingZones}.`,
+      f.temperatureRange && `Temperature range (manufacturer data): ${f.temperatureRange}.`, f.warmUpTime && `Warm-up time (manufacturer data): ${f.warmUpTime}.`].filter(Boolean);
+    const runtime = f.powerBankIncluded === "yes"
+      ? (f.batteryRuntime ? `With the included power bank${f.batteryCapacity ? ` (${f.batteryCapacity})` : ""}, the manufacturer states: ${f.batteryRuntime}.`
+        : "A power bank is included, but its tested runtime is being confirmed with the manufacturer, so we don't quote one yet.")
+      : f.powerBankIncluded === "no"
+        ? "No power bank is included, so how long it runs depends on the power bank or USB source you use. We don't publish a runtime for power banks we don't sell."
+        : "We're confirming with our supplier whether a power bank is included and, if so, its tested runtime. We don't quote a runtime until it's confirmed.";
+    const clean = (f.care ? `Manufacturer's instructions: ${f.care.replace(/\n+/g, " ")}` : "The exact cleaning instructions are being confirmed with our supplier. Until then, follow the care label supplied with the product.")
+      + (f.machineWashable === "yes" ? " The care label allows machine washing." : f.machineWashable === "no" ? " It is not machine washable." : " Don't machine-wash it unless its care label says you can.")
+      + " Always switch it off and disconnect the USB cable first.";
     return [
+      { id: "warm", primary: true, q: "Does it get warm enough?",
+        a: "It warms up when its USB cable is connected to a compatible power source and it's switched on. "
+          + (warmData.length ? warmData.join(" ") + " " : "Its heat settings and temperature data are being confirmed with our supplier, so we make no claim about how warm it gets yet. ")
+          + `How warm it feels also depends on the power source, the setting and the room. If it isn't right for you, you can request a return within ${days} days of delivery under our returns policy.` },
+      { id: "power-bank", primary: true, q: "Does it come with a power bank?",
+        a: powerBankText(f) + (f.powerSource && f.powerBankIncluded !== "no" ? ` Compatible power sources: ${f.powerSource}.` : "") + (f.powerInput ? ` Required input: ${f.powerInput}.` : "") },
+      { id: "battery", primary: true, q: "How long does the battery last?", a: runtime },
+      { id: "clean", primary: true, q: "How do I clean it?", a: clean },
+      { id: "included", primary: true, q: "What exactly is included?",
+        a: Array.isArray(f.inBox) && f.inBox.length ? "In the box:" : "The exact box contents are being confirmed with our supplier. Please don't assume any accessory is included.",
+        list: Array.isArray(f.inBox) && f.inBox.length ? f.inBox : null,
+        after: Array.isArray(f.notIncluded) && f.notIncluded.length ? `Not included (optional, sold separately): ${f.notIncluded.join(", ")}.` : "" },
+      { id: "arrive", primary: true, q: "When will my order arrive?",
+        a: `We ship to addresses in the United States. ${deliveryText(f, cfg)} You'll receive a tracking link by email as soon as it ships.` },
       { id: "how-it-works", q: "How does the USB-powered blanket work?",
         a: `Connect the throw's USB cable to a compatible USB power source${f.powerSource ? ` (${f.powerSource})` : ""}, then switch it on${f.controls ? `: ${f.controls}` : " as described in the instructions supplied with the product"}.`
-          + (f.heatSettings ? ` Heat settings: ${f.heatSettings}.` : " The heat settings are being confirmed with our supplier.")
           + (f.powerInput ? ` Power input: ${f.powerInput}.` : "") },
-      { id: "power-bank", q: "Is a power bank included?", a: powerBankText(f) },
-      { id: "dimensions", q: "What are the exact dimensions?", a: f.dimensions ? `${f.dimensions}.${f.weight ? ` Weight: ${f.weight}.` : ""}` : tbc("The exact size") },
-      { id: "shipping-time", q: "How long does shipping take?",
-        a: "We ship to addresses in the United States. " + (cfg && cfg.deliveryVerified
-          ? `Most orders arrive within ${cfg.deliveryMinDays}–${cfg.deliveryMaxDays} business days after dispatch.`
-          : "Delivery estimates depend on the shipping service and destination; we only publish an estimate once it's verified. See our shipping policy.") },
+      { id: "dimensions", q: "What are the exact dimensions?", a: f.dimensions ? `${f.dimensions}.${f.weight ? ` Weight: ${f.weight}.` : ""}` : "The exact size is being confirmed with our supplier. Contact us if you need it before ordering." },
+      { id: "right-item", q: "What if I receive the wrong item or color?",
+        a: "Before passing your order to our supplier, we check the product reference, color and quantity against your order. If you still receive the wrong item, contact us within 7 days of delivery with a photo: we'll send a replacement or refund you, including return shipping." },
       { id: "tracking", q: "Can I track my order?", a: "Yes. When your order ships, we email you a tracking link. You can also check your order status from the link in your confirmation email." },
-      { id: "returns", q: "What is your return policy?", a: `You can request a return within ${cfg ? cfg.returnWindowDays : 30} days of delivery, under the conditions in our returns policy. Approved refunds go back to the original payment method.` },
-      { id: "care", q: "How should I care for the blanket?", a: (f.care ? f.care.replace(/\n+/g, " ") + " " : "Follow the care label and the instructions supplied with the product. ") + "Always switch it off and disconnect the USB cable before cleaning." },
+      { id: "returns", q: "What is your return policy?", a: `You can request a return within ${days} days of delivery, under the conditions in our returns policy. Approved refunds go back to the original payment method.` },
       { id: "safety", q: "What safety instructions should I follow?",
         a: "Never use it while sleeping, on infants or young children, or on anyone who can't remove it or switch it off on their own. Use only a compatible USB power source, never use it wet, and disconnect it when not in use."
           + (f.manufacturerWarnings ? ` The manufacturer also says: ${f.manufacturerWarnings.replace(/\n+/g, " ")}` : " Always follow the safety instructions supplied with the product.") },
     ];
   }
+  const answerNodes = it => [el("p", { text: it.a }), it.list ? el("ul", {}, it.list.map(t => el("li", { text: t }))) : null, it.after ? el("p", { text: it.after }) : null];
   function renderFaq(container, items) {
-    container.replaceChildren(...items.map(it => el("details", { id: "q-" + it.id }, el("summary", { text: it.q }), el("p", { text: it.a }))));
+    container.replaceChildren(...items.map(it => el("details", { id: "q-" + it.id }, el("summary", { text: it.q }), ...answerNodes(it))));
+  }
+  // Always-visible answers (no click needed) for the main objections.
+  function renderAnswers(container, items) {
+    container.replaceChildren(...items.map(it => el("article", { class: "answer-card", id: "a-" + it.id }, el("h3", { text: it.q }), ...answerNodes(it))));
   }
 
-  window.HL = { TBC, factOr, powerBankText, paymentText, productFaq, renderFaq, cart, config, catalog, fmt, el, toast, track, paymentIcons, campaign, privacyPanel, _analyticsAllowed: analyticsAllowed };
+  // "Before You Order": what a buyer must know before paying, on the product, cart and checkout pages.
+  function beforeYouOrder(facts, cfg) {
+    const f = facts || {};
+    const specs = [f.dimensions && `Size ${f.dimensions}`, f.heatSettings && `heat: ${f.heatSettings}`, f.powerInput && `input: ${f.powerInput}`].filter(Boolean);
+    const rows = [
+      ["Key specs", specs.length ? specs.join(" · ") + "." : "Size, heat settings and power input are being confirmed with our supplier.", "/product#specs"],
+      ["Power source", `You need a compatible USB power source${f.powerSource ? ` (${f.powerSource})` : ""}. ${powerBankText(f)}`, "/product#power"],
+      ["In the box", Array.isArray(f.inBox) && f.inBox.length ? f.inBox.join(", ") + "." + (Array.isArray(f.notIncluded) && f.notIncluded.length ? ` Not included: ${f.notIncluded.join(", ")}.` : "") : "Exact contents being confirmed. Don't assume any accessory is included.", "/product#in-box"],
+      ["Safety", "Never use it while sleeping, on infants or young children, or on anyone who can't remove it. Read the manufacturer's instructions before use.", "/product#safety"],
+      ["Delivery & returns", `${deliveryText(f, cfg)} Tracking by email. ${cfg ? cfg.returnWindowDays : 30}-day returns; wrong or damaged items are on us.`, "/shipping"],
+      ["Questions?", cfg && cfg.supportEmail ? `Write to ${cfg.supportEmail} or use our contact form.` : "Use our contact form — we answer with what our supplier has confirmed.", "/contact"],
+    ];
+    return el("section", { class: "before-order", "aria-labelledby": "beforeOrderTitle" },
+      el("h2", { id: "beforeOrderTitle", text: "Before You Order" }),
+      el("dl", {}, rows.map(([t, d, href]) => el("div", {}, el("dt", { text: t }), el("dd", {}, d + " ", el("a", { href, class: "text-link", text: t === "Questions?" ? "Contact us" : "Details" }))))));
+  }
+
+  window.HL = { TBC, factOr, powerBankText, paymentText, deliveryText, productFaq, renderFaq, renderAnswers, beforeYouOrder, cart, config, catalog, fmt, el, toast, track, paymentIcons, campaign, privacyPanel, _analyticsAllowed: analyticsAllowed };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount); else mount();
 })();

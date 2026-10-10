@@ -17,6 +17,7 @@ const promotions = require("./promotions");
 const marketing = require("./marketing");
 const seo = require("./seo");
 const productFacts = require("./product-facts");
+const orderChecks = require("./order-checks");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
@@ -118,7 +119,7 @@ function createApp({ cfg, db, log = console }) {
       variants: p.variants.map(v => ({ id: v.id, name: v.name, available: v.available, hasPhoto: Boolean(v.hasPhoto), swatch: v.swatch })), states: orders.US_STATES,
       // Only facts confirmed by the owner; anything absent is shown as "being confirmed".
       facts: productFacts.publicFacts(productFacts.get(db)),
-      factLabels: Object.fromEntries(productFacts.FIELDS.map(f => [f.key, f.label])) });
+      factLabels: Object.fromEntries(productFacts.FIELDS.filter(f => !f.internal).map(f => [f.key, f.label])) });
   });
 
   const startCheckout = wrap(async (req, res) => {
@@ -254,6 +255,7 @@ function createApp({ cfg, db, log = console }) {
       unreadNotifications: db.prepare("SELECT COUNT(*) n FROM notifications WHERE read_at IS NULL").get().n,
       openMessages: db.prepare("SELECT COUNT(*) n FROM messages WHERE handled_at IS NULL").get().n,
       productFactsMissing: productFacts.missing(productFacts.get(db)).length,
+      ordersOnHold: db.prepare("SELECT COUNT(*) n FROM orders WHERE on_hold=1 AND is_test=0").get().n,
     });
   });
 
@@ -282,7 +284,7 @@ function createApp({ cfg, db, log = console }) {
       id: o.id, order_number: o.order_number, created_at: o.created_at, is_test: Boolean(o.is_test),
       customer_name: o.customer_name, customer_email: o.customer_email, state: o.state,
       items: byId.get(o.id) || "", total_cents: o.total_cents, payment_status: o.payment_status,
-      fulfillment_status: o.fulfillment_status, tracking_number: o.tracking_number, profit: orderProfit(o),
+      fulfillment_status: o.fulfillment_status, tracking_number: o.tracking_number, on_hold: Boolean(o.on_hold), profit: orderProfit(o),
     })));
   });
 
@@ -321,6 +323,29 @@ function createApp({ cfg, db, log = console }) {
     try { v = await orders.confirmPayment(db, cfg, o, "admin re-check"); }
     catch (err) { return res.status(502).json({ error: `iyzico lookup failed: ${err.message || err}` }); }
     res.status(v.outcome === "paid" ? 200 : 409).json(v.outcome === "paid" ? { ok: true } : { error: `Not paid: ${v.reason}` });
+  }));
+  // Supplier preparation checklist and anomalies (holds block supplier order and shipment).
+  const loadOrder = (req) => {
+    const o = orders.getOrder(db, orderId(req));
+    if (!o) throw new orders.OrderError(404, "Order not found.");
+    return o;
+  };
+  app.post("/api/admin/orders/:id/checks", requireAdmin, adminAction("order_check", (req, res) => {
+    const o = loadOrder(req);
+    orderChecks.setCheck(db, o, orders.getItems(db, o.id), req.body || {}, req.admin.username);
+    res.json({ ok: true, checklist: orderChecks.checklist(db, orders.getOrder(db, o.id), orders.getItems(db, o.id)) });
+  }));
+  app.post("/api/admin/orders/:id/issues", requireAdmin, adminAction("order_issue_opened", (req, res) => {
+    const o = loadOrder(req);
+    const id = orderChecks.openIssue(db, o, req.body || {}, req.admin.username);
+    res.status(201).json({ ok: true, id, on_hold: Boolean(orders.getOrder(db, o.id).on_hold) });
+  }));
+  app.post("/api/admin/orders/:id/issues/:issueId/resolve", requireAdmin, adminAction("order_issue_resolved", (req, res) => {
+    const o = loadOrder(req);
+    const issueId = Number(req.params.issueId);
+    if (!Number.isInteger(issueId) || issueId <= 0) throw new orders.OrderError(400, "Invalid anomaly id.");
+    orderChecks.resolveIssue(db, o, issueId, req.body || {}, req.admin.username);
+    res.json({ ok: true, on_hold: Boolean(orders.getOrder(db, o.id).on_hold) });
   }));
   app.post("/api/admin/orders/:id/notes", requireAdmin, adminAction("notes_updated", (req, res) => {
     const id = orderId(req);
@@ -425,7 +450,7 @@ function createApp({ cfg, db, log = console }) {
   app.use("/api/", (_req, res) => res.status(404).json({ error: "Not found." }));
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
-    if (err instanceof orders.OrderError || err instanceof promotions.PromoError || err instanceof marketing.MarketingError || err instanceof productFacts.FactsError) {
+    if (err instanceof orders.OrderError || err instanceof promotions.PromoError || err instanceof marketing.MarketingError || err instanceof productFacts.FactsError || err instanceof orderChecks.CheckError) {
       return res.status(err.status).json({ error: err.message });
     }
     if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid JSON." });

@@ -9,6 +9,7 @@ const notify = require("./notify");
 const analytics = require("./analytics");
 const promotions = require("./promotions");
 const { cleanUtm } = require("./utm");
+const checks = require("./order-checks");
 
 const now = () => new Date().toISOString();
 const usd = (c) => `$${(c / 100).toFixed(2)}`;
@@ -135,6 +136,8 @@ function orderDetail(db, id) {
     events: db.prepare("SELECT event,details,actor,created_at FROM order_events WHERE order_id=? ORDER BY id DESC").all(id),
     refunds: db.prepare("SELECT amount_cents,method,provider_ref,reason,actor,created_at FROM refunds WHERE order_id=? ORDER BY id DESC").all(id),
     emails: db.prepare("SELECT id,kind,to_addr,subject,body,status,error,created_at,sent_at FROM emails WHERE order_id=? ORDER BY id DESC").all(id),
+    checklist: checks.checklist(db, o, getItems(db, id)),
+    issues: checks.issues(db, id),
   };
 }
 
@@ -244,6 +247,10 @@ function assertTransition(o, to) {
   }
 }
 
+function assertNotOnHold(o) {
+  if (o.on_hold) throw new OrderError(409, "This order is on hold because of an open anomaly. Resolve it before continuing.");
+}
+
 const optCents = (v) => {
   if (v === undefined || v === null || v === "") return null;
   const n = Number(v);
@@ -271,6 +278,7 @@ function supplierOrderText(db, cfg, orderId, { includePhone }, actor) {
   if (!o) throw new OrderError(404, "Order not found.");
   if (o.is_test) throw new OrderError(409, "Demo orders are unpaid and must never be sent to the supplier.");
   if (!["paid", "partially_refunded"].includes(o.payment_status)) throw new OrderError(409, "Only paid orders can be sent to the supplier.");
+  assertNotOnHold(o);
   const items = getItems(db, orderId);
   const lines = [
     `Order reference: ${o.order_number}`,
@@ -296,7 +304,10 @@ function recordSupplierOrder(db, orderId, b, actor) {
   if (!o) throw new OrderError(404, "Order not found.");
   const reference = str(b.supplierReference, 100);
   if (!reference) throw new OrderError(400, "Supplier order reference is required.");
+  assertNotOnHold(o);
   assertTransition(o, "supplier_ordered");
+  const missing = checks.missingBeforeSupplier(db, orderId);
+  if (missing.length) throw new OrderError(409, `Complete the supplier checklist first: ${missing.join("; ")}.`);
   const orderedAt = optDate(b.supplierOrderedAt) || now();
   db.transaction(() => {
     db.prepare(`UPDATE orders SET supplier_reference=?, supplier_ordered_at=?, supplier_confirmation=?,
@@ -340,6 +351,7 @@ async function recordShipment(db, cfg, orderId, b, actor) {
   if (!trackingNumber && justification.length < 15) {
     throw new OrderError(400, "A tracking number is required. Without one, explain how the shipment was verified (at least 15 characters).");
   }
+  assertNotOnHold(o);
   assertTransition(o, "shipped");
   db.transaction(() => {
     db.prepare("UPDATE orders SET carrier=?, tracking_number=?, tracking_url=?, shipped_at=?, shipping_justification=?, updated_at=? WHERE id=?")

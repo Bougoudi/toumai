@@ -7,7 +7,7 @@
     const items = cart.items().map(i => ({ ...i, v: p.variants.find(v => v.id === i.variantId) })).filter(i => i.v);
     if (!items.length) {
       linesEl.replaceChildren(el("p", { class: "lede", text: "Your cart is empty." }), el("a", { class: "button", href: "/product" }, "Shop the throw ", el("span", { text: "↗" })));
-      summary.hidden = true; return;
+      summary.hidden = true; document.getElementById("beforeOrder").replaceChildren(); return;
     }
     linesEl.replaceChildren(...items.map(i => {
       const q = el("input", { type: "number", min: "1", max: String(p.maxQtyPerLine), value: String(i.quantity), "aria-label": `Quantity for ${i.v.name}` });
@@ -26,6 +26,8 @@
     document.getElementById("shipping").textContent = cfg.shippingCents > 0 ? fmt(cfg.shippingCents) : "Free";
     document.getElementById("total").textContent = fmt(sub + cfg.shippingCents);
     summary.hidden = false;
+    const before = document.getElementById("beforeOrder");
+    if (!before.firstChild) before.append(HL.beforeYouOrder(p.facts, cfg));
   }
   render();
 })();

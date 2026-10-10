@@ -11,6 +11,7 @@ const { open } = require("../src/db");
 const { createApp } = require("../src/app");
 const iyzico = require("../src/iyzico");
 const auth = require("../src/auth");
+const productFacts = require("../src/product-facts");
 
 function start(port, env) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hl-e2ep-"));
@@ -50,7 +51,7 @@ function start(port, env) {
       await p.goto(B + "/"); await p.waitForLoadState("networkidle");
       await noOverflow(p, `${label} /`); await allImagesLoad(p, `${label} /`);
       assert.equal(await p.locator("#everyday .problem-card").count(), 4, "4 everyday problems");
-      for (const h of ["Working from home", "Chilly evenings", "Everyday convenience", "Thoughtful gifts"]) assert.ok(await p.locator(".problem-tag", { hasText: h }).count(), h);
+      for (const h of ["Working in a cool room", "A cozy evening", "Understanding USB power", "A practical winter gift"]) assert.ok(await p.locator(".problem-tag", { hasText: h }).count(), h);
       assert.ok(await p.locator(".photo-placeholder", { hasText: "Photo coming soon" }).count(), "missing photos are clearly labeled placeholders");
       const prices = await p.$$eval("[data-price]", n => n.map(x => x.textContent));
       assert.ok(prices.length && prices.every(x => x === "$49.99"), `home prices: ${prices}`);
@@ -69,7 +70,22 @@ function start(port, env) {
       assert.equal(tbc, await p.locator("#specTable tr").count(), "no confirmed facts yet: every spec row says it's being confirmed");
       assert.match(await p.textContent("#specTable"), /Being confirmed with our supplier/);
       assert.match(await p.textContent("#boxList"), /being confirmed/);
-      assert.equal(await p.locator("#productFaq details").count(), 8);
+      // Common Questions, Clear Answers: the 6 objections are visible without a click
+      assert.deepEqual(await p.$$eval("#clearAnswers .answer-card h3", n => n.map(x => x.textContent)),
+        ["Does it get warm enough?", "Does it come with a power bank?", "How long does the battery last?", "How do I clean it?", "What exactly is included?", "When will my order arrive?"]);
+      assert.ok(await p.isVisible("#a-warm"), "answers visible");
+      assert.match(await p.textContent("#a-warm"), /make no claim about how warm it gets yet/);
+      assert.match(await p.textContent("#a-battery"), /We don't quote a runtime until it's confirmed/);
+      assert.match(await p.textContent("#a-clean"), /Don't machine-wash it unless its care label says you can/);
+      assert.match(await p.textContent("#a-included"), /Please don't assume any accessory is included/);
+      assert.match(await p.textContent("#a-arrive"), /we don't promise a delivery date yet/);
+      assert.equal(await p.locator("#productFaq details").count(), 6);
+      // Before You Order sits in the buy box, before any payment step
+      const before = p.locator("#beforeOrder .before-order");
+      assert.equal(await before.locator("dt").count(), 6);
+      assert.match(await before.textContent(), /Never use it while sleeping/);
+      const bBox = await before.boundingBox(); const addBox = await p.locator("#addToCart").boundingBox();
+      assert.ok(bBox.y > addBox.y, "Before You Order follows the buy button");
       assert.match(await p.textContent("#payNote"), /Test mode/);
       if (label === "phone") {
         assert.equal(await p.isVisible("#stickyBuy"), true);
@@ -86,7 +102,9 @@ function start(port, env) {
       // ---------------- cart and checkout still work with the same price
       await p.goto(B + "/cart"); await p.waitForSelector(".cart-line");
       assert.equal(await p.textContent("#total"), "$49.99");
+      assert.equal(await p.locator("#beforeOrder .before-order").count(), 1, "Before You Order on the cart page");
       await p.click("#toCheckout"); await p.waitForURL("**/checkout"); await p.waitForSelector("#state option[value=TX]", { state: "attached" });
+      await p.click("#beforeOrderDetails summary"); assert.match(await p.textContent("#beforeOrderDetails"), /Power source/);
       await p.fill("#name", "Jane Doe"); await p.fill("#email", "jane@example.com"); await p.fill("#address1", "100 Congress Ave");
       await p.fill("#city", "Austin"); await p.selectOption("#state", "TX"); await p.fill("#postalCode", "78701"); await p.check("#agree");
       await p.route("https://sandbox-cpp.iyzipay.com/**", r => r.fulfill({ contentType: "text/html", body: "<h1>iyzico (fake)</h1>" }));
@@ -96,7 +114,7 @@ function start(port, env) {
 
       // ---------------- FAQ answers the objections without inventing
       await p.goto(B + "/faq#q-dimensions"); await p.waitForSelector("#objectionFaq details");
-      assert.equal(await p.locator("#objectionFaq details").count(), 8);
+      assert.equal(await p.locator("#objectionFaq details").count(), 12);
       assert.match(await p.textContent("#q-dimensions p"), /being confirmed with our supplier/);
       assert.equal(await p.getAttribute("#q-dimensions", "open"), "", "linked question opens");
       await noOverflow(p, `${label} /faq`);
@@ -110,20 +128,23 @@ function start(port, env) {
     await a.goto(sandbox.B + "/admin"); await a.waitForURL("**/admin-login.html");
     await a.fill("#u", "owner"); await a.fill("#p", "e2e-password-123"); await a.click("button[type=submit]");
     await a.waitForURL("**/admin"); await a.waitForSelector(".warn-card");
-    assert.match(await a.textContent(".warn-card"), /15 product detail\(s\) still to confirm/);
+    assert.match(await a.textContent(".warn-card"), new RegExp(`${productFacts.FIELDS.length} product detail\\(s\\) still to confirm`));
     await a.click('[data-tab="product"]'); await a.waitForSelector("#factsForm");
     await a.fill('#factsForm [name="dimensions"]', "50 × 60 in (127 × 152 cm)");
     await a.selectOption('#factsForm [name="powerBankIncluded"]', "no");
     await a.fill('#factsForm [name="inBox"]', "1 heated throw\n1 user manual");
     await a.click("#factsForm button");
-    await a.waitForFunction(() => document.getElementById("factsBadge").textContent === "12");
+    await a.waitForFunction(n => document.getElementById("factsBadge").textContent === String(n), productFacts.FIELDS.length - 3);
     const p = await ctx.newPage(); watch(p);
     await p.goto(sandbox.B + "/product"); await p.waitForSelector("#specTable tr");
     assert.match(await p.textContent("#specTable"), /50 × 60 in \(127 × 152 cm\)/);
     assert.match(await p.textContent("#specTable"), /No — sold separately/);
     assert.deepEqual(await p.$$eval("#boxList li", n => n.map(x => x.textContent)), ["1 heated throw", "1 user manual"]);
-    assert.match(await p.textContent("#q-power-bank p"), /^No — a power bank is not included/);
-    assert.match(await p.textContent('[data-fact="dimensions"]'), /50 × 60 in/);
+    assert.match(await p.textContent("#a-power-bank p"), /^No — a power bank is not included/);
+    assert.match(await p.textContent("#a-battery"), /No power bank is included, so how long it runs depends on the power bank/);
+    assert.deepEqual(await p.$$eval("#a-included li", n => n.map(x => x.textContent)), ["1 heated throw", "1 user manual"]);
+    assert.match(await p.textContent("#beforeOrder"), /Size 50 × 60 in/);
+    assert.doesNotMatch(await p.textContent("#specTable"), /Runtime with the included power bank|Included power bank capacity/, "no battery rows when no power bank is sold");
     await ctx.close();
     console.log("✓ admin Product info: saved facts appear on the product page and FAQ");
 

@@ -29,25 +29,21 @@
   <button class="button full" id="addToCart" type="button">Add to cart <span>↗</span></button>
   <p class="micro" id="shipNote"></p>
   <p class="micro pay-note" id="payNote"></p>
-  <ul class="quick-facts" id="quickFacts">
-   <li><strong>Power:</strong> <span data-fact="powerInput">USB</span></li>
-   <li><strong>Power bank:</strong> <span data-fact-answer="powerBankIncluded">Being confirmed with our supplier</span></li>
-   <li><strong>Size:</strong> <span data-fact="dimensions">Being confirmed with our supplier</span></li>
-  </ul>
+  <div id="beforeOrder" class="before-order-slot"><p class="micro">Loading what to know before you order…</p></div>
   <nav class="pdp-jump" aria-label="On this page">
-   <a href="#benefits">Benefits</a><a href="#power">How USB power works</a><a href="#specs">Specs</a><a href="#in-box">In the box</a><a href="#safety">Safety</a><a href="#shipping-info">Shipping</a><a href="#returns-info">Returns</a><a href="#fit">Is it right for you?</a><a href="#product-faq">FAQ</a>
+   <a href="#clear-answers">Clear answers</a><a href="#benefits">Situations</a><a href="#power">How USB power works</a><a href="#specs">Specs</a><a href="#in-box">In the box</a><a href="#safety">Safety</a><a href="#shipping-info">Shipping</a><a href="#returns-info">Returns</a><a href="#fit">Is it right for you?</a><a href="#product-faq">FAQ</a>
   </nav>
  </div>
 </section>
 
-<!-- 3. Practical benefits -->
+<!-- 3. Practical benefits: each situation linked to a real answer -->
 <section class="pdp-section" id="benefits">
- <div class="section-head"><p class="eyebrow">PRACTICAL BENEFITS</p><h2>Warmth where you <em>actually</em> sit</h2></div>
+ <div class="section-head"><p class="eyebrow">PRACTICAL BENEFITS</p><h2>Your situation, a <em>practical</em> answer</h2></div>
  <div class="benefit-grid">
-  <article class="benefit"><h3>At your desk</h3><p>Drape it over your lap or shoulders while you work, instead of turning up the heat for the whole house.</p></article>
-  <article class="benefit"><h3>On the sofa</h3><p>A plush, textured throw for reading, streaming or winding down — with gentle warmth when you want it.</p></article>
-  <article class="benefit"><h3>Wherever there's USB</h3><p>It runs from a USB power source, so you can use it anywhere a compatible source is within reach of its cable.</p></article>
-  <article class="benefit"><h3>Simple to live with</h3><p>No special outlet or installation. Disconnect the USB cable and it's an ordinary cozy throw.</p></article>
+  <article class="benefit"><p class="problem-tag">Working in a cool room</p><h3>Warm where you sit, not the whole house</h3><p>Drape it over your lap or shoulders at your desk, connected to a compatible USB power source within reach of its cable.</p><a class="text-link" href="#power">How it's powered →</a></article>
+  <article class="benefit"><p class="problem-tag">A cozy evening</p><h3>A plush throw with warmth on demand</h3><p>A soft, textured throw for reading or a film on the sofa, switched on when you want warmth. Use it while you're awake and follow the safety instructions.</p><a class="text-link" href="#safety">Safe use →</a></article>
+  <article class="benefit"><p class="problem-tag">Understanding USB power</p><h3>Know what you need before you buy</h3><p>It needs a USB power source. We tell you plainly whether a power bank is included and which sources are compatible — or that it's still being confirmed.</p><a class="text-link" href="#a-power-bank">Power bank answer →</a></article>
+  <article class="benefit"><p class="problem-tag">A practical winter gift</p><h3>For the person who's always cold</h3><p>A useful gift for home or desk. It ships in its standard packaging; we don't offer gift wrapping or gift notes.</p><a class="text-link" href="#returns-info">Returns →</a></article>
  </div>
 </section>
 
@@ -73,6 +69,7 @@
 <section class="pdp-section alt" id="in-box">
  <div class="section-head"><p class="eyebrow">EXACT BOX CONTENTS</p><h2>What's in the box</h2></div>
  <ul class="box-list" id="boxList"><li class="tbc">Box contents are being confirmed with our supplier.</li></ul>
+ <div id="notIncludedWrap" hidden><h3 class="center">Not included (optional, sold separately)</h3><ul class="box-list" id="notIncludedList"></ul></div>
  <p class="micro center">Only the items listed here are included. A USB power source is included only if it's listed.</p>
 </section>
 
@@ -134,9 +131,13 @@
  </dl>
 </section>
 
-<!-- 10. FAQ -->
-<section class="pdp-section faq" id="product-faq">
- <div class="section-head"><p class="eyebrow">QUESTIONS</p><h2>Product FAQ</h2></div>
+<!-- 10. FAQ: the main objections are answered visibly, the rest on click -->
+<section class="pdp-section faq" id="clear-answers">
+ <div class="section-head"><p class="eyebrow">COMMON QUESTIONS</p><h2>Common Questions, <em>Clear Answers</em></h2><p class="micro">Answers use only what our supplier has confirmed for this exact model. Where something isn't confirmed yet, we say so.</p></div>
+ <div class="answer-grid" id="clearAnswers"></div>
+</section>
+<section class="pdp-section alt faq" id="product-faq">
+ <div class="section-head"><p class="eyebrow">MORE QUESTIONS</p><h2>Product FAQ</h2></div>
  <div id="productFaq"></div>
  <p class="center"><a class="text-link" href="/faq">All questions →</a></p>
 </section>

@@ -40,6 +40,7 @@
     $("#statusBar").innerHTML = `<div class="admin-card status-line"><span><b>Payments:</b> ${esc(mode)}</span><span><b>Emails:</b> ${d.emailConfigured ? "sent via Resend" : "not configured — emails are prepared for you to send manually"}</span></div>`;
     const tile = (label, value, sub = "") => `<div class="tile"><p class="micro">${label}</p><p class="tile-value">${value}</p>${sub ? `<p class="micro">${sub}</p>` : ""}</div>`;
     $("#dashboard").innerHTML = `
+      ${d.ordersOnHold ? `<div class="admin-card warn-card"><b>${d.ordersOnHold} order(s) on hold</b> because of an open anomaly. <button type="button" class="text-link" data-goto="orders">Open orders</button></div>` : ""}
       ${d.productFactsMissing ? `<div class="admin-card warn-card"><b>${d.productFactsMissing} product detail(s) still to confirm.</b> The store shows them as “being confirmed with our supplier” until you fill them in. <button type="button" class="text-link" data-goto="product">Open Product info</button></div>` : ""}
       <div class="tiles">
         ${tile("Paid orders", t.paid_orders, `${t.to_fulfil} to fulfil · ${t.pending_orders} awaiting payment`)}
@@ -229,7 +230,7 @@
     const rows = await api(`/api/admin/orders?${p}`);
     if (!rows.length) { $("#orders").innerHTML = `<div class="admin-card muted">No orders match. Paid orders appear here automatically once iyzico confirms the payment.</div>`; return; }
     $("#orders").innerHTML = `<div class="table-scroll"><table class="admin-table"><thead><tr><th>Order</th><th>Date</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Logistics</th><th>Profit</th></tr></thead><tbody>
-      ${rows.map(o => `<tr class="clickable" data-id="${o.id}" tabindex="0"><td><b>${esc(o.order_number)}</b>${o.is_test ? ' <span class="pill pill-test">demo</span>' : ""}</td><td>${date(o.created_at)}</td>
+      ${rows.map(o => `<tr class="clickable" data-id="${o.id}" tabindex="0"><td><b>${esc(o.order_number)}</b>${o.is_test ? ' <span class="pill pill-test">demo</span>' : ""}${o.on_hold ? ' <span class="pill pill-failed">on hold</span>' : ""}</td><td>${date(o.created_at)}</td>
       <td>${esc(o.customer_name)}<br><span class="muted">${esc(o.customer_email)}</span></td><td>${esc(o.items)}</td><td>${money(o.total_cents)}</td>
       <td>${pill(o.payment_status)}</td><td>${pill(o.fulfillment_status)}${o.tracking_number ? `<br><span class="muted">${esc(o.tracking_number)}</span>` : ""}</td>
       <td>${o.profit.counted ? money(o.profit.profit_cents) : "—"}</td></tr>`).join("")}
@@ -256,7 +257,7 @@
     $("#detail").innerHTML = `
       <p class="eyebrow">${o.is_test ? "DEMO ORDER — NO PAYMENT, NEVER SHIP" : "ORDER"}</p>
       <h2 class="admin-h1">${esc(o.order_number)}</h2>
-      <p>${pill(o.payment_status)} ${pill(f)} <span class="muted">· ${date(o.created_at)}</span></p>
+      <p>${pill(o.payment_status)} ${pill(f)}${o.on_hold ? ' <span class="pill pill-failed">on hold</span>' : ""} <span class="muted">· ${date(o.created_at)}</span></p>
 
       <div class="grid2">
         <div class="admin-card"><h3>Customer &amp; shipping</h3>
@@ -277,6 +278,30 @@
           <label>Reason<input name="reason" maxlength="300" placeholder="e.g. damaged on arrival"></label>
           <button class="admin-btn danger-btn">Refund</button></form>` : ""}
         ${o.refunds.length ? `<p class="micro">${o.refunds.map(r => `${date(r.created_at)} — ${money(r.amount_cents)} (${esc(r.method)}) ${esc(r.reason || "")}`).join("<br>")}</p>` : ""}
+      </div>
+
+      <div class="admin-card" id="checklistCard"><h3>Supplier preparation checklist</h3>
+        <p class="micro">Tick what you verified against the order, the supplier's listing and the supplier's confirmation. This records your checks — it is not a physical inspection of the parcel. The five checks before the supplier are required to save the supplier order.</p>
+        ${o.on_hold ? '<p class="hold-banner" role="status"><b>On hold.</b> Supplier order and shipment are blocked until the anomaly below is resolved.</p>' : ""}
+        <ul class="checklist">${o.checklist.map(c => `<li class="${c.warning ? "check-warn" : ""}">
+          <label class="check"><input type="checkbox" data-check="${c.key}" ${c.checked ? "checked" : ""} ${c.auto || !paid ? "disabled" : ""}>
+          <span><b>${esc(c.label)}</b>${c.auto ? ' <span class="muted">(automatic)</span>' : ""}${c.stage === "after_shipping" ? ' <span class="muted">· after shipping</span>' : ""}<br><span class="micro">${esc(c.hint)}</span>
+          ${c.by ? `<br><span class="micro">${c.checked ? "Checked" : "Unticked"} by ${esc(c.by)} · ${date(c.at)}${c.note ? ` — ${esc(c.note)}` : ""}</span>` : ""}</span></label>
+          ${!c.auto && !c.checked && paid ? `<input class="check-note" data-note="${c.key}" maxlength="300" placeholder="Note: how you verified it (required if not confirmed in Product info)" aria-label="Note for ${esc(c.label)}">` : ""}</li>`).join("")}</ul>
+      </div>
+
+      <div class="admin-card" id="issuesCard"><h3>Anomalies</h3>
+        ${o.issues.length ? o.issues.map(i => `<div class="issue ${i.resolved_at ? "muted" : ""}"><p><b>${esc(i.kind_label)}</b>${i.holds ? ' <span class="pill pill-failed">hold</span>' : ""} <span class="muted">· ${esc(i.actor)} · ${date(i.created_at)}</span></p><p class="pre">${esc(i.details)}</p>
+          ${i.resolved_at ? `<p class="micro">Resolved by ${esc(i.resolved_by)} · ${date(i.resolved_at)} — ${esc(i.resolution)}</p>` : `<form class="admin-form inline-form" data-resolve="${i.id}"><label>Resolution<input name="resolution" maxlength="500" required placeholder="e.g. supplier confirmed stock; customer agreed"></label><button class="admin-btn">Resolve</button></form>`}</div>`).join("") : '<p class="muted">No anomaly recorded.</p>'}
+        <form id="issueForm" class="admin-form grid-form">
+          <label>Type<select name="kind" required><option value="">Choose…</option>
+            <option value="supplier_unavailable">Supplier: product or color unavailable</option><option value="wrong_reference">Supplier: wrong or changed product reference</option>
+            <option value="address_problem">Address problem</option><option value="wrong_item_reported">Customer reports wrong item / color</option>
+            <option value="damaged_reported">Customer reports damaged or defective item</option><option value="delivery_problem">Delivery delayed or lost</option><option value="other">Other</option></select></label>
+          <label class="check"><input type="checkbox" name="hold" value="1"> Put the order on hold (blocks supplier order and shipment)</label>
+          <label class="span2">What happened (what the supplier or customer confirmed)<textarea name="details" rows="3" maxlength="1000" required></textarea></label>
+          <button class="admin-btn span2">Record anomaly</button>
+        </form>
       </div>
 
       <div class="admin-card"><h3>1 · Supplier order</h3>
@@ -355,6 +380,19 @@
       if (!confirm(`Refund $${d.amount} on ${o.order_number}${d.mode === "iyzico" ? " through iyzico now" : " (record only)"}?`)) return;
       await post(`/api/admin/orders/${id}/refund`, { ...d, requestKey: crypto.randomUUID() }); reload("Refund recorded.");
     });
+    document.querySelectorAll("[data-check]").forEach(cb => cb.addEventListener("change", async () => {
+      const note = $(`[data-note="${cb.dataset.check}"]`);
+      try { await post(`/api/admin/orders/${id}/checks`, { item: cb.dataset.check, checked: cb.checked, note: note ? note.value : "" }); reload(cb.checked ? "Check recorded." : "Check removed."); }
+      catch (e) { cb.checked = !cb.checked; toast(e.message); }
+    }));
+    form("#issueForm", async (d) => {
+      await post(`/api/admin/orders/${id}/issues`, { kind: d.kind, details: d.details, hold: d.hold === "1" });
+      reload(d.hold === "1" ? "Anomaly recorded — order on hold." : "Anomaly recorded.");
+    });
+    document.querySelectorAll("[data-resolve]").forEach(fm => fm.addEventListener("submit", async e => {
+      e.preventDefault();
+      try { await post(`/api/admin/orders/${id}/issues/${fm.dataset.resolve}/resolve`, Object.fromEntries(new FormData(fm))); reload("Anomaly resolved."); } catch (err) { toast(err.message); }
+    }));
     form("#supplierForm", async (d) => { await post(`/api/admin/orders/${id}/supplier-order`, d); reload("Supplier order saved."); });
     form("#shipForm", async (d) => {
       const r = await post(`/api/admin/orders/${id}/shipment`, d);
@@ -392,7 +430,7 @@
         ? `<select name="${f.key}">${Object.entries(f.choices).map(([k, l]) => `<option value="${esc(k)}"${k === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`
         : f.multiline ? `<textarea name="${f.key}" rows="4" maxlength="${f.max}" placeholder="${esc(f.hint)}">${esc(v)}</textarea>`
         : `<input name="${f.key}" maxlength="${f.max}" value="${esc(v)}" placeholder="${esc(f.hint)}">`;
-      return `<label class="${f.multiline ? "span2" : ""}">${esc(f.label)} ${v ? "" : '<span class="pill pill-pending">to confirm</span>'}${input}</label>`;
+      return `<label class="${f.multiline ? "span2" : ""}">${esc(f.label)} ${v ? "" : '<span class="pill pill-pending">to confirm</span>'}${f.internal ? ' <span class="pill">internal — never shown</span>' : ""}${input}</label>`;
     };
     $("#product").innerHTML = `<div class="admin-card"><h2 class="admin-h2">Product information</h2>
       <p class="micro">Fill in only what the supplier's documentation (manual, label, spec sheet) confirms for this exact model. Leave a field empty if you're not sure — the store then shows “being confirmed with our supplier” instead of a guess. Never enter certifications, medical benefits or performance claims you can't document.</p>

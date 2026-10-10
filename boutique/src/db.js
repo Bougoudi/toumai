@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const DEFAULT_SETTINGS = {
   product_cost_usd: "27.24",      // supplier price per unit (estimate)
@@ -270,6 +270,32 @@ CREATE TABLE IF NOT EXISTS promotions (
     addCol("orders", "discount_cents", "INTEGER NOT NULL DEFAULT 0");
     db.exec("CREATE INDEX IF NOT EXISTS analytics_sessions_campaign ON analytics_sessions(utm_campaign)");
     db.exec("CREATE INDEX IF NOT EXISTS orders_campaign ON orders(utm_campaign)");
+    // v5: supplier preparation checklist, anomalies and order holds
+    addCol("orders", "on_hold", "INTEGER NOT NULL DEFAULT 0");
+    db.exec(`
+CREATE TABLE IF NOT EXISTS order_checks (
+  order_id INTEGER NOT NULL REFERENCES orders(id),
+  item TEXT NOT NULL,
+  checked INTEGER NOT NULL DEFAULT 0,
+  note TEXT,
+  actor TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (order_id, item)
+);
+CREATE TABLE IF NOT EXISTS order_issues (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id),
+  kind TEXT NOT NULL,
+  details TEXT NOT NULL,
+  holds INTEGER NOT NULL DEFAULT 0,
+  actor TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  resolved_at TEXT,
+  resolved_by TEXT,
+  resolution TEXT
+);
+CREATE INDEX IF NOT EXISTS order_issues_order ON order_issues(order_id);
+`);
 
     const ins = db.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)");
     for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) ins.run(k, v);

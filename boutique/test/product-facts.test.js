@@ -57,6 +57,12 @@ test("product facts: the public catalog only exposes confirmed values", async ()
     await s.req("POST", "/api/admin/product-facts", { powerInput: "USB-A, 5 V", powerBankIncluded: "no", inBox: "1 heated throw\n\n1 manual", warranty: "" }, h);
     const after = (await s.req("GET", "/api/catalog")).json.facts;
     assert.deepEqual(after, { powerInput: "USB-A, 5 V", powerBankIncluded: "no", inBox: ["1 heated throw", "1 manual"] });
+    // Internal fields (SKU, compliance documents) are never published
+    await s.req("POST", "/api/admin/product-facts", { sku: "CJ-SECRET-1", complianceDocs: "Lab report 123", manualReceived: "yes", notIncluded: "USB power bank" }, h);
+    const pub = (await s.req("GET", "/api/catalog")).json;
+    assert.equal(JSON.stringify(pub).includes("CJ-SECRET-1"), false); assert.equal(JSON.stringify(pub).includes("Lab report"), false);
+    assert.equal(pub.factLabels.sku, undefined); assert.equal(pub.factLabels.complianceDocs, undefined);
+    assert.deepEqual(pub.facts.notIncluded, ["USB power bank"]);
   } finally { s.close(); }
 });
 

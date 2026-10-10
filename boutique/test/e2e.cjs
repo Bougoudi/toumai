@@ -10,6 +10,7 @@ const { open } = require("../src/db");
 const { createApp } = require("../src/app");
 const iyzico = require("../src/iyzico");
 const auth = require("../src/auth");
+process.env.SUPPLIER_PRODUCT_SKU = process.env.SUPPLIER_PRODUCT_SKU || "CJ-E2E-1";
 
 (async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hl-e2e-"));
@@ -85,6 +86,20 @@ const auth = require("../src/auth");
       await a.waitForSelector("#copySupplier"); await a.click("#copySupplier"); await a.waitForSelector("#supplierText:not([hidden])");
       const text = await a.textContent("#supplierText");
       assert.match(text, /Quantity: 2/); assert.ok(!text.includes("jane@example.com"));
+      // Anomaly with hold, then resolved
+      await a.selectOption('#issueForm [name=kind]', "supplier_unavailable");
+      await a.fill('#issueForm [name=details]', "Supplier says Camel Brown restocks in 2 days");
+      await a.check('#issueForm [name=hold]'); await a.click("#issueForm button");
+      await a.waitForSelector(".hold-banner");
+      await a.fill('[data-resolve] [name=resolution]', "Supplier confirmed stock is back"); await a.click("[data-resolve] button");
+      await a.waitForSelector(".hold-banner", { state: "detached" });
+      // Supplier preparation checklist (no SKU / box contents confirmed in Product info → notes)
+      for (const key of ["sku", "variant", "quantity", "accessories", "address"]) {
+        await a.fill(`[data-note="${key}"]`, "Checked against the supplier listing");
+        await a.check(`[data-check="${key}"]`);
+        await a.waitForSelector(`li:has([data-check="${key}"]:checked) >> text=Checked by owner`);
+      }
+      assert.equal(await a.isDisabled('[data-check="tracking"]'), true, "tracking is automatic");
       await a.fill('#supplierForm [name=supplierReference]', "AE-777"); await a.fill('#supplierForm [name=actualProductCost]', "54.00");
       await a.click("#supplierForm button"); await a.waitForSelector("#shipForm button:not([disabled])");
       await a.fill('#shipForm [name=carrier]', "USPS"); await a.fill('#shipForm [name=trackingNumber]', "9400111899");

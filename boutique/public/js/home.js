@@ -16,7 +16,7 @@ Promise.all([HL.config(), HL.catalog()]).then(([c, p]) => {
   if (ship) ship.textContent = [
     "We ship to the United States.",
     c.shippingCents === 0 ? "Shipping is included in the price." : `Shipping is ${HL.fmt(c.shippingCents)} per order.`,
-    c.deliveryVerified ? `Most orders arrive within ${c.deliveryMinDays}–${c.deliveryMaxDays} business days after dispatch.` : "Delivery times depend on the carrier and your address; we don't promise a date we can't support.",
+    HL.deliveryText(f, c),
   ].join(" ");
   const pay = document.getElementById("trustPayment");
   if (pay) pay.textContent = HL.paymentText(c);

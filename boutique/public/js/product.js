@@ -63,28 +63,39 @@
   document.getElementById("shipNote").textContent = `${ship} to the United States · ${cfg.returnWindowDays}-day returns · tracking by email`;
   document.getElementById("payNote").textContent = HL.paymentText(cfg);
   document.getElementById("priceLabel").textContent = "Launch price";
-  if (cfg.deliveryVerified) document.getElementById("shipDetail").textContent =
-    `We ship to addresses in the United States. Most orders arrive within ${cfg.deliveryMinDays}–${cfg.deliveryMaxDays} business days after dispatch. ${cfg.shippingCents > 0 ? `Shipping is ${fmt(cfg.shippingCents)} per order.` : "Shipping is included in the price."}`;
+  document.getElementById("shipDetail").textContent = `We ship to addresses in the United States. ${HL.deliveryText(p.facts, cfg)} ${cfg.shippingCents > 0 ? `Shipping is ${fmt(cfg.shippingCents)} per order.` : "Shipping is included in the price."}`;
 
   // Confirmed product facts. Anything missing stays visibly "being confirmed".
   const f = p.facts || {};
   document.querySelectorAll("[data-fact]").forEach(n => { const v = f[n.dataset.fact]; if (v) n.textContent = v; });
   document.querySelectorAll('[data-fact-answer="powerBankIncluded"]').forEach(n => { n.textContent = HL.powerBankText(f); });
+  document.getElementById("beforeOrder").replaceChildren(HL.beforeYouOrder(f, cfg));
 
-  const specRows = ["dimensions", "weight", "materials", "powerInput", "powerSource", "powerBankIncluded", "cableLength", "heatSettings", "controls", "autoShutoff", "warranty", "countryOfOrigin"];
-  const choice = { yes: "Yes — included", no: "No — sold separately" };
+  // Battery rows only apply when a power bank is (or may be) part of what we sell.
+  const battery = f.powerBankIncluded === "no" ? [] : ["batteryCapacity", "batteryRuntime"];
+  const specRows = ["dimensions", "weight", "materials", "powerInput", "powerSource", "powerBankIncluded", ...battery, "cableLength",
+    "heatSettings", "heatingZones", "temperatureRange", "warmUpTime", "controls", "autoShutoff", "machineWashable", "warranty", "countryOfOrigin"];
+  const choice = { powerBankIncluded: { yes: "Yes — included", no: "No — sold separately" }, machineWashable: { yes: "Yes — per the care label", no: "No" } };
   document.getElementById("specTable").replaceChildren(...specRows.map(k => {
-    const v = k === "powerBankIncluded" ? choice[f[k]] : f[k];
+    const v = choice[k] ? choice[k][f[k]] : f[k];
     return el("tr", { class: v ? "" : "tbc" }, el("th", { scope: "row", text: (p.factLabels && p.factLabels[k]) || k }),
       el("td", { text: v || HL.TBC }));
   }));
   if (Array.isArray(f.inBox) && f.inBox.length) document.getElementById("boxList").replaceChildren(...f.inBox.map(t => el("li", { text: t })));
+  if (Array.isArray(f.notIncluded) && f.notIncluded.length) {
+    document.getElementById("notIncludedList").replaceChildren(...f.notIncluded.map(t => el("li", { text: t })));
+    document.getElementById("notIncludedWrap").hidden = false;
+  }
   if (f.care) document.getElementById("fitCare").textContent = `${f.care.replace(/\n+/g, " ")} Always disconnect the USB cable first.`;
   if (f.manufacturerWarnings) {
     document.getElementById("mfrWarningsList").replaceChildren(...f.manufacturerWarnings.split("\n").map(t => t.trim()).filter(Boolean).map(t => el("li", { text: t })));
     document.getElementById("mfrWarnings").hidden = false;
   }
-  HL.renderFaq(document.getElementById("productFaq"), HL.productFaq(f, cfg));
+  const faq = HL.productFaq(f, cfg);
+  HL.renderAnswers(document.getElementById("clearAnswers"), faq.filter(q => q.primary));
+  HL.renderFaq(document.getElementById("productFaq"), faq.filter(q => !q.primary));
+  const target = location.hash && document.getElementById(decodeURIComponent(location.hash.slice(1)));
+  if (target) target.scrollIntoView();
 
   // Sticky buy bar (mobile): mirrors the main button, shown once it scrolls out of view.
   const sticky = document.getElementById("stickyBuy");

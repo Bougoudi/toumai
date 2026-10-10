@@ -361,3 +361,33 @@ footer small{font-size:10px;color:#c8b9aa}
 }
 @media(max-width:560px){.benefit-grid,.steps{grid-template-columns:1fr}}
 .warn-card{border-left:3px solid var(--warn);background:#fbf4e6}
+
+/* Before You Order + clear answers */
+.before-order{margin-top:22px;background:var(--white);border:1px solid var(--line);border-top:3px solid var(--copper);padding:18px 20px}
+.before-order h2{font:600 16px "DM Sans",sans-serif;margin:0 0 10px;color:var(--espresso);letter-spacing:0}
+.before-order dl{margin:0}
+.before-order dl>div{padding:9px 0;border-top:1px solid var(--line)}
+.before-order dt{font-size:12px;font-weight:700;color:var(--espresso);text-transform:uppercase;letter-spacing:.08em}
+.before-order dd{margin:3px 0 0;font-size:13px;color:#4f4740;line-height:1.6}
+.before-order .text-link{font-size:12px;white-space:nowrap}
+.page .before-order-slot .before-order{margin-top:30px}
+.before-order-details{margin-top:18px;border:1px solid var(--line);background:var(--white);padding:12px 14px}
+.before-order-details summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--espresso)}
+.before-order-details .before-order{border:0;padding:8px 0 0;margin-top:0}
+.before-order-details .before-order h2{display:none}
+.answer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;max-width:1150px;margin:0 auto}
+.answer-card{background:var(--ivory);border:1px solid var(--line);padding:22px}
+.answer-card h3{font:500 20px/1.3 "Playfair Display",Georgia,serif;margin:0 0 10px;color:var(--espresso)}
+.answer-card p,.answer-card li{font-size:14px;color:#4f4740;margin:0 0 8px}
+.answer-card ul{padding-left:18px;margin:0 0 8px}
+.benefit .problem-tag{margin-top:0}
+.benefit .text-link{display:inline-block;margin-top:10px;font-size:13px}
+@media(max-width:1000px){.answer-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.answer-grid{grid-template-columns:1fr}}
+.checklist{list-style:none;padding:0;margin:10px 0 0}
+.checklist li{padding:10px 0;border-top:1px solid var(--line)}
+.checklist .check{margin:0}
+.checklist .check-warn{background:#fbf0ec;padding-left:8px;border-left:3px solid var(--danger)}
+.check-note{width:100%;margin:6px 0 0 26px;max-width:calc(100% - 26px);padding:8px;border:1px solid var(--line);font-size:12px}
+.hold-banner{background:#fbf0ec;border-left:3px solid var(--danger);padding:10px 12px;font-size:13px}
+.issue{border-top:1px solid var(--line);padding:10px 0}

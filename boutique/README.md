@@ -78,17 +78,29 @@ empty field is shown on the store as "Being confirmed with our supplier", never 
 Fill a field only from the supplier's documentation for the exact model (manual, label,
 spec sheet). The dashboard shows how many details are still to confirm.
 
-Still to confirm before launch: dimensions, weight, materials, power input, compatible
-power sources, whether a power bank is included, USB cable length, heat settings,
-controls, automatic shut-off, exact box contents, care instructions, the manufacturer's
-safety instructions, warranty, country of origin — plus a verified delivery estimate
-(`DELIVERY_ESTIMATE_VERIFIED`), a real photo of the Pearl White color and a home-office
-photo (the home page shows a labeled "Photo coming soon" placeholder).
+The full list of questions to send the supplier (SKU, power input, power bank and tested
+runtime, heat settings and zones, box contents, cleaning, manual, processing vs transit
+time, compliance documents) is in `docs/SUPPLIER_FACT_SHEET.md`. Internal fields (SKU,
+manual received, compliance documents) are never published.
+
+The product page answers the main buyer objections in **Common Questions, Clear Answers**
+and shows a **Before You Order** block (key specs, power source, box contents, safety,
+delivery & returns, contact) in the buy box, on the cart and at checkout.
 
 Fixed precautions are always shown (never while sleeping, not for infants/children or
 anyone who can't remove it, disconnect before cleaning). `test/product-facts.test.js`
 fails if a public page claims a certification, a medical benefit, reviews, fake urgency
 or use while sleeping.
+
+## Supplier checklist, anomalies and holds (order drawer)
+
+Each paid order has a preparation checklist: SKU, color/variant, quantity, expected
+accessories and address must be ticked before the supplier order can be saved (a confirmed
+SKU that differs from the order's SKU is refused; set `SUPPLIER_PRODUCT_SKU`). Tracking is
+filled automatically; "customer informed" is yours to tick. Anomalies can put an order
+**on hold**, which blocks the supplier and shipment steps until resolved. Every action is
+in the order history and the activity log. These are records of your checks, not a
+physical inspection of the parcel.
 
 ## Payment logos
 Once checkout is open (sandbox or live), the footer, home page and checkout show the logos listed
