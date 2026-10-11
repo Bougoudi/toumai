@@ -23,7 +23,7 @@ test("1. creates a pending order with server-side totals and opens iyzico", asyn
     assert.equal(o.payment_status, "pending");
     assert.equal(o.total_cents, 14998, "client-supplied prices are ignored");
     assert.equal(o.customer_email, "jane@example.com");
-    assert.equal(o.est_product_cost_cents, 5448);
+    assert.equal(o.est_product_cost_cents, 3400, "2 × $17 default supplier cost");
     assert.equal(o.est_shipping_cost_cents, 3000);
     const sent = s.fake.sessions[o.iyzico_token];
     assert.equal(sent.price, "149.98");

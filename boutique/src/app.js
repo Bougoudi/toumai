@@ -35,16 +35,17 @@ function createApp({ cfg, db, log = console }) {
   app.disable("x-powered-by");
   if (cfg.trustProxy) app.set("trust proxy", 1);
 
+  const tagCsp = require("./tags").csp(cfg.tags);
   app.use(helmet({
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
         "default-src": ["'self'"],
-        "script-src": ["'self'"],
+        "script-src": ["'self'", ...tagCsp.script],
         "style-src": ["'self'", "https://fonts.googleapis.com", "'unsafe-inline'"],
         "font-src": ["'self'", "https://fonts.gstatic.com"],
-        "img-src": ["'self'", "data:"],
-        "connect-src": ["'self'"],
+        "img-src": ["'self'", "data:", ...tagCsp.img],
+        "connect-src": ["'self'", ...tagCsp.connect],
         "form-action": ["'self'"],
         "frame-ancestors": ["'none'"],
         "upgrade-insecure-requests": cfg.production ? [] : null,
@@ -117,6 +118,7 @@ function createApp({ cfg, db, log = console }) {
       paymentMethods: cfg.paymentMethods,
       // Verified Purchase links need a working e-mail provider; the review form says so when it's missing.
       newsletter: cfg.newsletter.enabled ? { percent: cfg.newsletter.welcomePercent } : null,
+      tags: cfg.tags,
       reviewsEnabled: cfg.reviewsEnabled,
       reviewVerificationAvailable: cfg.reviewsEnabled && notify.emailConfigured(cfg) && Boolean(cfg.publicUrl),
       banner: marketing.activeBanner(db),

@@ -13,7 +13,13 @@
     if (!r.ok) throw new Error();
     const o = await r.json();
     if (o.is_test) set("DEMO ORDER", "Demo order received.", "This was a test: no payment was taken and nothing will be shipped.");
-    else if (["paid", "partially_refunded"].includes(o.payment_status)) { cart.clear(); set("THANK YOU", "Your payment is confirmed.", "We are preparing your order and will email you tracking details as soon as it ships."); }
+    else if (["paid", "partially_refunded"].includes(o.payment_status)) {
+      cart.clear(); set("THANK YOU", "Your payment is confirmed.", "We are preparing your order and will email you tracking details as soon as it ships.");
+      // Marketing "purchase" only for a payment the server verified, once per order (never on a button click).
+      const key = `hl_px_${order}`;
+      let seen = false; try { seen = localStorage.getItem(key) === "1"; localStorage.setItem(key, "1"); } catch { /* private mode */ }
+      if (!seen) HL.tagEvent("purchase", { value: o.total_cents / 100, currency: "USD", transaction_id: order, item_id: "usb-heated-throw" });
+    }
     else if (o.payment_status === "refunded") set("REFUNDED", "This order has been refunded.", "Contact us if you have any question.");
     else if (o.payment_status === "pending") set("PAYMENT PENDING", "We have not received payment confirmation yet.", "If you completed the payment, it will be confirmed shortly — refresh this page in a minute. You will not be charged twice.");
     else set("PAYMENT NOT COMPLETED", "Your payment did not go through.", "No order will be shipped. Your cart is still saved — you can try again.");

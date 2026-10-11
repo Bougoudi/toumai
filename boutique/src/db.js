@@ -6,7 +6,7 @@ const Database = require("better-sqlite3");
 const SCHEMA_VERSION = 6;
 
 const DEFAULT_SETTINGS = {
-  product_cost_usd: "27.24",      // supplier price per unit (estimate)
+  product_cost_usd: "17.00",      // supplier price per unit (owner figure, 2026-10-11; confirm on each supplier order)
   shipping_cost_usd: "15.00",     // supplier shipping to customer per unit (estimate)
   payment_fee_percent: "0",       // estimated provider fee, % of total (set from your iyzico contract)
   payment_fee_fixed_usd: "0",     // estimated fixed fee per order

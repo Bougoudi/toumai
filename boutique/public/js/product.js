@@ -9,6 +9,8 @@
   const thumbs = document.getElementById("thumbs");
   const show = (img) => {
     main.removeAttribute("srcset"); main.src = img.src; main.alt = img.alt; main.style.objectPosition = img.focus || "";
+    const label = document.getElementById("aiLabel");
+    if (label) label.hidden = !img.aiGenerated; // AI illustrations are always labeled as such
     thumbs.querySelectorAll(".thumb").forEach(t => t.classList.toggle("active", t.dataset.src === img.src));
   };
   p.images.forEach((img, i) => {
@@ -19,7 +21,9 @@
   });
 
   // Variants: only confirmed, available colors can be selected
-  let selected = p.variants.find(v => v.available) || null;
+  // ?color=pearl-white preselects a color (used by the Google feed, creator and campaign links).
+  const wanted = new URLSearchParams(location.search).get("color");
+  let selected = p.variants.find(v => v.available && v.id === wanted) || p.variants.find(v => v.available) || null;
   const wrap = document.getElementById("variants");
   const name = document.getElementById("variantName");
   const addBtn = document.getElementById("addToCart");
@@ -45,6 +49,7 @@
     addBtn.disabled = !selected;
   }
   renderVariants();
+  if (wanted && selected) { const photo = p.images.find(img => img.variant === selected.id); if (photo) show(photo); }
 
   // Quantity
   const qty = document.getElementById("qty");
