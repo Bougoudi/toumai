@@ -17,6 +17,7 @@ const PAGES = {
   "/shipping": { file: "shipping.html", priority: "0.3" },
   "/returns": { file: "returns.html", priority: "0.3" },
   "/privacy": { file: "privacy.html", priority: "0.2" },
+  "/review-policy": { file: "review-policy.html", priority: "0.2", requires: "reviewsEnabled" },
   "/terms": { file: "terms.html", priority: "0.2" },
 };
 // Private or transactional pages: reachable, never indexed.
@@ -106,6 +107,7 @@ function pageMiddleware(cfg) {
   return (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     const route = req.path.replace(/\.html$/, "").replace(/\/index$/, "/") || "/";
+    if (PAGES[route] && PAGES[route].requires && !cfg[PAGES[route].requires]) return res.status(404).type("text/plain").send("Not found");
     const file = (PAGES[route] || {}).file || NOINDEX[route];
     if (!file) return next();
     const html = read(file).replace("</head>", `${headTags(cfg, req, route)}\n</head>`);
@@ -121,7 +123,7 @@ function robots(cfg, req) {
 
 function sitemap(cfg, req) {
   const base = baseUrl(cfg, req);
-  const urls = Object.entries(PAGES).map(([route, p]) => `  <url><loc>${esc(base + route)}</loc><priority>${p.priority}</priority></url>`);
+  const urls = Object.entries(PAGES).filter(([, p]) => !p.requires || cfg[p.requires]).map(([route, p]) => `  <url><loc>${esc(base + route)}</loc><priority>${p.priority}</priority></url>`);
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
 }
 
@@ -133,15 +135,17 @@ function merchantFeed(cfg) {
   if (!cfg.publicUrl) return null;
   const p = catalog(cfg);
   const base = cfg.publicUrl;
-  // Google requires the image to show the listed color: colors without their own photo are left out.
-  const items = p.variants.filter(v => v.available && v.hasPhoto).map(v => `  <item>
+  // Google requires the image to show the listed color: each color uses its own photos, and
+  // colors without their own photo are left out.
+  const photosOf = (prod, variantId) => prod.images.filter(i => i.variant === variantId);
+  const items = p.variants.filter(v => v.available && v.hasPhoto && photosOf(p, v.id).length).map(v => `  <item>
     <g:id>${esc(`${p.sku}-${v.id}`)}</g:id>
     <g:item_group_id>${esc(p.sku)}</g:item_group_id>
-    <g:title>${esc(`${p.name} – ${v.name}`)}</g:title>
+    <g:title>${esc(`USB Heated Throw Blanket, Wearable – ${v.name} | ${cfg.storeName}`)}</g:title>
     <g:description>${esc("A plush throw with a raised square texture and a USB connection, made for reading, unwinding and quiet evenings at home. See the product page for confirmed specifications.")}</g:description>
     <g:link>${esc(`${base}/product`)}</g:link>
-    <g:image_link>${esc(`${base}${p.images[0].src.replace(/\.webp$/, ".jpg")}`)}</g:image_link>
-${p.images.slice(1).map(i => `    <g:additional_image_link>${esc(base + i.src.replace(/\.webp$/, ".jpg"))}</g:additional_image_link>`).join("\n")}
+    <g:image_link>${esc(`${base}${photosOf(p, v.id)[0].src.replace(/\.webp$/, ".jpg")}`)}</g:image_link>
+${photosOf(p, v.id).slice(1).map(i => `    <g:additional_image_link>${esc(base + i.src.replace(/\.webp$/, ".jpg"))}</g:additional_image_link>`).join("\n")}
     <g:availability>in_stock</g:availability>
     <g:price>${(p.priceCents / 100).toFixed(2)} USD</g:price>
     <g:condition>new</g:condition>

@@ -49,10 +49,12 @@ process.env.SUPPLIER_PRODUCT_SKU = process.env.SUPPLIER_PRODUCT_SKU || "CJ-E2E-1
     await p.waitForSelector(".swatch");
     // Both colors can be chosen; the page says when photos don't show the chosen color
     await p.click(".swatch >> nth=1");
-    assert.match(await p.textContent("#photoNote"), /No photo of Pearl White yet/);
+    assert.equal(await p.textContent("#photoNote"), "Showing Pearl White. Pick a color to see its photos.");
+    assert.match(await p.getAttribute("#mainImage", "src"), /throw-white-reading\.webp$/, "choosing white shows the white photo");
     assert.equal(await p.textContent("#variantName"), "Pearl White");
     await p.click(".swatch >> nth=0");
-    assert.equal(await p.textContent("#photoNote"), "Photos show the Camel Brown color.");
+    assert.equal(await p.textContent("#photoNote"), "Showing Camel Brown. Pick a color to see its photos.");
+    assert.match(await p.getAttribute("#mainImage", "src"), /throw-lifestyle\.webp$/);
     await p.click("#plus"); await p.click("#addToCart");
     assert.equal(await p.textContent("[data-cart-count]"), "2");
     await p.goto(B + "/cart"); await p.waitForSelector(".cart-line");

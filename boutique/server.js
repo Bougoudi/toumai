@@ -10,7 +10,7 @@ const geoip = require("./src/geoip");
 const analytics = require("./src/analytics");
 
 const cfg = load();
-const db = open(cfg.dbPath);
+const db = open(cfg.dbPath, { reviews: cfg.reviewsEnabled });
 const app = createApp({ cfg, db });
 
 backup.schedule(db, cfg);

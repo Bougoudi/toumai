@@ -179,9 +179,10 @@
       el("a", { class: "brand footer-brand", href: "/" }, "HavenLume", el("span", { text: "HOME COMFORT" })),
       el("p", { text: "Comfort for the moments that matter." }),
       el("div", { class: "footer-links" },
-        [["/shipping", "Shipping"], ["/returns", "Returns"], ["/privacy", "Privacy"], ["/terms", "Terms of Sale"], ["/faq", "FAQ"], ["/contact", "Contact"]]
-          .map(([href, label]) => el("a", { href, text: label })),
+        [["/shipping", "Shipping"], ["/returns", "Returns"], ["/privacy", "Privacy"], ["/terms", "Terms of Sale"], cfg.reviewsEnabled ? ["/review-policy", "Review rules"] : null, ["/faq", "FAQ"], ["/contact", "Contact"]]
+          .filter(Boolean).map(([href, label]) => el("a", { href, text: label })),
         el("button", { type: "button", class: "footer-link-btn", text: "Privacy choices", onclick: () => privacyPanel(true) })),
+      cfg.newsletter ? el("div", { id: "footerNewsletter", class: "footer-newsletter" }) : null,
       paymentIcons(cfg),
       el("small", { text: `© ${year} ${cfg.businessName || "HavenLume"}. All prices in USD.` }));
   }
@@ -193,6 +194,7 @@
     const cfg = await config().catch(() => ({}));
     const bottom = document.getElementById("site-footer");
     if (bottom) bottom.replaceWith(footer(cfg));
+    document.querySelectorAll("[data-reviews-only]").forEach(n => { n.hidden = !cfg.reviewsEnabled; });
     analyticsCfg = cfg.analytics || { enabled: false };
     if (analyticsAllowed()) { pageview(); queue.splice(0).forEach(send); } else { queue.length = 0; }
     privacyPanel(false);
@@ -216,6 +218,81 @@
       if (cfg.supportEmail) { n.textContent = cfg.supportEmail; if (n.tagName === "A") n.href = `mailto:${cfg.supportEmail}`; }
     });
     document.querySelectorAll("[data-return-days]").forEach(n => { n.textContent = cfg.returnWindowDays; });
+    if (cfg.newsletter) {
+      const slot = document.getElementById("footerNewsletter");
+      if (slot) slot.replaceChildren(newsletterForm(cfg, "footer"));
+      document.querySelectorAll("[data-newsletter-slot]").forEach(n => n.replaceChildren(
+        el("p", { class: "nl-slot-title", text: `Get ${cfg.newsletter.percent}% off your first order — join the HavenLume list` }), newsletterForm(cfg, n.dataset.newsletterSlot)));
+      if (["/", "/index.html", "/product", "/product.html"].includes(location.pathname)) scheduleInvite(cfg);
+    }
+  }
+
+  // ------------------------------------------------------------ e-mail list invitation
+  // A real welcome code, one use per subscribed address (checked by the server at payment).
+  // The code is shown only after the server confirmed the sign-up.
+  const NL_KEY = "hl_newsletter";
+  const nlState = { get() { try { return localStorage.getItem(NL_KEY); } catch { return null; } }, set(v) { try { localStorage.setItem(NL_KEY, v); } catch { /* private mode */ } } };
+
+  function newsletterForm(cfg, source) {
+    const pct = cfg.newsletter.percent;
+    const id = `nl-${source}`;
+    const input = el("input", { id: `${id}-email`, type: "email", name: "email", required: "", maxlength: "254", autocomplete: "email", placeholder: "you@example.com" });
+    const btn = el("button", { class: "button", type: "submit", text: `Get my ${pct}% code` });
+    const out = el("p", { class: "nl-status", role: "status", "aria-live": "polite" });
+    const form = el("form", { class: `nl-form nl-${source}`, novalidate: "" },
+      el("label", { for: `${id}-email`, text: "Email address" }),
+      el("div", { class: "nl-row" }, input, btn),
+      el("div", { class: "hp", "aria-hidden": "true" }, el("input", { name: "website", tabindex: "-1", autocomplete: "off" })),
+      el("p", { class: "nl-legal" }, "Marketing emails from HavenLume — launch news, care tips and offers. Unsubscribe anytime. ", el("a", { href: "/privacy", text: "Privacy" })),
+      out);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!input.value.trim() || !input.checkValidity()) { out.textContent = "Enter a valid email address."; out.className = "nl-status form-error"; input.focus(); return; }
+      btn.disabled = true; out.className = "nl-status"; out.textContent = "Signing you up…";
+      try {
+        const r = await fetch("/api/newsletter/subscribe", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: input.value, source, website: form.website.value || undefined }) });
+        const j = await r.json().catch(() => ({}));
+        if (r.status !== 201) throw new Error(r.status === 429 ? "Too many sign-ups from this connection. Please try again later." : j.error || "Sign-up failed. Please try again.");
+        nlState.set("subscribed"); // the invitation won't be shown again; the code is shown in place
+        const copy = el("button", { type: "button", class: "button secondary nl-copy", text: "Copy code" });
+        copy.addEventListener("click", async () => { try { await navigator.clipboard.writeText(j.code); copy.textContent = "Copied"; } catch { copy.textContent = j.code; } });
+        form.replaceWith(el("div", { class: `nl-done nl-${source}`, role: "status" },
+          el("p", { class: "nl-thanks", text: "You're on the list. Your welcome code:" }),
+          el("p", { class: "nl-code" }, el("strong", { text: j.code }), copy),
+          el("p", { class: "nl-legal", text: `${j.conditions} Enter it at checkout with ${input.value.trim().toLowerCase()}.${j.emailed ? " We also emailed it to you." : ""}` })));
+      } catch (err) {
+        out.className = "nl-status form-error"; out.textContent = err.message === "Failed to fetch" ? "Network error — you're not signed up yet. Please try again." : err.message;
+        btn.disabled = false;
+      }
+    });
+    return form;
+  }
+
+  // Invitation panel on the home and product pages: once per visitor, never over the privacy
+  // choices, the mobile buy bar or the checkout.
+  function scheduleInvite(cfg) {
+    if (nlState.get()) return;
+    let shown = false;
+    const show = () => {
+      if (shown || nlState.get()) return;
+      if (document.getElementById("privacy-choices")) { setTimeout(show, 3000); return; }
+      shown = true;
+      const close = el("button", { type: "button", class: "nl-close", "aria-label": "Close", text: "×" });
+      const panel = el("section", { id: "nl-invite", class: "nl-invite", role: "region", "aria-labelledby": "nl-invite-title" }, close,
+        el("p", { class: "eyebrow", text: "THE HAVENLUME LIST" }),
+        el("h2", { id: "nl-invite-title", text: `Get ${cfg.newsletter.percent}% off your first order` }),
+        el("p", { class: "nl-sub", text: "Join for launch news and care tips. Your code works once, with the email you sign up with." }),
+        newsletterForm(cfg, "popup"));
+      const dismiss = () => { nlState.set("dismissed"); panel.remove(); document.removeEventListener("keydown", onKey); };
+      const onKey = (e) => { if (e.key === "Escape") dismiss(); };
+      close.addEventListener("click", dismiss);
+      document.addEventListener("keydown", onKey);
+      document.body.append(panel);
+    };
+    const onScroll = () => { if (window.scrollY > (document.body.scrollHeight - window.innerHeight) * 0.5) { window.removeEventListener("scroll", onScroll); show(); } };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    setTimeout(show, 12000);
   }
 
   // Product facts: confirmed values only. Missing ones are shown as "being confirmed".
@@ -301,10 +378,11 @@
   // "Before You Order": what a buyer must know before paying, on the product, cart and checkout pages.
   function beforeYouOrder(facts, cfg) {
     const f = facts || {};
-    const specs = [f.dimensions && `Size ${f.dimensions}`, f.heatSettings && `heat: ${f.heatSettings}`, f.powerInput && `input: ${f.powerInput}`].filter(Boolean);
+    const specs = [f.dimensions && `Size: ${f.dimensions}`, f.heatSettings && `Heat: ${f.heatSettings}`, f.powerInput && `Power input: ${f.powerInput}`, f.cableLength && `Cable: ${f.cableLength}`].filter(Boolean);
     const rows = [
       ["Key specs", specs.length ? specs.join(" · ") + "." : "Size, heat settings and power input are being confirmed with our supplier.", "/product#specs"],
-      ["Power source", `You need a compatible USB power source${f.powerSource ? ` (${f.powerSource})` : ""}. ${powerBankText(f)}`, "/product#power"],
+      // powerBankText() already names the required source when no power bank is included.
+      ["Power source", f.powerBankIncluded === "no" ? powerBankText(f) : `You need a compatible USB power source${f.powerSource ? ` (${f.powerSource})` : ""}. ${powerBankText(f)}`, "/product#power"],
       ["In the box", Array.isArray(f.inBox) && f.inBox.length ? f.inBox.join(", ") + "." + (Array.isArray(f.notIncluded) && f.notIncluded.length ? ` Not included: ${f.notIncluded.join(", ")}.` : "") : "Exact contents being confirmed. Don't assume any accessory is included.", "/product#in-box"],
       ["Safety", "Never use it while sleeping, on infants or young children, or on anyone who can't remove it. Read the manufacturer's instructions before use.", "/product#safety"],
       ["Delivery & returns", `${deliveryText(f, cfg)} Tracking by email. ${cfg ? cfg.returnWindowDays : 30}-day returns; wrong or damaged items are on us.`, "/shipping"],

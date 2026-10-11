@@ -102,6 +102,40 @@ filled automatically; "customer informed" is yours to tick. Anomalies can put an
 in the order history and the activity log. These are records of your checks, not a
 physical inspection of the parcel.
 
+## Customer reviews (product page + `/admin` → Reviews)
+
+**Off by default.** Nothing about reviews exists (no database migration, no routes, no page
+section, no admin tab) until you set `REVIEWS_ENABLED=true`. Download a backup first; the
+restart then migrates the database to schema v6. See `docs/implementation-tracking.md`.
+
+- Customers submit a review on the product page (rating, public name, optional title, comment,
+  "Did you purchase…", "Would you recommend…", required honesty/publication consent). The same
+  rules run in the browser and on the server (`public/js/review-rules.js`).
+- Every review is **pending** until you approve it. Only approved reviews are public, with the real
+  average, count and 1–5 distribution. No demo or seeded reviews exist.
+- Moderation: approve, reject, hide, erase content — with fixed reasons (spam, insults, personal
+  information, off-topic, conflict of interest, duplicate, customer request). Never reject a review
+  for being negative. Every action is in the review's history and the activity log.
+- **Verified Purchase** only via a single-use link e-mailed to the address of a paid, shipped or
+  delivered, non-refunded, non-test order. Needs `RESEND_API_KEY` + `EMAIL_FROM` + `PUBLIC_URL`;
+  without them the form says verification isn't available and nothing is sent.
+- Post-delivery review request: button in the order drawer (delivered orders, e-mail configured,
+  sent once, honest review, no reward).
+- Rules for customers: `/review-policy`. Details: `docs/reviews/`, tracking: `docs/implementation-tracking.md`.
+- Limits: `REVIEW_SUBMIT_LIMIT` (default 5 per 15 min per IP), `REVIEW_VERIFY_LIMIT` (default 5 link requests per hour).
+
+## E-mail list and welcome code
+
+The home and product pages invite visitors (once, dismissible, never over the privacy choices,
+the mobile buy bar, the cart or the checkout) to join the e-mail list; the cart and the footer
+have a sign-up form too. Subscribers get **WELCOME10** (10% off), valid **once per subscribed
+e-mail address**, checked by the server at payment. The code is recreated at every start from
+`NEWSLETTER_*` settings, so a database reset never leaves subscribers with a dead code.
+Without an e-mail provider the code is shown on screen and nothing claims an e-mail was sent.
+`/admin` → Marketing → **Email list**: counts, list, CSV export, delete on request. Add
+`STORE_BUSINESS_ADDRESS` before sending any marketing e-mail (CAN-SPAM), and always include
+the unsubscribe link. Timing and wording choices: `docs/GOOGLE_TRENDS_INSIGHTS.md`.
+
 ## Payment logos
 Once checkout is open (sandbox or live), the footer, home page and checkout show the logos listed
 in `PAYMENT_METHODS` (default `visa,mastercard,amex`). Optional values: `apple-pay`,

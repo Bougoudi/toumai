@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const Database = require("better-sqlite3");
 
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const DEFAULT_SETTINGS = {
   product_cost_usd: "27.24",      // supplier price per unit (estimate)
@@ -12,18 +12,79 @@ const DEFAULT_SETTINGS = {
   payment_fee_fixed_usd: "0",     // estimated fixed fee per order
 };
 
-function open(dbPath) {
+/** Opens the database. Schema v6 (reviews) is applied only when `reviews` is true. */
+function open(dbPath, { reviews = false } = {}) {
   if (dbPath !== ":memory:") fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-  migrate(db);
+  migrate(db, reviews ? 6 : 5);
   return db;
 }
 
-function migrate(db) {
+const REVIEWS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  public_id TEXT NOT NULL UNIQUE,
+  product_id TEXT NOT NULL,
+  rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  display_name TEXT NOT NULL CHECK (length(display_name) BETWEEN 2 AND 40),
+  title TEXT CHECK (title IS NULL OR length(title) <= 100),
+  comment TEXT NOT NULL CHECK (length(comment) BETWEEN 20 AND 1500),
+  purchased_from_havenlume TEXT NOT NULL CHECK (purchased_from_havenlume IN ('yes','no')),
+  would_recommend TEXT CHECK (would_recommend IS NULL OR would_recommend IN ('yes','no','not_sure_yet')),
+  publication_consent INTEGER NOT NULL CHECK (publication_consent = 1),
+  moderation_status TEXT NOT NULL DEFAULT 'pending' CHECK (moderation_status IN ('pending','approved','rejected','hidden')),
+  purchase_verification_status TEXT NOT NULL DEFAULT 'unverified' CHECK (purchase_verification_status IN ('unverified','verified','ineligible')),
+  purchase_order_id INTEGER REFERENCES orders(id),
+  fingerprint TEXT NOT NULL,
+  moderation_reason TEXT,
+  erased_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  published_at TEXT,
+  CHECK (purchase_verification_status <> 'verified' OR purchase_order_id IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS reviews_product_status ON reviews(product_id, moderation_status, published_at);
+CREATE INDEX IF NOT EXISTS reviews_status_created ON reviews(moderation_status, created_at);
+CREATE INDEX IF NOT EXISTS reviews_fingerprint ON reviews(product_id, fingerprint);
+CREATE UNIQUE INDEX IF NOT EXISTS reviews_one_per_order ON reviews(purchase_order_id) WHERE purchase_order_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS review_moderation_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  review_id INTEGER NOT NULL REFERENCES reviews(id),
+  admin_user TEXT NOT NULL,
+  action TEXT NOT NULL,
+  previous_status TEXT NOT NULL,
+  new_status TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS review_history_review ON review_moderation_history(review_id, created_at);
+CREATE TABLE IF NOT EXISTS review_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_hash TEXT NOT NULL UNIQUE,
+  order_id INTEGER NOT NULL REFERENCES orders(id),
+  purpose TEXT NOT NULL CHECK (purpose IN ('verify','request')),
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS review_tokens_order ON review_tokens(order_id);
+`;
+
+/** Down-migration for v6 (reviews). Drops only review data; orders are untouched. */
+function rollbackReviews(db) {
+  db.transaction(() => {
+    db.exec(`DROP TABLE IF EXISTS review_moderation_history; DROP TABLE IF EXISTS review_tokens; DROP TABLE IF EXISTS reviews;`);
+    const cols = new Set(db.prepare("PRAGMA table_info(orders)").all().map(c => c.name));
+    if (cols.has("review_requested_at")) db.exec("ALTER TABLE orders DROP COLUMN review_requested_at");
+    db.pragma("user_version = 5");
+  })();
+}
+
+function migrate(db, target = SCHEMA_VERSION) {
   const version = db.pragma("user_version", { simple: true });
-  if (version >= SCHEMA_VERSION) return;
+  if (version >= target) return; // never downgrades a newer database
   db.transaction(() => {
     // v1 (starter) stored one product per order in REAL dollars. Keep it for reference.
     const legacy = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='orders'").get();
@@ -296,10 +357,16 @@ CREATE TABLE IF NOT EXISTS order_issues (
 );
 CREATE INDEX IF NOT EXISTS order_issues_order ON order_issues(order_id);
 `);
+    // v6: customer reviews (moderated; purchase verified only by a single-use e-mailed link).
+    // Applied only when reviews are enabled, so production is never migrated by surprise.
+    if (target >= 6) {
+      addCol("orders", "review_requested_at", "TEXT");
+      db.exec(REVIEWS_SCHEMA);
+    }
 
     const ins = db.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)");
     for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) ins.run(k, v);
-    db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    db.pragma(`user_version = ${target}`);
   })();
 }
 
@@ -309,4 +376,4 @@ function getSettings(db) {
   return out;
 }
 
-module.exports = { open, getSettings, DEFAULT_SETTINGS };
+module.exports = { open, getSettings, DEFAULT_SETTINGS, rollbackReviews, SCHEMA_VERSION };

@@ -81,10 +81,16 @@ test("M3. content calendar: angles, statuses, tracking links, starters, delete",
     assert.equal(list[0].utm_content, "always-cold-friend");
     assert.equal(list[0].tracking_url, "https://shop.example.com/product?utm_source=instagram&utm_medium=social&utm_campaign=gifts-ig&utm_content=always-cold-friend");
     assert.equal((await a.post(`/api/admin/marketing/content/${r.json.id}`, { status: "published", publishedUrl: "https://www.instagram.com/p/abc" })).status, 200);
-    assert.equal((await a.post("/api/admin/marketing/content-starters")).json.created, 3);
+    assert.equal((await a.post("/api/admin/marketing/content-starters")).json.created, 4);
+    const starters = s.db.prepare("SELECT title, publish_date, notes FROM content_items WHERE status='idea' AND notes LIKE 'Timing:%'").all();
+    assert.equal(starters.length, 4);
+    for (const st of starters) {
+      assert.match(st.publish_date, /^\d{4}-(10|11)-\d{2}$/, `${st.title}: scheduled in the Oct–Nov run-up to the peak`);
+      assert.ok(st.publish_date >= new Date().toISOString().slice(0, 10), "never in the past");
+    }
     assert.equal((await a.post("/api/admin/marketing/content-starters")).json.created, 0, "starters are not duplicated");
     const angles = s.db.prepare("SELECT DISTINCT angle FROM content_items").all().map(x => x.angle).sort();
-    assert.deepEqual(angles, ["cold_season_gifts", "relaxing_at_home", "work_from_home"]);
+    assert.deepEqual(angles, ["cold_season_gifts", "other", "relaxing_at_home", "work_from_home"]);
     assert.equal((await a.post(`/api/admin/marketing/content/${r.json.id}/delete`)).status, 200);
     assert.equal((await a.post(`/api/admin/marketing/content/${r.json.id}/delete`)).status, 404);
   } finally { s.close(); }
@@ -259,8 +265,15 @@ test("M8. SEO and Merchant feed only publish verified information", async () => 
     assert.match(sm, /<loc>https:\/\/shop\.example\.com\/product<\/loc>/); assert.doesNotMatch(sm, /checkout|admin/);
     const feed = (await s.req("GET", "/feeds/google-merchant.xml")).text;
     assert.match(feed, /<g:price>74\.99 USD<\/g:price>/); assert.match(feed, /<g:identifier_exists>no<\/g:identifier_exists>/);
-    assert.match(feed, /HL-THROW-camel-brown/); assert.doesNotMatch(feed, /pearl-white/, "colors without their own photo are not sent to Google");
-    for (const img of ["/images/og-product.jpg", "/images/og-default.jpg", "/images/throw-lifestyle.webp", "/images/throw-texture-800.webp"]) {
+    // Each color is listed with its own photos only
+    const items = feed.split("<item>").slice(1);
+    const camel = items.find(i => /HL-THROW-camel-brown/.test(i)); const white = items.find(i => /HL-THROW-pearl-white/.test(i));
+    assert.ok(camel && white, "both colors have their own photos");
+    assert.match(camel, /<g:image_link>[^<]*throw-lifestyle\.jpg/); assert.doesNotMatch(camel, /throw-white/);
+    assert.match(white, /<g:image_link>[^<]*throw-white-reading\.jpg/);
+    for (const extra of ["throw-white-armchair.jpg", "throw-white-closeup.jpg", "throw-white-wrap.jpg"]) assert.match(white, new RegExp(`<g:additional_image_link>[^<]*${extra.replace(".", "\\.")}`)); assert.doesNotMatch(white, /throw-lifestyle|throw-detail|throw-texture\.jpg/);
+    for (const img of ["/images/og-product.jpg", "/images/og-default.jpg", "/images/throw-lifestyle.webp", "/images/throw-texture-800.webp",
+      "/images/throw-white-wrap.webp", "/images/throw-white-wrap.jpg", "/images/throw-white-wrap-800.webp", "/images/throw-white-reading.jpg", "/images/throw-white-reading-800.webp", "/images/throw-white-armchair.webp", "/images/throw-white-closeup.jpg", "/images/throw-white-closeup-800.webp"]) {
       const r = await s.req("GET", img); assert.equal(r.status, 200, img); assert.match(r.headers.get("cache-control"), /max-age=604800/);
     }
   } finally { s.close(); }

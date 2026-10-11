@@ -18,6 +18,8 @@ const marketing = require("./marketing");
 const seo = require("./seo");
 const productFacts = require("./product-facts");
 const orderChecks = require("./order-checks");
+const reviews = require("./reviews");
+const newsletter = require("./newsletter");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
@@ -27,6 +29,8 @@ const STATUS_SECRET = process.env.STATUS_LINK_SECRET || crypto.randomBytes(32).t
 const statusKey = (orderNumber) => crypto.createHmac("sha256", STATUS_SECRET).update(orderNumber).digest("hex").slice(0, 32);
 
 function createApp({ cfg, db, log = console }) {
+  // E-mail list: additive table + welcome promo recreated from the configuration on every start.
+  if (cfg.newsletter.enabled) { newsletter.ensureSchema(db); newsletter.ensureWelcomePromo(db, cfg); }
   const app = express();
   app.disable("x-powered-by");
   if (cfg.trustProxy) app.set("trust proxy", 1);
@@ -91,6 +95,8 @@ function createApp({ cfg, db, log = console }) {
     res.type("application/xml").set("Cache-Control", "public, max-age=3600").send(xml);
   });
   app.use("/images", express.static(path.join(PUBLIC_DIR, "images"), { maxAge: "7d" }));
+  // Review files are not served while reviews are disabled.
+  if (!cfg.reviewsEnabled) app.use("/review-policy.html", (_req, res) => res.status(404).type("text/plain").send("Not found"));
   app.use(express.static(PUBLIC_DIR, { extensions: ["html"], index: "index.html" }));
 
   // ------------------------------------------------------------- public API
@@ -109,6 +115,10 @@ function createApp({ cfg, db, log = console }) {
       businessName: cfg.businessName, businessAddress: cfg.businessAddress,
       analytics: { enabled: cfg.analytics.enabled, consentMode: cfg.analytics.consentMode },
       paymentMethods: cfg.paymentMethods,
+      // Verified Purchase links need a working e-mail provider; the review form says so when it's missing.
+      newsletter: cfg.newsletter.enabled ? { percent: cfg.newsletter.welcomePercent } : null,
+      reviewsEnabled: cfg.reviewsEnabled,
+      reviewVerificationAvailable: cfg.reviewsEnabled && notify.emailConfigured(cfg) && Boolean(cfg.publicUrl),
       banner: marketing.activeBanner(db),
     });
   });
@@ -211,6 +221,45 @@ function createApp({ cfg, db, log = console }) {
     res.status(204).end();
   });
 
+  // ------------------------------------------------------------- e-mail list
+  if (cfg.newsletter.enabled) {
+    app.post("/api/newsletter/subscribe", limiter(3_600_000, cfg.newsletter.signupLimit), wrap(async (req, res) => {
+      res.status(201).json(await newsletter.subscribe(db, cfg, req.body));
+    }));
+    app.get("/newsletter/unsubscribe", limiter(60_000, 20), (req, res) => {
+      const ok = newsletter.unsubscribe(db, req.query.token);
+      const msg = ok ? "You're unsubscribed. You won't receive marketing emails from HavenLume anymore."
+        : "This unsubscribe link is invalid or was already used. If you still receive our emails, contact us.";
+      res.status(ok ? 200 : 400).type("html").set("Cache-Control", "no-store").send(`<!doctype html><html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Email preferences | HavenLume</title><link rel="stylesheet" href="/styles.css"></head><body><main class="page narrow"><p class="eyebrow">EMAIL PREFERENCES</p><h1 class="page-title">${ok ? "Unsubscribed" : "Link not valid"}</h1><p>${msg}</p><p><a href="/">Back to HavenLume</a></p></main></body></html>`);
+    });
+    app.get("/api/admin/newsletter", requireAdmin, (_req, res) => res.set("Cache-Control", "no-store").json(newsletter.adminList(db, cfg)));
+    app.get("/api/admin/newsletter.csv", requireAdmin, (req, res) => {
+      auth.audit(db, req.admin.username, "newsletter_export", null, null, req.ip);
+      res.set("Cache-Control", "no-store").type("text/csv").attachment("havenlume-subscribers.csv").send(newsletter.exportCsv(db));
+    });
+    app.post("/api/admin/newsletter/:id/delete", requireAdmin, wrap(async (req, res) => {
+      const id = Number.parseInt(req.params.id, 10);
+      if (!Number.isInteger(id) || id <= 0) throw new newsletter.NewsletterError(400, "Invalid id.");
+      newsletter.remove(db, id);
+      auth.audit(db, req.admin.username, "newsletter_subscriber_deleted", `subscriber:${id}`, null, req.ip);
+      res.json({ ok: true });
+    }));
+  }
+
+  // ------------------------------------------------------------- reviews (public)
+  // Registered only when REVIEWS_ENABLED=true (otherwise 404 and no review tables exist).
+  if (cfg.reviewsEnabled) {
+    // Only approved reviews and public fields are ever returned here.
+    app.get("/api/reviews", (req, res) => res.set("Cache-Control", "no-store").json(reviews.publicList(db, cfg, req.query)));
+    app.post("/api/reviews", limiter(15 * 60_000, cfg.reviewSubmitLimit), limiter(24 * 3_600_000, cfg.reviewSubmitLimit * 4), wrap(async (req, res) => {
+      res.status(201).json(reviews.submit(db, cfg, req.body));
+    }));
+    app.post("/api/reviews/verification-request", limiter(3_600_000, cfg.reviewVerifyLimit), wrap(async (req, res) => {
+      res.json(await reviews.requestVerification(db, cfg, req.body || {}));
+    }));
+    app.get("/api/reviews/verification", limiter(60_000, 20), (req, res) => res.set("Cache-Control", "no-store").json(reviews.tokenStatus(db, req.query.token)));
+  }
+
   app.post("/api/contact", limiter(10 * 60_000, 5), wrap(async (req, res) => {
     const b = req.body || {};
     const name = String(b.name || "").trim().slice(0, 120);
@@ -255,6 +304,8 @@ function createApp({ cfg, db, log = console }) {
       unreadNotifications: db.prepare("SELECT COUNT(*) n FROM notifications WHERE read_at IS NULL").get().n,
       openMessages: db.prepare("SELECT COUNT(*) n FROM messages WHERE handled_at IS NULL").get().n,
       productFactsMissing: productFacts.missing(productFacts.get(db)).length,
+      reviewsEnabled: cfg.reviewsEnabled,
+      reviewsPending: cfg.reviewsEnabled ? db.prepare("SELECT COUNT(*) n FROM reviews WHERE moderation_status='pending'").get().n : 0,
       ordersOnHold: db.prepare("SELECT COUNT(*) n FROM orders WHERE on_hold=1 AND is_test=0").get().n,
     });
   });
@@ -324,6 +375,28 @@ function createApp({ cfg, db, log = console }) {
     catch (err) { return res.status(502).json({ error: `iyzico lookup failed: ${err.message || err}` }); }
     res.status(v.outcome === "paid" ? 200 : 409).json(v.outcome === "paid" ? { ok: true } : { error: `Not paid: ${v.reason}` });
   }));
+  // ------------------------------------------------------------- reviews (admin)
+  if (cfg.reviewsEnabled) {
+    const reviewId = (req) => {
+      const id = Number.parseInt(req.params.id, 10);
+      if (!Number.isInteger(id) || id <= 0) throw new reviews.ReviewError(400, "Invalid review id.");
+      return id;
+    };
+    app.get("/api/admin/reviews", requireAdmin, (req, res) => res.set("Cache-Control", "no-store").json(reviews.adminList(db, req.query)));
+    app.get("/api/admin/reviews/:id/moderation-history", requireAdmin, wrap(async (req, res) => res.json(reviews.history(db, reviewId(req)))));
+    for (const action of Object.keys(reviews.TRANSITIONS)) {
+      app.post(`/api/admin/reviews/:id/${action}`, requireAdmin, wrap(async (req, res) => {
+        const id = reviewId(req);
+        const status = reviews.moderate(db, id, action, req.body || {}, req.admin.username);
+        auth.audit(db, req.admin.username, `review_${action}`, `review:${id}`, req.body?.reason ? String(req.body.reason).slice(0, 40) : null, req.ip);
+        res.json({ ok: true, status });
+      }));
+    }
+    app.post("/api/admin/orders/:id/review-request", requireAdmin, adminAction("review_request", async (req, res) => {
+      res.json(await reviews.requestReview(db, cfg, orderId(req), req.admin.username));
+    }));
+  }
+
   // Supplier preparation checklist and anomalies (holds block supplier order and shipment).
   const loadOrder = (req) => {
     const o = orders.getOrder(db, orderId(req));
@@ -356,6 +429,8 @@ function createApp({ cfg, db, log = console }) {
 
   app.post("/api/admin/emails/:emailId/send", requireAdmin, wrap(async (req, res) => {
     if (!notify.emailConfigured(cfg)) return res.status(409).json({ error: "No email provider configured (RESEND_API_KEY, EMAIL_FROM). Copy the email and send it yourself." });
+    const kind = db.prepare("SELECT kind FROM emails WHERE id=?").get(Number(req.params.emailId));
+    if (kind && kind.kind.startsWith("review_")) return res.status(409).json({ error: "Review e-mails contain a single-use link that is not stored. Send a new review request instead." });
     const e = await notify.trySend(db, cfg, Number(req.params.emailId));
     if (!e) return res.status(404).json({ error: "Email not found." });
     auth.audit(db, req.admin.username, "email_send", `email:${e.id}`, e.status, req.ip);
@@ -366,6 +441,7 @@ function createApp({ cfg, db, log = console }) {
     const id = Number(req.params.emailId);
     const e = db.prepare("SELECT * FROM emails WHERE id=?").get(id);
     if (!e) return res.status(404).json({ error: "Email not found." });
+    if (e.kind.startsWith("review_")) return res.status(409).json({ error: "Review e-mails can't be sent manually: their single-use link is not stored." });
     db.prepare("UPDATE emails SET status='sent', provider_id='manual', sent_at=? WHERE id=?").run(new Date().toISOString(), id);
     auth.audit(db, req.admin.username, "email_marked_sent_manually", `email:${id}`, null, req.ip);
     if (e.order_id) orders.event(db, e.order_id, "email_sent_manually", `${e.subject} → ${e.to_addr} (sent by the owner)`, req.admin.username);
@@ -450,6 +526,8 @@ function createApp({ cfg, db, log = console }) {
   app.use("/api/", (_req, res) => res.status(404).json({ error: "Not found." }));
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
+    if (err instanceof newsletter.NewsletterError) return res.status(err.status).json({ error: err.message });
+    if (err instanceof reviews.ReviewError) return res.status(err.status).json({ error: err.message, ...(err.errors ? { errors: err.errors } : {}) });
     if (err instanceof orders.OrderError || err instanceof promotions.PromoError || err instanceof marketing.MarketingError || err instanceof productFacts.FactsError || err instanceof orderChecks.CheckError) {
       return res.status(err.status).json({ error: err.message });
     }

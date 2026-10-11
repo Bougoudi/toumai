@@ -7,13 +7,14 @@
   // Gallery
   const main = document.getElementById("mainImage");
   const thumbs = document.getElementById("thumbs");
+  const show = (img) => {
+    main.removeAttribute("srcset"); main.src = img.src; main.alt = img.alt; main.style.objectPosition = img.focus || "";
+    thumbs.querySelectorAll(".thumb").forEach(t => t.classList.toggle("active", t.dataset.src === img.src));
+  };
   p.images.forEach((img, i) => {
-    const b = el("button", { type: "button", class: "thumb" + (i === 0 ? " active" : ""), "aria-label": `Show photo ${i + 1}: ${img.alt}`, role: "listitem" },
+    const b = el("button", { type: "button", class: "thumb" + (i === 0 ? " active" : ""), "data-src": img.src, "aria-label": `Show photo ${i + 1}: ${img.alt}`, role: "listitem" },
       el("img", { src: img.thumb || img.src, alt: "", loading: "lazy", width: "84", height: "64" }));
-    b.addEventListener("click", () => {
-      main.removeAttribute("srcset"); main.src = img.src; main.alt = img.alt;
-      thumbs.querySelectorAll(".thumb").forEach(t => t.classList.toggle("active", t === b));
-    });
+    b.addEventListener("click", () => show(img));
     thumbs.append(b);
   });
 
@@ -27,15 +28,19 @@
       const b = el("button", { type: "button", class: "swatch" + (selected && v.id === selected.id ? " selected" : ""), disabled: !v.available,
         "aria-pressed": String(Boolean(selected && v.id === selected.id)), title: v.available ? v.name : `${v.name} — coming soon` },
         el("span", { class: "dot", style: `background:${v.swatch}` }), el("span", { text: v.available ? v.name : `${v.name} · coming soon` }));
-      b.addEventListener("click", () => { selected = v; renderVariants(); });
+      b.addEventListener("click", () => {
+        selected = v; renderVariants();
+        const photo = p.images.find(img => img.variant === v.id);
+        if (photo) show(photo); // show the chosen color
+      });
       return b;
     }));
     name.textContent = selected ? selected.name : "Unavailable";
     // Be explicit when the gallery doesn't show the color being bought.
     const note = document.getElementById("photoNote");
     if (note) note.textContent = selected && !selected.hasPhoto
-      ? `No photo of ${selected.name} yet — the photos show the Camel Brown color. Same product, ${selected.name.toLowerCase()} color.`
-      : "Photos show the Camel Brown color.";
+      ? `No photo of ${selected.name} yet — the photos show another color. Same product, ${selected.name.toLowerCase()} color.`
+      : `Showing ${selected ? selected.name : "the throw"}. Pick a color to see its photos.`;
     note?.classList.toggle("photo-warning", Boolean(selected && !selected.hasPhoto));
     addBtn.disabled = !selected;
   }

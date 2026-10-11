@@ -91,7 +91,7 @@ const marketing = require("../src/marketing");
     assert.match(await a.getAttribute("#mkBody [data-copy]", "data-copy"), /utm_campaign=fall-tiktok/);
     assert.match(await a.textContent("#mkBody"), /No confirmed payment yet/);
     if (process.env.SCREENSHOT_DIR) await a.screenshot({ path: path.join(process.env.SCREENSHOT_DIR, "admin-marketing.png"), fullPage: true });
-    await a.click('[data-sec="content"]'); await a.click("#starters"); await a.waitForFunction(() => document.querySelectorAll("#mkBody tbody tr").length === 3);
+    await a.click('[data-sec="content"]'); await a.click("#starters"); await a.waitForFunction(() => document.querySelectorAll("#mkBody tbody tr").length === 4);
     await a.click('[data-sec="promotions"]'); await a.waitForSelector("#promoForm");
     await a.fill('#promoForm [name=code]', "gift15"); await a.fill('#promoForm [name=value]', "15");
     await a.fill('#promoForm [name=startsAt]', "2026-11-01T00:00"); await a.fill('#promoForm [name=endsAt]', "2026-12-24T23:59");

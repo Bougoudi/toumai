@@ -63,6 +63,21 @@ function load(env = process.env) {
       adminNotifyEmail: env.ADMIN_NOTIFY_EMAIL || "",
     },
     adminNotifyWebhookUrl: env.ADMIN_NOTIFY_WEBHOOK_URL || "",
+    // Review submissions allowed per visitor IP per 15 minutes (×4 per day).
+    // E-mail list invitation with a welcome code (one use per subscribed address).
+    newsletter: {
+      enabled: env.NEWSLETTER_ENABLED !== "false",
+      // Sign-up attempts per visitor IP per hour (failed attempts count too).
+      signupLimit: Math.max(1, Math.min(100, Number.parseInt(env.NEWSLETTER_SIGNUP_LIMIT, 10) || 5)),
+      welcomeCode: (/^[A-Z0-9][A-Z0-9-]{2,23}$/.test(String(env.NEWSLETTER_WELCOME_CODE || "").toUpperCase()) ? String(env.NEWSLETTER_WELCOME_CODE).toUpperCase() : "WELCOME10"),
+      welcomePercent: Math.max(1, Math.min(50, Number.parseInt(env.NEWSLETTER_WELCOME_PERCENT, 10) || 10)),
+      welcomeEndsAt: (d => Number.isNaN(d.getTime()) ? "2027-12-31T23:59:59.000Z" : d.toISOString())(new Date(env.NEWSLETTER_WELCOME_ENDS ? `${env.NEWSLETTER_WELCOME_ENDS}T23:59:59Z` : "2027-12-31T23:59:59Z")),
+    },
+    // Customer reviews stay off (no v6 migration, no routes, no UI) until the owner sets REVIEWS_ENABLED=true.
+    reviewsEnabled: env.REVIEWS_ENABLED === "true",
+    // Purchase-verification link requests allowed per visitor IP per hour.
+    reviewVerifyLimit: Math.max(1, Math.min(100, Number.parseInt(env.REVIEW_VERIFY_LIMIT, 10) || 5)),
+    reviewSubmitLimit: Math.max(1, Math.min(100, Number.parseInt(env.REVIEW_SUBMIT_LIMIT, 10) || 5)),
 
     // Payment logos shown in the footer and at checkout. List ONLY what your iyzico
     // account really accepts (check the iyzico merchant panel). Unknown ids are ignored.

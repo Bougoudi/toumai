@@ -63,21 +63,40 @@ function start(port, env) {
 
       // ---------------- product: sections, placeholders, sticky buy bar
       await p.waitForSelector(".swatch"); await p.waitForSelector("#specTable tr");
-      await noOverflow(p, `${label} /product`); await allImagesLoad(p, `${label} /product`);
+      await noOverflow(p, `${label} /product`);
+      if (label === "phone") assert.equal(await p.evaluate(() => window.innerWidth), 390, "layout viewport not widened by wide content (e.g. the thumbnail row)");
+      // Choosing a color shows that color's photo
+      await p.click('.swatch:has-text("Pearl White")');
+      assert.match(await p.getAttribute("#mainImage", "src"), /throw-white-reading\.webp$/);
+      assert.equal(await p.locator("#thumbs .thumb.active").getAttribute("data-src"), "/images/throw-white-reading.webp");
+      assert.equal(await p.$eval("#mainImage", i => i.style.objectPosition), "center 30%", "portrait photo framed on the face");
+      assert.equal(await p.locator('#thumbs .thumb[data-src*="throw-white"]').count(), 4);
+      assert.equal(await p.locator('#thumbs .thumb[data-src*="bed"]').count(), 0);
+      await p.click('.swatch:has-text("Camel Brown")'); await allImagesLoad(p, `${label} /product`);
       assert.equal(await p.textContent("#price"), "$49.99"); assert.equal(await p.textContent("#stickyPrice"), "$49.99");
       assert.equal(await p.textContent("#priceLabel"), "Launch price");
-      const tbc = await p.locator("#specTable tr.tbc").count();
-      assert.equal(tbc, await p.locator("#specTable tr").count(), "no confirmed facts yet: every spec row says it's being confirmed");
-      assert.match(await p.textContent("#specTable"), /Being confirmed with our supplier/);
+      // Reviews are off by default (REVIEWS_ENABLED unset): no section, no jump link, no footer link
+      assert.equal(await p.isVisible("#reviews"), false); assert.equal(await p.isVisible("#reviewsJump"), false);
+      assert.equal(await p.locator('footer a[href="/review-policy"]').count(), 0);
+      // Owner-confirmed facts are shown; everything else still says it's being confirmed
+      const specs = await p.$$eval("#specTable tr", rows => Object.fromEntries(rows.map(r => [r.querySelector("th").textContent, [r.querySelector("td").textContent, r.className]])));
+      assert.deepEqual(specs["USB cable length"], ["1.5 m (about 4.9 ft)", ""]);
+      assert.deepEqual(specs["Power bank included?"], ["No — sold separately", ""]);
+      assert.deepEqual(specs["Automatic shut-off"], ["Yes — automatic shut-off and overheat protection", ""]);
+      assert.deepEqual(specs["Dimensions"], ["Being confirmed with our supplier", "tbc"], "dimensions not guessed");
+      assert.deepEqual(specs["Heat settings"], ["Being confirmed with our supplier", "tbc"]);
+      assert.equal(Object.keys(specs).some(k => /Runtime with the included power bank|Included power bank capacity/.test(k)), false, "no battery rows: no power bank is sold");
       assert.match(await p.textContent("#boxList"), /being confirmed/);
       // Common Questions, Clear Answers: the 6 objections are visible without a click
       assert.deepEqual(await p.$$eval("#clearAnswers .answer-card h3", n => n.map(x => x.textContent)),
         ["Does it get warm enough?", "Does it come with a power bank?", "How long does the battery last?", "How do I clean it?", "What exactly is included?", "When will my order arrive?"]);
       assert.ok(await p.isVisible("#a-warm"), "answers visible");
       assert.match(await p.textContent("#a-warm"), /make no claim about how warm it gets yet/);
-      assert.match(await p.textContent("#a-battery"), /We don't quote a runtime until it's confirmed/);
+      assert.match(await p.textContent("#a-battery"), /No power bank is included, so how long it runs depends on the power bank/);
+      assert.match(await p.textContent("#a-power-bank"), /^Does it come with a power bank\?No — a power bank is not included/);
       assert.match(await p.textContent("#a-clean"), /Don't machine-wash it unless its care label says you can/);
       assert.match(await p.textContent("#a-included"), /Please don't assume any accessory is included/);
+      assert.match(await p.textContent("#a-included"), /Not included \(optional, sold separately\): USB power bank/);
       assert.match(await p.textContent("#a-arrive"), /we don't promise a delivery date yet/);
       assert.equal(await p.locator("#productFaq details").count(), 6);
       // Before You Order sits in the buy box, before any payment step
@@ -128,13 +147,13 @@ function start(port, env) {
     await a.goto(sandbox.B + "/admin"); await a.waitForURL("**/admin-login.html");
     await a.fill("#u", "owner"); await a.fill("#p", "e2e-password-123"); await a.click("button[type=submit]");
     await a.waitForURL("**/admin"); await a.waitForSelector(".warn-card");
-    assert.match(await a.textContent(".warn-card"), new RegExp(`${productFacts.FIELDS.length} product detail\\(s\\) still to confirm`));
+    assert.match(await a.textContent(".warn-card"), new RegExp(`${productFacts.FIELDS.length - Object.keys(productFacts.CONFIRMED).length} product detail\\(s\\) still to confirm`));
     await a.click('[data-tab="product"]'); await a.waitForSelector("#factsForm");
     await a.fill('#factsForm [name="dimensions"]', "50 × 60 in (127 × 152 cm)");
     await a.selectOption('#factsForm [name="powerBankIncluded"]', "no");
     await a.fill('#factsForm [name="inBox"]', "1 heated throw\n1 user manual");
     await a.click("#factsForm button");
-    await a.waitForFunction(n => document.getElementById("factsBadge").textContent === String(n), productFacts.FIELDS.length - 3);
+    await a.waitForFunction(n => document.getElementById("factsBadge").textContent === String(n), productFacts.FIELDS.length - Object.keys(productFacts.CONFIRMED).length - 2); // dimensions + box contents added
     const p = await ctx.newPage(); watch(p);
     await p.goto(sandbox.B + "/product"); await p.waitForSelector("#specTable tr");
     assert.match(await p.textContent("#specTable"), /50 × 60 in \(127 × 152 cm\)/);
@@ -143,7 +162,8 @@ function start(port, env) {
     assert.match(await p.textContent("#a-power-bank p"), /^No — a power bank is not included/);
     assert.match(await p.textContent("#a-battery"), /No power bank is included, so how long it runs depends on the power bank/);
     assert.deepEqual(await p.$$eval("#a-included li", n => n.map(x => x.textContent)), ["1 heated throw", "1 user manual"]);
-    assert.match(await p.textContent("#beforeOrder"), /Size 50 × 60 in/);
+    assert.equal((await p.textContent("#beforeOrder")).split("You need a compatible USB power source").length - 1, 1, "power source sentence not repeated");
+    assert.match(await p.textContent("#beforeOrder"), /Size: 50 × 60 in \(127 × 152 cm\) · Power input: USB · Cable: 1\.5 m/);
     assert.doesNotMatch(await p.textContent("#specTable"), /Runtime with the included power bank|Included power bank capacity/, "no battery rows when no power bank is sold");
     await ctx.close();
     console.log("✓ admin Product info: saved facts appear on the product page and FAQ");
