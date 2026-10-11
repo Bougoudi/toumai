@@ -1,12 +1,17 @@
 // Customer reviews on the product page. Everything shown comes from GET /api/reviews (approved
 // reviews only). The form validates with the same rules as the server, but only the server's
 // answer decides: a confirmation is shown only after a real 201 response.
-(function () {
+(async function () {
   const { el } = HL;
   const R = window.HLReviewRules;
   const $ = (id) => document.getElementById(id);
   const form = $("reviewForm");
   if (!form || !R) return;
+  // The section stays hidden unless the store owner enabled reviews (REVIEWS_ENABLED=true).
+  const storeCfg = await HL.config().catch(() => ({}));
+  if (!storeCfg.reviewsEnabled) return;
+  $("reviews").hidden = false;
+  const jump = $("reviewsJump"); if (jump) jump.hidden = false;
   const PRODUCT_ID = "usb-heated-throw";
 
   // Single-use verification link (?review=…): kept in memory only and removed from the address bar.

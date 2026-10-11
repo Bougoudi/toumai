@@ -9,6 +9,7 @@
   const pill = (s) => `<span class="pill pill-${esc(s)}">${esc(String(s).replace(/_/g, " "))}</span>`;
   let csrf = "";
   let emailOn = false;
+  let reviewsOn = false;
 
   function toast(m) { const t = $("#toast"); t.textContent = m; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 4500); }
 
@@ -38,6 +39,7 @@
     $("#msgBadge").hidden = !d.openMessages; $("#msgBadge").textContent = d.openMessages;
     $("#reviewsBadge").hidden = !d.reviewsPending; $("#reviewsBadge").textContent = d.reviewsPending;
     emailOn = d.emailConfigured;
+    reviewsOn = d.reviewsEnabled; $('[data-tab="reviews"]').hidden = !reviewsOn;
     $("#factsBadge").hidden = !d.productFactsMissing; $("#factsBadge").textContent = d.productFactsMissing;
     const mode = d.checkout.enabled ? (d.checkout.mode === "live" ? "LIVE payments (iyzico)" : "iyzico SANDBOX (test cards)") : `Demo only — ${d.checkout.reason}`;
     $("#statusBar").innerHTML = `<div class="admin-card status-line"><span><b>Payments:</b> ${esc(mode)}</span><span><b>Emails:</b> ${d.emailConfigured ? "sent via Resend" : "not configured — emails are prepared for you to send manually"}</span></div>`;
@@ -364,12 +366,12 @@
         </form>
       </div>
 
-      <div class="admin-card"><h3>Review request</h3>
+      ${!reviewsOn ? "" : `<div class="admin-card"><h3>Review request</h3>
         ${o.review_requested_at ? `<p>Review request sent ${date(o.review_requested_at)}. It is never sent twice.</p>`
           : f !== "delivered" || !paid || o.payment_status !== "paid" ? '<p class="muted">Available once a paid, non-refunded order is marked delivered.</p>'
           : !emailOn ? '<p class="muted">Needs an email provider (RESEND_API_KEY, EMAIL_FROM). Nothing is sent without one.</p>'
           : '<p class="micro">Sends one email with a single-use link asking for an honest review, positive or negative. No reward is offered.</p><button class="admin-btn" id="requestReview">Send review request</button>'}
-      </div>
+      </div>`}
 
       <div class="admin-card"><h3>Internal notes</h3><textarea id="notes" rows="3" maxlength="4000">${esc(o.notes || "")}</textarea><button class="admin-btn" id="saveNotes">Save notes</button></div>
       <div class="admin-card"><h3>History</h3>${o.events.map(e => `<p class="micro">${date(e.created_at)} · <b>${esc(e.event)}</b> ${esc(e.details || "")} <span class="muted">(${esc(e.actor)})</span></p>`).join("")}</div>`;

@@ -51,9 +51,9 @@ async function startStore(env = {}) {
     DB_PATH: path.join(dir, "store.sqlite"),
     ADMIN_USERNAME: "owner", ADMIN_PASSWORD_HASH: auth.hashPassword(PASSWORD),
     IYZICO_API_KEY: "sandbox-api-key", IYZICO_SECRET_KEY: SECRET, IYZICO_URI: "https://sandbox-api.iyzipay.com",
-    PUBLIC_URL: "http://127.0.0.1", STORE_PRICE_USD: "74.99", ...env,
+    PUBLIC_URL: "http://127.0.0.1", STORE_PRICE_USD: "74.99", REVIEWS_ENABLED: "true", ...env,
   });
-  const db = open(cfg.dbPath);
+  const db = open(cfg.dbPath, { reviews: cfg.reviewsEnabled });
   const fake = fakeIyzico();
   iyzico.setClientForTests(fake.client);
   const silent = { log() {}, warn() {}, error() {} };

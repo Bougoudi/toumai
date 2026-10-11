@@ -66,6 +66,9 @@ function start(port, env) {
       await noOverflow(p, `${label} /product`); await allImagesLoad(p, `${label} /product`);
       assert.equal(await p.textContent("#price"), "$49.99"); assert.equal(await p.textContent("#stickyPrice"), "$49.99");
       assert.equal(await p.textContent("#priceLabel"), "Launch price");
+      // Reviews are off by default (REVIEWS_ENABLED unset): no section, no jump link, no footer link
+      assert.equal(await p.isVisible("#reviews"), false); assert.equal(await p.isVisible("#reviewsJump"), false);
+      assert.equal(await p.locator('footer a[href="/review-policy"]').count(), 0);
       const tbc = await p.locator("#specTable tr.tbc").count();
       assert.equal(tbc, await p.locator("#specTable tr").count(), "no confirmed facts yet: every spec row says it's being confirmed");
       assert.match(await p.textContent("#specTable"), /Being confirmed with our supplier/);

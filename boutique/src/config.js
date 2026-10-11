@@ -64,6 +64,8 @@ function load(env = process.env) {
     },
     adminNotifyWebhookUrl: env.ADMIN_NOTIFY_WEBHOOK_URL || "",
     // Review submissions allowed per visitor IP per 15 minutes (×4 per day).
+    // Customer reviews stay off (no v6 migration, no routes, no UI) until the owner sets REVIEWS_ENABLED=true.
+    reviewsEnabled: env.REVIEWS_ENABLED === "true",
     // Purchase-verification link requests allowed per visitor IP per hour.
     reviewVerifyLimit: Math.max(1, Math.min(100, Number.parseInt(env.REVIEW_VERIFY_LIMIT, 10) || 5)),
     reviewSubmitLimit: Math.max(1, Math.min(100, Number.parseInt(env.REVIEW_SUBMIT_LIMIT, 10) || 5)),

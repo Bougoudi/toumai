@@ -92,6 +92,8 @@ function createApp({ cfg, db, log = console }) {
     res.type("application/xml").set("Cache-Control", "public, max-age=3600").send(xml);
   });
   app.use("/images", express.static(path.join(PUBLIC_DIR, "images"), { maxAge: "7d" }));
+  // Review files are not served while reviews are disabled.
+  if (!cfg.reviewsEnabled) app.use("/review-policy.html", (_req, res) => res.status(404).type("text/plain").send("Not found"));
   app.use(express.static(PUBLIC_DIR, { extensions: ["html"], index: "index.html" }));
 
   // ------------------------------------------------------------- public API
@@ -111,7 +113,8 @@ function createApp({ cfg, db, log = console }) {
       analytics: { enabled: cfg.analytics.enabled, consentMode: cfg.analytics.consentMode },
       paymentMethods: cfg.paymentMethods,
       // Verified Purchase links need a working e-mail provider; the review form says so when it's missing.
-      reviewVerificationAvailable: notify.emailConfigured(cfg) && Boolean(cfg.publicUrl),
+      reviewsEnabled: cfg.reviewsEnabled,
+      reviewVerificationAvailable: cfg.reviewsEnabled && notify.emailConfigured(cfg) && Boolean(cfg.publicUrl),
       banner: marketing.activeBanner(db),
     });
   });
@@ -215,15 +218,18 @@ function createApp({ cfg, db, log = console }) {
   });
 
   // ------------------------------------------------------------- reviews (public)
-  // Only approved reviews and public fields are ever returned here.
-  app.get("/api/reviews", (req, res) => res.set("Cache-Control", "no-store").json(reviews.publicList(db, cfg, req.query)));
-  app.post("/api/reviews", limiter(15 * 60_000, cfg.reviewSubmitLimit), limiter(24 * 3_600_000, cfg.reviewSubmitLimit * 4), wrap(async (req, res) => {
-    res.status(201).json(reviews.submit(db, cfg, req.body));
-  }));
-  app.post("/api/reviews/verification-request", limiter(3_600_000, cfg.reviewVerifyLimit), wrap(async (req, res) => {
-    res.json(await reviews.requestVerification(db, cfg, req.body || {}));
-  }));
-  app.get("/api/reviews/verification", limiter(60_000, 20), (req, res) => res.set("Cache-Control", "no-store").json(reviews.tokenStatus(db, req.query.token)));
+  // Registered only when REVIEWS_ENABLED=true (otherwise 404 and no review tables exist).
+  if (cfg.reviewsEnabled) {
+    // Only approved reviews and public fields are ever returned here.
+    app.get("/api/reviews", (req, res) => res.set("Cache-Control", "no-store").json(reviews.publicList(db, cfg, req.query)));
+    app.post("/api/reviews", limiter(15 * 60_000, cfg.reviewSubmitLimit), limiter(24 * 3_600_000, cfg.reviewSubmitLimit * 4), wrap(async (req, res) => {
+      res.status(201).json(reviews.submit(db, cfg, req.body));
+    }));
+    app.post("/api/reviews/verification-request", limiter(3_600_000, cfg.reviewVerifyLimit), wrap(async (req, res) => {
+      res.json(await reviews.requestVerification(db, cfg, req.body || {}));
+    }));
+    app.get("/api/reviews/verification", limiter(60_000, 20), (req, res) => res.set("Cache-Control", "no-store").json(reviews.tokenStatus(db, req.query.token)));
+  }
 
   app.post("/api/contact", limiter(10 * 60_000, 5), wrap(async (req, res) => {
     const b = req.body || {};
@@ -269,7 +275,8 @@ function createApp({ cfg, db, log = console }) {
       unreadNotifications: db.prepare("SELECT COUNT(*) n FROM notifications WHERE read_at IS NULL").get().n,
       openMessages: db.prepare("SELECT COUNT(*) n FROM messages WHERE handled_at IS NULL").get().n,
       productFactsMissing: productFacts.missing(productFacts.get(db)).length,
-      reviewsPending: db.prepare("SELECT COUNT(*) n FROM reviews WHERE moderation_status='pending'").get().n,
+      reviewsEnabled: cfg.reviewsEnabled,
+      reviewsPending: cfg.reviewsEnabled ? db.prepare("SELECT COUNT(*) n FROM reviews WHERE moderation_status='pending'").get().n : 0,
       ordersOnHold: db.prepare("SELECT COUNT(*) n FROM orders WHERE on_hold=1 AND is_test=0").get().n,
     });
   });
@@ -340,24 +347,26 @@ function createApp({ cfg, db, log = console }) {
     res.status(v.outcome === "paid" ? 200 : 409).json(v.outcome === "paid" ? { ok: true } : { error: `Not paid: ${v.reason}` });
   }));
   // ------------------------------------------------------------- reviews (admin)
-  const reviewId = (req) => {
-    const id = Number.parseInt(req.params.id, 10);
-    if (!Number.isInteger(id) || id <= 0) throw new reviews.ReviewError(400, "Invalid review id.");
-    return id;
-  };
-  app.get("/api/admin/reviews", requireAdmin, (req, res) => res.set("Cache-Control", "no-store").json(reviews.adminList(db, req.query)));
-  app.get("/api/admin/reviews/:id/moderation-history", requireAdmin, wrap(async (req, res) => res.json(reviews.history(db, reviewId(req)))));
-  for (const action of Object.keys(reviews.TRANSITIONS)) {
-    app.post(`/api/admin/reviews/:id/${action}`, requireAdmin, wrap(async (req, res) => {
-      const id = reviewId(req);
-      const status = reviews.moderate(db, id, action, req.body || {}, req.admin.username);
-      auth.audit(db, req.admin.username, `review_${action}`, `review:${id}`, req.body?.reason ? String(req.body.reason).slice(0, 40) : null, req.ip);
-      res.json({ ok: true, status });
+  if (cfg.reviewsEnabled) {
+    const reviewId = (req) => {
+      const id = Number.parseInt(req.params.id, 10);
+      if (!Number.isInteger(id) || id <= 0) throw new reviews.ReviewError(400, "Invalid review id.");
+      return id;
+    };
+    app.get("/api/admin/reviews", requireAdmin, (req, res) => res.set("Cache-Control", "no-store").json(reviews.adminList(db, req.query)));
+    app.get("/api/admin/reviews/:id/moderation-history", requireAdmin, wrap(async (req, res) => res.json(reviews.history(db, reviewId(req)))));
+    for (const action of Object.keys(reviews.TRANSITIONS)) {
+      app.post(`/api/admin/reviews/:id/${action}`, requireAdmin, wrap(async (req, res) => {
+        const id = reviewId(req);
+        const status = reviews.moderate(db, id, action, req.body || {}, req.admin.username);
+        auth.audit(db, req.admin.username, `review_${action}`, `review:${id}`, req.body?.reason ? String(req.body.reason).slice(0, 40) : null, req.ip);
+        res.json({ ok: true, status });
+      }));
+    }
+    app.post("/api/admin/orders/:id/review-request", requireAdmin, adminAction("review_request", async (req, res) => {
+      res.json(await reviews.requestReview(db, cfg, orderId(req), req.admin.username));
     }));
   }
-  app.post("/api/admin/orders/:id/review-request", requireAdmin, adminAction("review_request", async (req, res) => {
-    res.json(await reviews.requestReview(db, cfg, orderId(req), req.admin.username));
-  }));
 
   // Supplier preparation checklist and anomalies (holds block supplier order and shipment).
   const loadOrder = (req) => {

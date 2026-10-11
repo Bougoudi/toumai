@@ -16,8 +16,8 @@ const COMMENT = "Soft and warm at my desk. The cable could be longer, but it doe
 (async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hl-e2er-"));
   const cfg = load({ DB_PATH: path.join(dir, "r.sqlite"), ADMIN_USERNAME: "owner", ADMIN_PASSWORD_HASH: auth.hashPassword("e2e-password-123"),
-    PUBLIC_URL: "http://127.0.0.1:4581", REVIEW_SUBMIT_LIMIT: "100" });
-  const db = open(cfg.dbPath);
+    PUBLIC_URL: "http://127.0.0.1:4581", REVIEW_SUBMIT_LIMIT: "100", REVIEWS_ENABLED: "true" });
+  const db = open(cfg.dbPath, { reviews: cfg.reviewsEnabled });
   const server = createApp({ cfg, db, log: { log() {}, warn() {}, error() {} } }).listen(4581);
   const B = "http://127.0.0.1:4581";
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});

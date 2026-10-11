@@ -12,12 +12,13 @@ const DEFAULT_SETTINGS = {
   payment_fee_fixed_usd: "0",     // estimated fixed fee per order
 };
 
-function open(dbPath) {
+/** Opens the database. Schema v6 (reviews) is applied only when `reviews` is true. */
+function open(dbPath, { reviews = false } = {}) {
   if (dbPath !== ":memory:") fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-  migrate(db);
+  migrate(db, reviews ? 6 : 5);
   return db;
 }
 
@@ -81,9 +82,9 @@ function rollbackReviews(db) {
   })();
 }
 
-function migrate(db) {
+function migrate(db, target = SCHEMA_VERSION) {
   const version = db.pragma("user_version", { simple: true });
-  if (version >= SCHEMA_VERSION) return;
+  if (version >= target) return; // never downgrades a newer database
   db.transaction(() => {
     // v1 (starter) stored one product per order in REAL dollars. Keep it for reference.
     const legacy = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='orders'").get();
@@ -356,13 +357,16 @@ CREATE TABLE IF NOT EXISTS order_issues (
 );
 CREATE INDEX IF NOT EXISTS order_issues_order ON order_issues(order_id);
 `);
-    // v6: customer reviews (moderated; purchase verified only by a single-use e-mailed link)
-    addCol("orders", "review_requested_at", "TEXT");
-    db.exec(REVIEWS_SCHEMA);
+    // v6: customer reviews (moderated; purchase verified only by a single-use e-mailed link).
+    // Applied only when reviews are enabled, so production is never migrated by surprise.
+    if (target >= 6) {
+      addCol("orders", "review_requested_at", "TEXT");
+      db.exec(REVIEWS_SCHEMA);
+    }
 
     const ins = db.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)");
     for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) ins.run(k, v);
-    db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    db.pragma(`user_version = ${target}`);
   })();
 }
 

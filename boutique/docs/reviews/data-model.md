@@ -1,6 +1,7 @@
 # Customer reviews — Phase 2: data model, statuses and API
 
-Migration: schema **v6** in `src/db.js` (`REVIEWS_SCHEMA`), applied automatically on start.
+Migration: schema **v6** in `src/db.js` (`REVIEWS_SCHEMA`), applied on start **only when `REVIEWS_ENABLED=true`**
+(`open(dbPath, { reviews })`); otherwise the database stays on v5 and review routes/UI don't exist (R16).
 Down-migration: `rollbackReviews(db)` (drops review tables and `orders.review_requested_at`,
 sets `user_version = 5`; orders untouched). Tested in `test/reviews.test.js` R15 (apply → rollback → re-apply).
 

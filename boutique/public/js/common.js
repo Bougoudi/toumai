@@ -179,8 +179,8 @@
       el("a", { class: "brand footer-brand", href: "/" }, "HavenLume", el("span", { text: "HOME COMFORT" })),
       el("p", { text: "Comfort for the moments that matter." }),
       el("div", { class: "footer-links" },
-        [["/shipping", "Shipping"], ["/returns", "Returns"], ["/privacy", "Privacy"], ["/terms", "Terms of Sale"], ["/review-policy", "Review rules"], ["/faq", "FAQ"], ["/contact", "Contact"]]
-          .map(([href, label]) => el("a", { href, text: label })),
+        [["/shipping", "Shipping"], ["/returns", "Returns"], ["/privacy", "Privacy"], ["/terms", "Terms of Sale"], cfg.reviewsEnabled ? ["/review-policy", "Review rules"] : null, ["/faq", "FAQ"], ["/contact", "Contact"]]
+          .filter(Boolean).map(([href, label]) => el("a", { href, text: label })),
         el("button", { type: "button", class: "footer-link-btn", text: "Privacy choices", onclick: () => privacyPanel(true) })),
       paymentIcons(cfg),
       el("small", { text: `© ${year} ${cfg.businessName || "HavenLume"}. All prices in USD.` }));
@@ -193,6 +193,7 @@
     const cfg = await config().catch(() => ({}));
     const bottom = document.getElementById("site-footer");
     if (bottom) bottom.replaceWith(footer(cfg));
+    document.querySelectorAll("[data-reviews-only]").forEach(n => { n.hidden = !cfg.reviewsEnabled; });
     analyticsCfg = cfg.analytics || { enabled: false };
     if (analyticsAllowed()) { pageview(); queue.splice(0).forEach(send); } else { queue.length = 0; }
     privacyPanel(false);

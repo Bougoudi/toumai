@@ -383,7 +383,7 @@ test("R15. v6 migration: constraints hold, rollback restores v5, re-applying wor
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hl-rev-mig-"));
   try {
     const file = path.join(dir, "m.sqlite");
-    let db = open(file);
+    let db = open(file, { reviews: true });
     assert.equal(db.pragma("user_version", { simple: true }), 6);
     const ins = db.prepare(`INSERT INTO reviews(public_id,product_id,rating,display_name,comment,purchased_from_havenlume,publication_consent,fingerprint,created_at,updated_at)
       VALUES(?,?,?,?,?,?,?,?,?,?)`);
@@ -401,9 +401,86 @@ test("R15. v6 migration: constraints hold, rollback restores v5, re-applying wor
     assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name LIKE 'review%'").get().n, 0);
     assert.equal(db.prepare("SELECT order_number FROM orders").get().order_number, "HL-KEEP01");
     db.close();
-    db = open(file); // re-applies v6
+    db = open(file, { reviews: true }); // re-applies v6
     assert.equal(db.pragma("user_version", { simple: true }), 6);
     assert.equal(db.prepare("SELECT COUNT(*) n FROM reviews").get().n, 0);
     db.close();
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---------------------------------------------------------------- production safety & proofs
+test("R16. with REVIEWS_ENABLED off (production default): no v6 migration, no review routes, orders unaffected", async () => {
+  const s = await startStore({ REVIEWS_ENABLED: "false" });
+  try {
+    assert.equal(s.cfg.reviewsEnabled, false);
+    assert.equal(s.db.pragma("user_version", { simple: true }), 5, "database stays on v5");
+    assert.equal(s.db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name LIKE 'review%'").get().n, 0, "no review tables");
+    assert.equal(s.db.prepare("SELECT COUNT(*) n FROM pragma_table_info('orders') WHERE name='review_requested_at'").get().n, 0);
+    for (const [m, p] of [["GET", "/api/reviews"], ["POST", "/api/reviews"], ["POST", "/api/reviews/verification-request"], ["GET", "/api/reviews/verification?token=x"], ["GET", "/review-policy"], ["GET", "/review-policy.html"]]) {
+      assert.equal((await s.req(m, p, m === "POST" ? VALID : undefined)).status, 404, `${m} ${p}`);
+    }
+    assert.doesNotMatch((await s.req("GET", "/sitemap.xml")).text, /review-policy/);
+    const cfg = (await s.req("GET", "/api/config")).json;
+    assert.equal(cfg.reviewsEnabled, false); assert.equal(cfg.reviewVerificationAvailable, false);
+    // Orders, payment and admin keep working
+    const o = await paidOrder(s);
+    assert.equal(o.payment_status, "paid");
+    const h = await s.login();
+    const dash = await s.req("GET", "/api/admin/dashboard", undefined, h);
+    assert.equal(dash.status, 200); assert.equal(dash.json.reviewsEnabled, false); assert.equal(dash.json.reviewsPending, 0);
+    for (const [m, p] of [["GET", "/api/admin/reviews"], ["POST", "/api/admin/reviews/1/approve"], ["POST", `/api/admin/orders/${o.id}/review-request`]]) {
+      assert.equal((await s.req(m, p, m === "POST" ? {} : undefined, h)).status, 404, `${m} ${p}`);
+    }
+    assert.equal((await s.req("GET", `/api/admin/orders/${o.id}`, undefined, h)).status, 200);
+    // Enabling later migrates the same file to v6 and keeps the orders
+    const db2 = open(s.cfg.dbPath, { reviews: true });
+    assert.equal(db2.pragma("user_version", { simple: true }), 6);
+    assert.equal(db2.prepare("SELECT COUNT(*) n FROM orders WHERE id=?").get(o.id).n, 1);
+    assert.equal(db2.prepare("SELECT COUNT(*) n FROM reviews").get().n, 0, "no review is created by the migration");
+    db2.close();
+  } finally { s.close(); }
+});
+
+test("R17. logs never contain review text, names, e-mails or tokens — including on a server error", async () => {
+  const { load } = require("../src/config");
+  const { createApp } = require("../src/app");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hl-rev-log-"));
+  const lines = [];
+  const capture = (...a) => lines.push(a.map(String).join(" "));
+  const cfg = load({ DB_PATH: path.join(dir, "l.sqlite"), PUBLIC_URL: "http://127.0.0.1", REVIEWS_ENABLED: "true", REVIEW_SUBMIT_LIMIT: "4" });
+  const db = open(cfg.dbPath, { reviews: true });
+  const server = await new Promise(r => { const sv = createApp({ cfg, db, log: { log: capture, warn: capture, error: capture } }).listen(0, "127.0.0.1", () => r(sv)); });
+  const post = (body) => fetch(`http://127.0.0.1:${server.address().port}/api/reviews`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(r => r.status);
+  try {
+    const secret = review({ displayName: "Secret Name", comment: "My email is jane.secret@example.com and this text must never reach the logs." });
+    assert.equal(await post(secret), 201);
+    assert.equal(await post({ ...secret, rating: 9 }), 400);
+    assert.equal(await post(secret), 409);
+    db.exec("DROP TABLE review_moderation_history; DROP TABLE reviews;"); // forces an internal error
+    assert.equal(await post({ ...secret, comment: secret.comment + " Second." }), 500);
+    assert.equal(await post({ ...secret, verificationToken: "t".repeat(43) }), 429);
+    assert.ok(lines.length >= 1, "the 500 was logged");
+    const all = lines.join("\n");
+    for (const s of ["Secret Name", "jane.secret", "never reach the logs", "t".repeat(43)]) assert.equal(all.includes(s), false, `log contains "${s}"`);
+  } finally { server.close(); db.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("R18. a status change and its history entry are atomic: if the history write fails, nothing changes", async () => {
+  const s = await startStore(many);
+  try {
+    const h = await s.login();
+    await s.req("POST", "/api/reviews", review());
+    const id = s.db.prepare("SELECT id FROM reviews").get().id;
+    s.db.exec("CREATE TRIGGER fail_history BEFORE INSERT ON review_moderation_history BEGIN SELECT RAISE(ABORT, 'history unavailable'); END;");
+    const r = await s.req("POST", `/api/admin/reviews/${id}/approve`, {}, h);
+    assert.equal(r.status, 500);
+    const row = s.db.prepare("SELECT moderation_status, published_at FROM reviews WHERE id=?").get(id);
+    assert.deepEqual({ ...row }, { moderation_status: "pending", published_at: null }, "status rolled back");
+    assert.equal(s.db.prepare("SELECT COUNT(*) n FROM review_moderation_history").get().n, 0);
+    assert.equal(s.db.prepare("SELECT COUNT(*) n FROM audit_log WHERE action='review_approve'").get().n, 0, "no audit entry for a failed action");
+    assert.equal((await s.req("GET", "/api/reviews")).json.summary.count, 0, "not published");
+    s.db.exec("DROP TRIGGER fail_history");
+    assert.equal((await s.req("POST", `/api/admin/reviews/${id}/approve`, {}, h)).status, 200);
+    assert.equal(s.db.prepare("SELECT COUNT(*) n FROM review_moderation_history").get().n, 1);
+  } finally { s.close(); }
 });

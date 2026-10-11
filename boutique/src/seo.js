@@ -17,7 +17,7 @@ const PAGES = {
   "/shipping": { file: "shipping.html", priority: "0.3" },
   "/returns": { file: "returns.html", priority: "0.3" },
   "/privacy": { file: "privacy.html", priority: "0.2" },
-  "/review-policy": { file: "review-policy.html", priority: "0.2" },
+  "/review-policy": { file: "review-policy.html", priority: "0.2", requires: "reviewsEnabled" },
   "/terms": { file: "terms.html", priority: "0.2" },
 };
 // Private or transactional pages: reachable, never indexed.
@@ -107,6 +107,7 @@ function pageMiddleware(cfg) {
   return (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     const route = req.path.replace(/\.html$/, "").replace(/\/index$/, "/") || "/";
+    if (PAGES[route] && PAGES[route].requires && !cfg[PAGES[route].requires]) return res.status(404).type("text/plain").send("Not found");
     const file = (PAGES[route] || {}).file || NOINDEX[route];
     if (!file) return next();
     const html = read(file).replace("</head>", `${headTags(cfg, req, route)}\n</head>`);
@@ -122,7 +123,7 @@ function robots(cfg, req) {
 
 function sitemap(cfg, req) {
   const base = baseUrl(cfg, req);
-  const urls = Object.entries(PAGES).map(([route, p]) => `  <url><loc>${esc(base + route)}</loc><priority>${p.priority}</priority></url>`);
+  const urls = Object.entries(PAGES).filter(([, p]) => !p.requires || cfg[p.requires]).map(([route, p]) => `  <url><loc>${esc(base + route)}</loc><priority>${p.priority}</priority></url>`);
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`;
 }
 

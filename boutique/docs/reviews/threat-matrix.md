@@ -14,6 +14,8 @@
 | Privilege escalation | `requireAdmin` server-side on every admin route; role headers ignored; forged cookies refused | R8 | covered (single admin role exists) |
 | Silent moderation abuse | Fixed reason categories (never "negative"); history in the same transaction; audit log | R7, R9 | covered |
 | Personal data exposure | Public API returns only rating, name, title, text, date, recommend, badge; no IP or e-mail stored with reviews; erase action for removal requests | R10, R9 | covered |
-| Sensitive data in logs | Errors log only method, path and stack; review bodies, e-mails and tokens are never logged; audit details strip token/password/secret keys (`summarize()`) | code review `src/app.js` | covered |
+| Sensitive data in logs | Errors log only method, path and stack; review bodies, e-mails and tokens are never logged; audit details strip token/password/secret keys (`summarize()`) | R17 (201/400/409/forced 500/429 flows, captured logs) | covered |
+| Partial moderation write | Status change + history in one transaction | R18 (history write forced to fail → status unchanged, nothing published) | covered |
+| Unplanned production migration | `REVIEWS_ENABLED` off by default: no v6 migration, no routes, no UI | R16, mutation checks | covered |
 | Negative reviews blocked by anti-abuse | Anti-abuse rules look at volume and exact duplicates only, never rating or sentiment | R7 | covered |
 | Distributed spam (many IPs) | Moderation queue is the backstop | — | **accepted risk**: no CAPTCHA (would need a third-party service) |

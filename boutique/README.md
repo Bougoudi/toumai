@@ -104,6 +104,10 @@ physical inspection of the parcel.
 
 ## Customer reviews (product page + `/admin` → Reviews)
 
+**Off by default.** Nothing about reviews exists (no database migration, no routes, no page
+section, no admin tab) until you set `REVIEWS_ENABLED=true`. Download a backup first; the
+restart then migrates the database to schema v6. See `docs/implementation-tracking.md`.
+
 - Customers submit a review on the product page (rating, public name, optional title, comment,
   "Did you purchase…", "Would you recommend…", required honesty/publication consent). The same
   rules run in the browser and on the server (`public/js/review-rules.js`).
