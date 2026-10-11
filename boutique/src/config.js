@@ -83,6 +83,8 @@ function load(env = process.env) {
     // account really accepts (check the iyzico merchant panel). Unknown ids are ignored.
     paymentMethods: paymentMethods(env.PAYMENT_METHODS),
     // Search Console / Merchant Center "HTML tag" verification token (content="..." only).
+    // Public IDs of optional marketing tags (see src/tags.js). Empty = not loaded.
+    tags: require("./tags").fromEnv(env),
     googleSiteVerification: /^[A-Za-z0-9_-]{10,100}$/.test(env.GOOGLE_SITE_VERIFICATION || "") ? env.GOOGLE_SITE_VERIFICATION : "",
 
     analytics: {

@@ -88,6 +88,17 @@
   function track(name, props) {
     const p = { t: "event", n: name, d: cleanProps(props) };
     if (!analyticsCfg) queue.push(p); else send(p);
+    tagEvent(name, props);
+  }
+  // Optional marketing tags (public/js/tags.js): queued until loaded, dropped if not allowed.
+  const tagQueue = [];
+  function tagEvent(name, props) {
+    if (window.HLTags) window.HLTags.event(name, props); else if (tagQueue.length < 50) tagQueue.push([name, props]);
+  }
+  function loadTags(cfg) {
+    if (!cfg.tags || !Object.keys(cfg.tags).length || !analyticsAllowed()) { tagQueue.length = 0; return; }
+    window.HLTagsSetup = { ids: cfg.tags, queue: tagQueue, allowed: analyticsAllowed };
+    document.head.append(el("script", { src: "/js/tags.js", async: "" }));
   }
   // Campaign tags (utm_*) from the landing URL are kept for this browser session only, and
   // only when analytics are allowed. They are attached to the first page view and to the
@@ -197,6 +208,7 @@
     document.querySelectorAll("[data-reviews-only]").forEach(n => { n.hidden = !cfg.reviewsEnabled; });
     analyticsCfg = cfg.analytics || { enabled: false };
     if (analyticsAllowed()) { pageview(); queue.splice(0).forEach(send); } else { queue.length = 0; }
+    loadTags(cfg);
     privacyPanel(false);
     const bar = document.querySelector(".announcement");
     if (bar && cfg.banner) {
@@ -255,6 +267,7 @@
         const j = await r.json().catch(() => ({}));
         if (r.status !== 201) throw new Error(r.status === 429 ? "Too many sign-ups from this connection. Please try again later." : j.error || "Sign-up failed. Please try again.");
         nlState.set("subscribed"); // the invitation won't be shown again; the code is shown in place
+        tagEvent("sign_up", { method: "newsletter" });
         const copy = el("button", { type: "button", class: "button secondary nl-copy", text: "Copy code" });
         copy.addEventListener("click", async () => { try { await navigator.clipboard.writeText(j.code); copy.textContent = "Copied"; } catch { copy.textContent = j.code; } });
         form.replaceWith(el("div", { class: `nl-done nl-${source}`, role: "status" },
@@ -393,6 +406,6 @@
       el("dl", {}, rows.map(([t, d, href]) => el("div", {}, el("dt", { text: t }), el("dd", {}, d + " ", el("a", { href, class: "text-link", text: t === "Questions?" ? "Contact us" : "Details" }))))));
   }
 
-  window.HL = { TBC, factOr, powerBankText, paymentText, deliveryText, productFaq, renderFaq, renderAnswers, beforeYouOrder, cart, config, catalog, fmt, el, toast, track, paymentIcons, campaign, privacyPanel, _analyticsAllowed: analyticsAllowed };
+  window.HL = { tagEvent, TBC, factOr, powerBankText, paymentText, deliveryText, productFaq, renderFaq, renderAnswers, beforeYouOrder, cart, config, catalog, fmt, el, toast, track, paymentIcons, campaign, privacyPanel, _analyticsAllowed: analyticsAllowed };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount); else mount();
 })();

@@ -136,6 +136,16 @@ Without an e-mail provider the code is shown on screen and nothing claims an e-m
 `STORE_BUSINESS_ADDRESS` before sending any marketing e-mail (CAN-SPAM), and always include
 the unsubscribe link. Timing and wording choices: `docs/GOOGLE_TRENDS_INSIGHTS.md`.
 
+## Marketing tags and acquisition
+
+Optional GA4 / Meta Pixel / TikTok Pixel / Pinterest Tag: set the public ID in the environment
+(`GA4_MEASUREMENT_ID`, `META_PIXEL_ID`, `TIKTOK_PIXEL_ID`, `PINTEREST_TAG_ID`). The CSP is widened
+only for configured providers; tags load only for visitors who haven't opted out (never with GPC/DNT;
+Meta uses Limited Data Use); `purchase` fires once, on the order page, only for a payment the server
+verified. Product links accept `?color=camel-brown|pearl-white` (used by the Google feed and creator
+links). AI-generated images are labeled on the site, tagged IPTC `trainedAlgorithmicMedia`, and never
+sent to Google. Acquisition plan, sources, content library and budgets: `docs/acquisition/`.
+
 ## Payment logos
 Once checkout is open (sandbox or live), the footer, home page and checkout show the logos listed
 in `PAYMENT_METHODS` (default `visa,mastercard,amex`). Optional values: `apple-pay`,

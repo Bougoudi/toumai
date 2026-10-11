@@ -214,17 +214,17 @@ test("M6. campaign attribution: UTM on sessions and orders, CAC and ROAS from re
     assert.deepEqual(k.tracked, { sessions: 2, visitors: 2, product_views: 1, add_to_cart: 1, begin_checkout: 0 });
     assert.equal(k.orders_created, 2); assert.equal(k.paid_orders, 1); assert.equal(k.revenue_cents, 7499);
     assert.equal(k.cac_cents, null, "no spend recorded: no cost per customer");
-    assert.equal(k.contribution_before_ads_cents, 7499 - 2724 - 1500 - 235);
+    assert.equal(k.contribution_before_ads_cents, 7499 - 1700 - 1500 - 235);
     await a.post(`/api/admin/marketing/campaigns/${id}`, { spend: "50" });
     k = (await a.get("/api/admin/marketing")).json.report.campaigns.find(c => c.id === id);
     assert.equal(k.cac_cents, 5000); assert.equal(k.roas, 1.5);
-    assert.equal(k.profit_after_spend_cents, 7499 - 2724 - 1500 - 235 - 5000);
+    assert.equal(k.profit_after_spend_cents, 7499 - 1700 - 1500 - 235 - 5000);
     assert.ok(!k.flags.some(f => /No ad spend/.test(f)));
     // Ad spend also recorded on the order → double-count warning
     await a.post(`/api/admin/orders/${o1.id}/costs`, { adSpend: "5" });
     k = (await a.get("/api/admin/marketing")).json.report.campaigns.find(c => c.id === id);
     assert.ok(k.flags.some(f => /counting them twice/.test(f)));
-    assert.equal(k.profit_after_spend_cents, 7499 - 2724 - 1500 - 235 - 5000, "order-level ads are not subtracted twice");
+    assert.equal(k.profit_after_spend_cents, 7499 - 1700 - 1500 - 235 - 5000, "order-level ads are not subtracted twice");
   } finally { s.close(); }
 });
 
@@ -241,7 +241,7 @@ test("M7. margin calculation: $42.24 reference, discounts, fees, ads, break-even
   try {
     const a = await admin(s);
     const api = (await a.post("/api/admin/marketing/unit-economics", { discount: "7.50", adPerOrder: "15" })).json;
-    assert.equal(api.charged_cents, 6749); assert.equal(api.profit_cents, 6749 - 4224 - 1500);
+    assert.equal(api.charged_cents, 6749); assert.equal(api.profit_cents, 6749 - 3200 - 1500, "default costs: $17 product + $15 shipping");
     assert.equal((await a.post("/api/admin/marketing/unit-economics", { adPerOrder: "-1" })).status, 400);
   } finally { s.close(); }
 });
@@ -253,11 +253,22 @@ test("M8. SEO and Merchant feed only publish verified information", async () => 
     assert.match(page, /<link rel="canonical" href="https:\/\/shop\.example\.com\/product">/);
     assert.match(page, /<meta property="og:image" content="https:\/\/shop\.example\.com\/images\/og-product\.jpg">/);
     assert.match(page, /<title>USB Heated Throw Blanket/);
-    const ld = JSON.parse(page.match(/<script type="application\/ld\+json">(.*?)<\/script>/)[1]);
-    assert.equal(ld["@type"], "Product"); assert.equal(ld.offers.price, "74.99"); assert.equal(ld.offers.priceCurrency, "USD");
-    assert.equal(ld.offers.availability, "https://schema.org/InStock");
+    const lds = [...page.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map(m => JSON.parse(m[1]));
+    const ld = lds.find(x => x["@type"] === "ProductGroup");
+    assert.ok(ld, "ProductGroup markup"); assert.deepEqual(ld.variesBy, ["https://schema.org/color"]);
+    assert.deepEqual(ld.hasVariant.map(v => v.color), ["Camel Brown", "Pearl White"]);
+    for (const v of ld.hasVariant) {
+      assert.equal(v.offers["@type"], "Offer"); assert.equal(v.offers.price, "74.99"); assert.equal(v.offers.priceCurrency, "USD");
+      assert.equal(v.offers.availability, "https://schema.org/InStock");
+      assert.match(v.offers.url, /\/product\?color=(camel-brown|pearl-white)$/);
+      assert.equal(v.offers.hasMerchantReturnPolicy.merchantReturnDays, 30);
+      assert.equal(v.offers.hasMerchantReturnPolicy.returnFees, "https://schema.org/ReturnFeesCustomerResponsibility");
+    }
+    assert.doesNotMatch(JSON.stringify(ld), /white-reading|white-armchair|white-closeup/, "AI illustrations never sent as product images");
+    assert.match(ld.description, /power bank not included/);
+    const crumbs = lds.find(x => x["@type"] === "BreadcrumbList");
+    assert.deepEqual(crumbs.itemListElement.map(i => i.name), ["Home", "USB Heated Throw Blanket"]);
     for (const forbidden of ["aggregateRating", "review", "deliveryTime", "award", "gtin"]) assert.equal(JSON.stringify(ld).includes(forbidden), false, forbidden);
-    assert.equal(ld.offers.hasMerchantReturnPolicy.merchantReturnDays, 30);
     assert.match((await s.req("GET", "/checkout")).text, /noindex/);
     assert.match((await s.req("GET", "/")).text, /"@type":"Organization"/);
     assert.match((await s.req("GET", "/robots.txt")).text, /Disallow: \/admin[\s\S]*Sitemap: https:\/\/shop\.example\.com\/sitemap\.xml/);
@@ -270,8 +281,11 @@ test("M8. SEO and Merchant feed only publish verified information", async () => 
     const camel = items.find(i => /HL-THROW-camel-brown/.test(i)); const white = items.find(i => /HL-THROW-pearl-white/.test(i));
     assert.ok(camel && white, "both colors have their own photos");
     assert.match(camel, /<g:image_link>[^<]*throw-lifestyle\.jpg/); assert.doesNotMatch(camel, /throw-white/);
-    assert.match(white, /<g:image_link>[^<]*throw-white-reading\.jpg/);
-    for (const extra of ["throw-white-armchair.jpg", "throw-white-closeup.jpg", "throw-white-wrap.jpg"]) assert.match(white, new RegExp(`<g:additional_image_link>[^<]*${extra.replace(".", "\\.")}`)); assert.doesNotMatch(white, /throw-lifestyle|throw-detail|throw-texture\.jpg/);
+    assert.match(white, /<g:image_link>[^<]*throw-white-wrap\.jpg/, "Pearl White uses the real supplier photo");
+    assert.doesNotMatch(feed, /white-reading|white-armchair|white-closeup/, "AI illustrations are never sent to Google");
+    assert.match(camel, /<g:link>https:\/\/shop\.example\.com\/product\?color=camel-brown<\/g:link>/);
+    assert.match(white, /<g:link>https:\/\/shop\.example\.com\/product\?color=pearl-white<\/g:link>/);
+    assert.match(white, /power bank not included/); assert.match(white, /<g:product_type>/);
     for (const img of ["/images/og-product.jpg", "/images/og-default.jpg", "/images/throw-lifestyle.webp", "/images/throw-texture-800.webp",
       "/images/throw-white-wrap.webp", "/images/throw-white-wrap.jpg", "/images/throw-white-wrap-800.webp", "/images/throw-white-reading.jpg", "/images/throw-white-reading-800.webp", "/images/throw-white-armchair.webp", "/images/throw-white-closeup.jpg", "/images/throw-white-closeup-800.webp"]) {
       const r = await s.req("GET", img); assert.equal(r.status, 200, img); assert.match(r.headers.get("cache-control"), /max-age=604800/);

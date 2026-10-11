@@ -101,7 +101,7 @@ const marketing = require("../src/marketing");
     await a.click("#promoForm button.admin-btn"); await a.waitForFunction(() => /between 1 and 50/.test(document.getElementById("toast").textContent));
     await a.click('[data-sec="banner"]'); await a.waitForSelector("#bannerForm"); assert.match(await a.textContent("#mkBody"), /Live now/);
     await a.click('[data-sec="margin"]'); await a.waitForSelector("#marginOut table");
-    assert.match(await a.textContent("#marginOut"), /\$32\.75/, "74.99 − 42.24 = 32.75 before fees/ads");
+    assert.match(await a.textContent("#marginOut"), /\$42\.99/, "74.99 − 32.00 = 42.99 before fees/ads");
     console.log("✓ admin Marketing: campaign + UTM link, flags, starter ideas, promo form validation, banner status, margin calculator");
     const m = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true });
     const mp = await m.newPage(); mp.on("pageerror", e => errors.push(e.message));

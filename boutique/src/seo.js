@@ -5,6 +5,7 @@
 const fs = require("fs");
 const path = require("path");
 const { catalog } = require("./catalog");
+const productFacts = require("./product-facts");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
@@ -30,23 +31,33 @@ function baseUrl(cfg, req) {
   return cfg.publicUrl || `${req.protocol}://${req.get("host")}`;
 }
 
+// Customer-facing summary built only from owner-confirmed facts (src/product-facts.js CONFIRMED).
+function productSummary() {
+  const f = productFacts.CONFIRMED;
+  return `USB-powered heated throw you can wear as a wrap, with a raised square plush texture. Plugs into a USB wall adapter or a USB power bank (power bank not included). ${f.cableLength} cable. Automatic shut-off and overheat protection.`;
+}
+// Google must never receive AI-generated images as product photos.
+const realPhotos = (p, variantId) => p.images.filter(i => !i.aiGenerated && (!variantId || i.variant === variantId));
+const jpg = (base, i) => `${base}${i.src.replace(/\.webp$/, ".jpg")}`;
+
+/** Merchant-listing markup: one ProductGroup, one Product + single Offer per available color. */
 function productJsonLd(cfg, base) {
   const p = catalog(cfg);
-  const available = p.variants.some(v => v.available);
-  const offer = {
+  const offerFor = (v) => ({
     "@type": "Offer",
-    url: `${base}/product`,
+    url: `${base}/product?color=${v.id}`,
     priceCurrency: "USD",
     price: (p.priceCents / 100).toFixed(2),
-    availability: available ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+    availability: v.available ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
     itemCondition: "https://schema.org/NewCondition",
     seller: { "@type": "Organization", name: cfg.businessName || cfg.storeName },
-    // The store's own published policies (see /returns and /shipping).
+    // The store's own published policies (see /returns and /shipping): the customer pays return
+    // shipping unless the item is damaged, defective or incorrect.
     hasMerchantReturnPolicy: {
       "@type": "MerchantReturnPolicy", applicableCountry: "US",
       returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
       merchantReturnDays: cfg.returnWindowDays, returnMethod: "https://schema.org/ReturnByMail",
-      returnFees: "https://schema.org/ReturnShippingFees",
+      returnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
     },
     shippingDetails: {
       "@type": "OfferShippingDetails",
@@ -56,16 +67,26 @@ function productJsonLd(cfg, base) {
       ...(cfg.deliveryVerified ? { deliveryTime: { "@type": "ShippingDeliveryTime",
         transitTime: { "@type": "QuantitativeValue", minValue: cfg.deliveryMinDays, maxValue: cfg.deliveryMaxDays, unitCode: "DAY" } } } : {}),
     },
-  };
+  });
+  const variants = p.variants.filter(v => v.available && realPhotos(p, v.id).length);
   return {
-    "@context": "https://schema.org", "@type": "Product",
-    name: p.name, sku: p.sku,
-    description: "A plush throw with a raised square texture and a USB connection, made for reading, unwinding and quiet evenings at home.",
-    image: p.images.map(i => `${base}${i.src.replace(/\.webp$/, ".jpg")}`),
+    "@context": "https://schema.org", "@type": "ProductGroup",
+    name: "USB Heated Throw Blanket", productGroupID: p.sku, url: `${base}/product`,
+    description: productSummary(),
     brand: { "@type": "Brand", name: cfg.storeName },
-    ...(p.variants.filter(v => v.available).length === 1 ? { color: p.variants.find(v => v.available).name } : {}),
-    offers: offer,
+    variesBy: ["https://schema.org/color"],
+    hasVariant: variants.map(v => ({
+      "@type": "Product", sku: `${p.sku}-${v.id}`, name: `USB Heated Throw Blanket – ${v.name}`, color: v.name,
+      image: realPhotos(p, v.id).map(i => jpg(base, i)), offers: offerFor(v),
+    })),
   };
+}
+
+function breadcrumbJsonLd(base) {
+  return { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${base}/` },
+    { "@type": "ListItem", position: 2, name: "USB Heated Throw Blanket", item: `${base}/product` },
+  ] };
 }
 
 function headTags(cfg, req, route) {
@@ -86,7 +107,7 @@ function headTags(cfg, req, route) {
   if (page.type === "product") {
     const p = catalog(cfg);
     tags.push(`<meta property="product:price:amount" content="${(p.priceCents / 100).toFixed(2)}">`, '<meta property="product:price:currency" content="USD">');
-    tags.push(jsonLd(productJsonLd(cfg, base)));
+    tags.push(jsonLd(productJsonLd(cfg, base)), jsonLd(breadcrumbJsonLd(base)));
   }
   if (route === "/") {
     if (cfg.googleSiteVerification) tags.push(`<meta name="google-site-verification" content="${esc(cfg.googleSiteVerification)}">`);
@@ -135,23 +156,23 @@ function merchantFeed(cfg) {
   if (!cfg.publicUrl) return null;
   const p = catalog(cfg);
   const base = cfg.publicUrl;
-  // Google requires the image to show the listed color: each color uses its own photos, and
-  // colors without their own photo are left out.
-  const photosOf = (prod, variantId) => prod.images.filter(i => i.variant === variantId);
-  const items = p.variants.filter(v => v.available && v.hasPhoto && photosOf(p, v.id).length).map(v => `  <item>
+  // Google requires the image to show the listed color: each color uses its own real photos
+  // (AI illustrations are never sent), and colors without one are left out.
+  const items = p.variants.filter(v => v.available && v.hasPhoto && realPhotos(p, v.id).length).map(v => `  <item>
     <g:id>${esc(`${p.sku}-${v.id}`)}</g:id>
     <g:item_group_id>${esc(p.sku)}</g:item_group_id>
     <g:title>${esc(`USB Heated Throw Blanket, Wearable – ${v.name} | ${cfg.storeName}`)}</g:title>
-    <g:description>${esc("A plush throw with a raised square texture and a USB connection, made for reading, unwinding and quiet evenings at home. See the product page for confirmed specifications.")}</g:description>
-    <g:link>${esc(`${base}/product`)}</g:link>
-    <g:image_link>${esc(`${base}${photosOf(p, v.id)[0].src.replace(/\.webp$/, ".jpg")}`)}</g:image_link>
-${photosOf(p, v.id).slice(1).map(i => `    <g:additional_image_link>${esc(base + i.src.replace(/\.webp$/, ".jpg"))}</g:additional_image_link>`).join("\n")}
+    <g:description>${esc(productSummary())}</g:description>
+    <g:link>${esc(`${base}/product?color=${v.id}`)}</g:link>
+    <g:image_link>${esc(jpg(base, realPhotos(p, v.id)[0]))}</g:image_link>
+${realPhotos(p, v.id).slice(1).map(i => `    <g:additional_image_link>${esc(jpg(base, i))}</g:additional_image_link>`).join("\n")}
     <g:availability>in_stock</g:availability>
     <g:price>${(p.priceCents / 100).toFixed(2)} USD</g:price>
     <g:condition>new</g:condition>
     <g:brand>${esc(cfg.storeName)}</g:brand>
     <g:identifier_exists>no</g:identifier_exists>
     <g:color>${esc(v.name)}</g:color>
+    <g:product_type>${esc("Home > Blankets & Throws > Heated Throws")}</g:product_type>
     <g:shipping><g:country>US</g:country><g:price>${cfg.shippingUsd.toFixed(2)} USD</g:price></g:shipping>
   </item>`);
   return `<?xml version="1.0" encoding="UTF-8"?>
