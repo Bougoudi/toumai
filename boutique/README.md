@@ -124,6 +124,18 @@ restart then migrates the database to schema v6. See `docs/implementation-tracki
 - Rules for customers: `/review-policy`. Details: `docs/reviews/`, tracking: `docs/implementation-tracking.md`.
 - Limits: `REVIEW_SUBMIT_LIMIT` (default 5 per 15 min per IP), `REVIEW_VERIFY_LIMIT` (default 5 link requests per hour).
 
+## E-mail list and welcome code
+
+The home and product pages invite visitors (once, dismissible, never over the privacy choices,
+the mobile buy bar, the cart or the checkout) to join the e-mail list; the cart and the footer
+have a sign-up form too. Subscribers get **WELCOME10** (10% off), valid **once per subscribed
+e-mail address**, checked by the server at payment. The code is recreated at every start from
+`NEWSLETTER_*` settings, so a database reset never leaves subscribers with a dead code.
+Without an e-mail provider the code is shown on screen and nothing claims an e-mail was sent.
+`/admin` → Marketing → **Email list**: counts, list, CSV export, delete on request. Add
+`STORE_BUSINESS_ADDRESS` before sending any marketing e-mail (CAN-SPAM), and always include
+the unsubscribe link. Timing and wording choices: `docs/GOOGLE_TRENDS_INSIGHTS.md`.
+
 ## Payment logos
 Once checkout is open (sandbox or live), the footer, home page and checkout show the logos listed
 in `PAYMENT_METHODS` (default `visa,mastercard,amex`). Optional values: `apple-pay`,

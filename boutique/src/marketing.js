@@ -112,14 +112,27 @@ function listContent(db, cfg) {
 }
 
 // Starter drafts: ideas only, no product claims beyond what the store publishes.
+// Timing follows public Google Trends analyses (docs/GOOGLE_TRENDS_INSIGHTS.md): searches for
+// heated throw blankets start rising in October and peak in November–December.
+const SEASON_NOTE = "Timing: US searches for heated throw blankets rise in October and peak in November–December (secondary Google Trends data — see docs/GOOGLE_TRENDS_INSIGHTS.md). No countdowns or invented urgency.";
+/** Next occurrence (today or later) of a month/day, as YYYY-MM-DD. */
+function nextDate(month, day, from = new Date()) {
+  const y = from.getUTCFullYear();
+  const d = new Date(Date.UTC(y, month - 1, day));
+  if (d < new Date(Date.UTC(y, from.getUTCMonth(), from.getUTCDate()))) d.setUTCFullYear(y + 1);
+  return d.toISOString().slice(0, 10);
+}
 const STARTERS = [
-  { angle: "work_from_home", channel: "tiktok", title: "The 3 p.m. home-office reset",
+  { angle: "other", channel: "instagram", title: "USB power, explained in 20 seconds", when: [10, 15],
+    hook: "Does a USB heated throw need a power bank? Here's exactly how ours is powered.",
+    script: "1. Close-up: the throw's USB cable (1.5 m).\n2. Plug it into a USB wall adapter — it plugs straight in.\n3. Or show a USB power bank, with text on screen: \"Power bank not included.\"\n4. Mention automatic shut-off and overheat protection.\n5. End card: full specs on the product page.\nOnly use facts listed on the product page; no heat, battery-life or health claims." },
+  { angle: "work_from_home", channel: "tiktok", title: "The 3 p.m. home-office reset", when: [10, 22],
     hook: "Working from home and the afternoon chill hits? Here's my desk-chair reset.",
     script: "1. Wide shot: home-office chair, laptop, mug.\n2. Close-up of the throw's square texture as you drape it over your shoulders.\n3. Show it connected to the USB power source described in the instructions.\n4. Back to typing, relaxed. Text on screen: \"Small comforts, long workdays.\"\n5. End card: HavenLume — link in bio.\nNo temperature, safety or health claims; only show what the product really does." },
-  { angle: "relaxing_at_home", channel: "instagram", title: "A 10-minute evening reset",
+  { angle: "relaxing_at_home", channel: "instagram", title: "A 10-minute evening reset", when: [11, 5],
     hook: "Phone down. Tea on. Ten minutes that are just yours.",
     script: "1. Slow pan: lamp, book, tea.\n2. Hands unfold the throw; close-up of the plush texture.\n3. Settle on the sofa, wrap up, open the book.\n4. Caption: \"Your cozy moment starts here.\"\nUse real footage of the product you sell; no before/after or wellness promises." },
-  { angle: "cold_season_gifts", channel: "youtube", title: "A gift for the person who's always cold",
+  { angle: "cold_season_gifts", channel: "youtube", title: "A gift for the person who's always cold", when: [11, 20],
     hook: "Everyone has one friend who is always cold. This one's for them.",
     script: "1. Wrapped gift on a table; unwrap.\n2. Show the throw, its texture and what's in the box (only items really included).\n3. Mention the color available and that details are on the product page.\n4. Do not promise delivery by a holiday date unless the carrier estimate has been verified." },
 ];
@@ -127,7 +140,8 @@ function addStarters(db) {
   const ids = [];
   for (const s of STARTERS) {
     if (db.prepare("SELECT id FROM content_items WHERE title=?").get(s.title)) continue;
-    ids.push(saveContent(db, { ...s, status: "idea" }));
+    const { when, ...item } = s;
+    ids.push(saveContent(db, { ...item, status: "idea", publishDate: nextDate(when[0], when[1]), notes: SEASON_NOTE }));
   }
   return ids;
 }

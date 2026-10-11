@@ -19,6 +19,7 @@ const seo = require("./seo");
 const productFacts = require("./product-facts");
 const orderChecks = require("./order-checks");
 const reviews = require("./reviews");
+const newsletter = require("./newsletter");
 
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
@@ -28,6 +29,8 @@ const STATUS_SECRET = process.env.STATUS_LINK_SECRET || crypto.randomBytes(32).t
 const statusKey = (orderNumber) => crypto.createHmac("sha256", STATUS_SECRET).update(orderNumber).digest("hex").slice(0, 32);
 
 function createApp({ cfg, db, log = console }) {
+  // E-mail list: additive table + welcome promo recreated from the configuration on every start.
+  if (cfg.newsletter.enabled) { newsletter.ensureSchema(db); newsletter.ensureWelcomePromo(db, cfg); }
   const app = express();
   app.disable("x-powered-by");
   if (cfg.trustProxy) app.set("trust proxy", 1);
@@ -113,6 +116,7 @@ function createApp({ cfg, db, log = console }) {
       analytics: { enabled: cfg.analytics.enabled, consentMode: cfg.analytics.consentMode },
       paymentMethods: cfg.paymentMethods,
       // Verified Purchase links need a working e-mail provider; the review form says so when it's missing.
+      newsletter: cfg.newsletter.enabled ? { percent: cfg.newsletter.welcomePercent } : null,
       reviewsEnabled: cfg.reviewsEnabled,
       reviewVerificationAvailable: cfg.reviewsEnabled && notify.emailConfigured(cfg) && Boolean(cfg.publicUrl),
       banner: marketing.activeBanner(db),
@@ -216,6 +220,31 @@ function createApp({ cfg, db, log = console }) {
     } catch (err) { log.error(`analytics collect failed: ${err.message || err}`); }
     res.status(204).end();
   });
+
+  // ------------------------------------------------------------- e-mail list
+  if (cfg.newsletter.enabled) {
+    app.post("/api/newsletter/subscribe", limiter(3_600_000, cfg.newsletter.signupLimit), wrap(async (req, res) => {
+      res.status(201).json(await newsletter.subscribe(db, cfg, req.body));
+    }));
+    app.get("/newsletter/unsubscribe", limiter(60_000, 20), (req, res) => {
+      const ok = newsletter.unsubscribe(db, req.query.token);
+      const msg = ok ? "You're unsubscribed. You won't receive marketing emails from HavenLume anymore."
+        : "This unsubscribe link is invalid or was already used. If you still receive our emails, contact us.";
+      res.status(ok ? 200 : 400).type("html").set("Cache-Control", "no-store").send(`<!doctype html><html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Email preferences | HavenLume</title><link rel="stylesheet" href="/styles.css"></head><body><main class="page narrow"><p class="eyebrow">EMAIL PREFERENCES</p><h1 class="page-title">${ok ? "Unsubscribed" : "Link not valid"}</h1><p>${msg}</p><p><a href="/">Back to HavenLume</a></p></main></body></html>`);
+    });
+    app.get("/api/admin/newsletter", requireAdmin, (_req, res) => res.set("Cache-Control", "no-store").json(newsletter.adminList(db, cfg)));
+    app.get("/api/admin/newsletter.csv", requireAdmin, (req, res) => {
+      auth.audit(db, req.admin.username, "newsletter_export", null, null, req.ip);
+      res.set("Cache-Control", "no-store").type("text/csv").attachment("havenlume-subscribers.csv").send(newsletter.exportCsv(db));
+    });
+    app.post("/api/admin/newsletter/:id/delete", requireAdmin, wrap(async (req, res) => {
+      const id = Number.parseInt(req.params.id, 10);
+      if (!Number.isInteger(id) || id <= 0) throw new newsletter.NewsletterError(400, "Invalid id.");
+      newsletter.remove(db, id);
+      auth.audit(db, req.admin.username, "newsletter_subscriber_deleted", `subscriber:${id}`, null, req.ip);
+      res.json({ ok: true });
+    }));
+  }
 
   // ------------------------------------------------------------- reviews (public)
   // Registered only when REVIEWS_ENABLED=true (otherwise 404 and no review tables exist).
@@ -497,6 +526,7 @@ function createApp({ cfg, db, log = console }) {
   app.use("/api/", (_req, res) => res.status(404).json({ error: "Not found." }));
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
+    if (err instanceof newsletter.NewsletterError) return res.status(err.status).json({ error: err.message });
     if (err instanceof reviews.ReviewError) return res.status(err.status).json({ error: err.message, ...(err.errors ? { errors: err.errors } : {}) });
     if (err instanceof orders.OrderError || err instanceof promotions.PromoError || err instanceof marketing.MarketingError || err instanceof productFacts.FactsError || err instanceof orderChecks.CheckError) {
       return res.status(err.status).json({ error: err.message });

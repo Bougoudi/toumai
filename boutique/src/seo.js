@@ -141,7 +141,7 @@ function merchantFeed(cfg) {
   const items = p.variants.filter(v => v.available && v.hasPhoto && photosOf(p, v.id).length).map(v => `  <item>
     <g:id>${esc(`${p.sku}-${v.id}`)}</g:id>
     <g:item_group_id>${esc(p.sku)}</g:item_group_id>
-    <g:title>${esc(`${p.name} – ${v.name}`)}</g:title>
+    <g:title>${esc(`USB Heated Throw Blanket, Wearable – ${v.name} | ${cfg.storeName}`)}</g:title>
     <g:description>${esc("A plush throw with a raised square texture and a USB connection, made for reading, unwinding and quiet evenings at home. See the product page for confirmed specifications.")}</g:description>
     <g:link>${esc(`${base}/product`)}</g:link>
     <g:image_link>${esc(`${base}${photosOf(p, v.id)[0].src.replace(/\.webp$/, ".jpg")}`)}</g:image_link>

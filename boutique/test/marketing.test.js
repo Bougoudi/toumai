@@ -81,10 +81,16 @@ test("M3. content calendar: angles, statuses, tracking links, starters, delete",
     assert.equal(list[0].utm_content, "always-cold-friend");
     assert.equal(list[0].tracking_url, "https://shop.example.com/product?utm_source=instagram&utm_medium=social&utm_campaign=gifts-ig&utm_content=always-cold-friend");
     assert.equal((await a.post(`/api/admin/marketing/content/${r.json.id}`, { status: "published", publishedUrl: "https://www.instagram.com/p/abc" })).status, 200);
-    assert.equal((await a.post("/api/admin/marketing/content-starters")).json.created, 3);
+    assert.equal((await a.post("/api/admin/marketing/content-starters")).json.created, 4);
+    const starters = s.db.prepare("SELECT title, publish_date, notes FROM content_items WHERE status='idea' AND notes LIKE 'Timing:%'").all();
+    assert.equal(starters.length, 4);
+    for (const st of starters) {
+      assert.match(st.publish_date, /^\d{4}-(10|11)-\d{2}$/, `${st.title}: scheduled in the Oct–Nov run-up to the peak`);
+      assert.ok(st.publish_date >= new Date().toISOString().slice(0, 10), "never in the past");
+    }
     assert.equal((await a.post("/api/admin/marketing/content-starters")).json.created, 0, "starters are not duplicated");
     const angles = s.db.prepare("SELECT DISTINCT angle FROM content_items").all().map(x => x.angle).sort();
-    assert.deepEqual(angles, ["cold_season_gifts", "relaxing_at_home", "work_from_home"]);
+    assert.deepEqual(angles, ["cold_season_gifts", "other", "relaxing_at_home", "work_from_home"]);
     assert.equal((await a.post(`/api/admin/marketing/content/${r.json.id}/delete`)).status, 200);
     assert.equal((await a.post(`/api/admin/marketing/content/${r.json.id}/delete`)).status, 404);
   } finally { s.close(); }

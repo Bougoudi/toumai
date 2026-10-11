@@ -453,3 +453,32 @@ footer small{font-size:10px;color:#c8b9aa}
 .mod-form{flex-wrap:wrap;gap:8px;align-items:flex-end}
 .mod-form select,.mod-form input{max-width:260px}
 .review-pager[hidden]{display:none}
+
+/* e-mail list */
+.nl-form label{margin:0 0 6px}
+.nl-row{display:flex;gap:8px}
+.nl-row input{flex:1;min-width:0;padding:12px;border:1px solid #d7cbbd;background:var(--white);font:inherit;border-radius:0}
+.nl-row .button{margin:0;white-space:nowrap;padding:12px 16px}
+.nl-legal{font-size:11px;color:var(--muted);margin:8px 0 0;line-height:1.5}
+.nl-status{font-size:12px;margin:6px 0 0}
+.nl-status:empty{display:none}
+.nl-code{display:flex;align-items:center;gap:12px;margin:6px 0}
+.nl-code strong{font:600 22px "DM Sans",sans-serif;letter-spacing:.08em;color:var(--espresso);border:1px dashed var(--copper);padding:6px 12px;background:var(--white)}
+.nl-code .button{margin:0;padding:10px 14px}
+.nl-thanks{margin:0;font-weight:600}
+.nl-invite{position:fixed;right:16px;bottom:16px;z-index:50;width:min(380px,calc(100vw - 32px));background:var(--ivory);border:1px solid var(--line);border-top:3px solid var(--copper);box-shadow:0 18px 50px rgba(57,44,37,.18);padding:20px}
+.nl-invite h2{font:500 22px/1.25 "Playfair Display",Georgia,serif;margin:0 0 6px;color:var(--espresso)}
+.nl-invite .eyebrow{margin-bottom:8px}
+.nl-sub{font-size:13px;color:#4f4740;margin:0 0 12px}
+.nl-close{position:absolute;top:6px;right:8px;border:0;background:none;font-size:24px;line-height:1;cursor:pointer;color:var(--muted);padding:6px}
+.nl-slot{margin:16px 0 4px;padding:14px;background:var(--white);border:1px solid var(--line)}
+.nl-slot-title{font-weight:700;font-size:13px;margin:0 0 8px;color:var(--espresso)}
+.footer-newsletter{max-width:440px;margin:18px auto}
+.footer-newsletter .nl-form label,.footer-newsletter .nl-thanks{color:inherit}
+@media(max-width:900px){body.has-sticky-buy .nl-invite{bottom:84px}}
+@media(max-width:420px){.nl-row{flex-direction:column}.nl-row .button{justify-content:center}}
+footer .nl-legal,footer .nl-status,footer .nl-thanks{font:12px/1.5 "DM Sans",sans-serif;color:#e6dbcf}
+footer .nl-legal a{color:#f7f2ea}
+footer .nl-form label{color:#f7f2ea;font-size:12px}
+footer .nl-row .button{background:var(--copper);color:#2d2824}
+footer .nl-status.form-error{color:#ffb4a8}

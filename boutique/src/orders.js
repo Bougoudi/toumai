@@ -10,6 +10,7 @@ const analytics = require("./analytics");
 const promotions = require("./promotions");
 const { cleanUtm } = require("./utm");
 const checks = require("./order-checks");
+const newsletter = require("./newsletter");
 
 const now = () => new Date().toISOString();
 const usd = (c) => `$${(c / 100).toFixed(2)}`;
@@ -79,10 +80,12 @@ function quote(db, cfg, body) {
   const items = validateItems(body && body.items, cfg);
   const subtotal = items.reduce((s, i) => s + i.line_total_cents, 0);
   const promo = body && body.promoCode ? promotions.resolve(db, body.promoCode, subtotal) : null;
+  const welcome = promo && cfg.newsletter.enabled && newsletter.isWelcome(cfg, promo.code);
   const discount = promotions.discountFor(promo, subtotal);
   const shipping = toCents(cfg.shippingUsd);
   return { subtotal_cents: subtotal, discount_cents: discount, shipping_cents: shipping, total_cents: subtotal - discount + shipping,
-    promo: promo ? { code: promo.code, conditions: promotions.describe(promo) } : null };
+    // The welcome code is tied to the subscriber's e-mail, which is only known (and checked) at payment.
+    promo: promo ? { code: promo.code, conditions: welcome ? newsletter.welcomeConditions(cfg) : promotions.describe(promo) } : null };
 }
 
 /** Creates an order (pending payment). Prices and costs are computed here, server-side. */
@@ -94,6 +97,10 @@ function createOrder(db, cfg, { customer, items, promoCode, utm }, { isTest, ip 
   // Promo codes are re-validated here, server-side; an invalid code rejects the checkout
   // rather than silently charging a price the customer didn't expect.
   const promo = promoCode ? promotions.resolve(db, promoCode, subtotal) : null;
+  if (promo && newsletter.isWelcome(cfg, promo.code)) {
+    if (!cfg.newsletter.enabled) throw new promotions.PromoError("This promo code is not valid.");
+    newsletter.assertWelcomeAllowed(db, cfg, customer.email);
+  }
   const discount = promotions.discountFor(promo, subtotal);
   const total = subtotal - discount + shipping;
   const u = utm || {};

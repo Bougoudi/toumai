@@ -5,7 +5,7 @@
   let A; // HLAdmin helpers, set on first load
   let data = null;
   let section = "campaigns";
-  const SECTIONS = [["campaigns", "Campaigns"], ["content", "Content calendar"], ["promotions", "Promo codes"], ["banner", "Banner"], ["margin", "Margin calculator"]];
+  const SECTIONS = [["campaigns", "Campaigns"], ["content", "Content calendar"], ["promotions", "Promo codes"], ["banner", "Banner"], ["emails", "Email list"], ["margin", "Margin calculator"]];
   const toLocal = (iso) => { if (!iso) return ""; const d = new Date(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
   const fromLocal = (v) => v ? new Date(v).toISOString() : "";
   const opt = (obj, sel) => Object.entries(obj).map(([k, v]) => `<option value="${A.esc(k)}"${k === sel ? " selected" : ""}>${A.esc(v)}</option>`).join("");
@@ -26,7 +26,7 @@
     const box = $("#marketing");
     box.innerHTML = `<div class="admin-card an-controls" role="tablist">${SECTIONS.map(([k, l]) => `<button type="button" class="admin-btn ${k === section ? "" : "ghost"}" data-sec="${k}" aria-pressed="${k === section}">${l}</button>`).join("")}</div><div id="mkBody"></div>`;
     box.querySelectorAll("[data-sec]").forEach(b => b.addEventListener("click", () => { section = b.dataset.sec; render(); }));
-    ({ campaigns, content, promotions, banner, margin })[section]();
+    ({ campaigns, content, promotions, banner, emails, margin })[section]();
   }
 
   const copyBtn = (text, label = "Copy link") => `<button type="button" class="admin-btn ghost" data-copy="${A.esc(text)}">${label}</button>`;
@@ -40,6 +40,29 @@
       e.preventDefault();
       try { await fn(formData(form)); } catch (err) { A.toast(err.message); }
     });
+  }
+
+  // ------------------------------------------------------------ e-mail list
+  // Real sign-ups only. The welcome code is managed by the NEWSLETTER_* settings on the server.
+  async function emails() {
+    const body = $("#mkBody");
+    body.innerHTML = '<div class="admin-card an-state">Loading subscribers…</div>';
+    let d;
+    try { d = await A.api("/api/admin/newsletter"); }
+    catch (e) { body.innerHTML = `<div class="admin-card an-state${/404/.test(e.message) || /not found/i.test(e.message) ? "" : " error"}">${/404|not found/i.test(e.message) ? "The email list is turned off (NEWSLETTER_ENABLED=false)." : `Could not load subscribers: ${A.esc(e.message)}`}</div>`; return; }
+    body.innerHTML = `<div class="admin-card"><h2 class="admin-h2">Email list</h2>
+        <div class="tiles"><div class="tile"><p class="micro">Subscribed</p><p class="tile-value">${nf(d.counts.subscribed)}</p></div>
+          <div class="tile"><p class="micro">Unsubscribed</p><p class="tile-value">${nf(d.counts.unsubscribed)}</p></div>
+          <div class="tile"><p class="micro">Paid orders with ${A.esc(d.code)}</p><p class="tile-value">${nf(d.codeUses)}</p><p class="micro">${A.money(d.codeDiscountCents)} in discounts</p></div></div>
+        <p class="micro">Visitors sign up from the home/product invitation, the cart and the footer. Code ${A.esc(d.code)} gives ${d.percent}% off, once per subscribed email (checked at payment). Delete an address when someone asks; export only to send emails they agreed to, always with an unsubscribe link.</p>
+        <a class="admin-btn" href="/api/admin/newsletter.csv">Export CSV</a></div>
+      <div class="admin-card">${d.subscribers.length ? `<div class="table-scroll"><table class="admin-table compact"><thead><tr><th>Email</th><th>Status</th><th>Source</th><th>Signed up</th><th></th></tr></thead><tbody>
+        ${d.subscribers.map(x => `<tr><td>${A.esc(x.email)}</td><td>${A.esc(x.status)}</td><td>${A.esc(x.source)}</td><td>${A.date(x.created_at)}</td>
+          <td><button type="button" class="admin-btn ghost" data-nl-del="${x.id}">Delete</button></td></tr>`).join("")}</tbody></table></div>` : '<p class="muted">No subscribers yet.</p>'}</div>`;
+    body.querySelectorAll("[data-nl-del]").forEach(b => b.addEventListener("click", async () => {
+      if (!confirm("Delete this email address permanently?")) return;
+      try { await A.post(`/api/admin/newsletter/${b.dataset.nlDel}/delete`); A.toast("Deleted."); emails(); } catch (e) { A.toast(e.message); }
+    }));
   }
 
   // ------------------------------------------------------------ campaigns
