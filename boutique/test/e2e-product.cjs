@@ -67,8 +67,11 @@ function start(port, env) {
       if (label === "phone") assert.equal(await p.evaluate(() => window.innerWidth), 390, "layout viewport not widened by wide content (e.g. the thumbnail row)");
       // Choosing a color shows that color's photo
       await p.click('.swatch:has-text("Pearl White")');
-      assert.match(await p.getAttribute("#mainImage", "src"), /throw-white-wrap\.webp$/);
-      assert.equal(await p.locator("#thumbs .thumb.active").getAttribute("data-src"), "/images/throw-white-wrap.webp");
+      assert.match(await p.getAttribute("#mainImage", "src"), /throw-white-reading\.webp$/);
+      assert.equal(await p.locator("#thumbs .thumb.active").getAttribute("data-src"), "/images/throw-white-reading.webp");
+      assert.equal(await p.$eval("#mainImage", i => i.style.objectPosition), "center 30%", "portrait photo framed on the face");
+      assert.equal(await p.locator('#thumbs .thumb[data-src*="throw-white"]').count(), 4);
+      assert.equal(await p.locator('#thumbs .thumb[data-src*="bed"]').count(), 0);
       await p.click('.swatch:has-text("Camel Brown")'); await allImagesLoad(p, `${label} /product`);
       assert.equal(await p.textContent("#price"), "$49.99"); assert.equal(await p.textContent("#stickyPrice"), "$49.99");
       assert.equal(await p.textContent("#priceLabel"), "Launch price");

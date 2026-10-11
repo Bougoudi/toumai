@@ -8,7 +8,7 @@
   const main = document.getElementById("mainImage");
   const thumbs = document.getElementById("thumbs");
   const show = (img) => {
-    main.removeAttribute("srcset"); main.src = img.src; main.alt = img.alt;
+    main.removeAttribute("srcset"); main.src = img.src; main.alt = img.alt; main.style.objectPosition = img.focus || "";
     thumbs.querySelectorAll(".thumb").forEach(t => t.classList.toggle("active", t.dataset.src === img.src));
   };
   p.images.forEach((img, i) => {

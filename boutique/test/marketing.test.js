@@ -270,9 +270,10 @@ test("M8. SEO and Merchant feed only publish verified information", async () => 
     const camel = items.find(i => /HL-THROW-camel-brown/.test(i)); const white = items.find(i => /HL-THROW-pearl-white/.test(i));
     assert.ok(camel && white, "both colors have their own photos");
     assert.match(camel, /<g:image_link>[^<]*throw-lifestyle\.jpg/); assert.doesNotMatch(camel, /throw-white/);
-    assert.match(white, /<g:image_link>[^<]*throw-white-wrap\.jpg/); assert.doesNotMatch(white, /throw-lifestyle|throw-detail|throw-texture\.jpg/);
+    assert.match(white, /<g:image_link>[^<]*throw-white-reading\.jpg/);
+    for (const extra of ["throw-white-armchair.jpg", "throw-white-closeup.jpg", "throw-white-wrap.jpg"]) assert.match(white, new RegExp(`<g:additional_image_link>[^<]*${extra.replace(".", "\\.")}`)); assert.doesNotMatch(white, /throw-lifestyle|throw-detail|throw-texture\.jpg/);
     for (const img of ["/images/og-product.jpg", "/images/og-default.jpg", "/images/throw-lifestyle.webp", "/images/throw-texture-800.webp",
-      "/images/throw-white-wrap.webp", "/images/throw-white-wrap.jpg", "/images/throw-white-wrap-800.webp", "/images/throw-white-texture.jpg", "/images/throw-white-texture-800.webp"]) {
+      "/images/throw-white-wrap.webp", "/images/throw-white-wrap.jpg", "/images/throw-white-wrap-800.webp", "/images/throw-white-reading.jpg", "/images/throw-white-reading-800.webp", "/images/throw-white-armchair.webp", "/images/throw-white-closeup.jpg", "/images/throw-white-closeup-800.webp"]) {
       const r = await s.req("GET", img); assert.equal(r.status, 200, img); assert.match(r.headers.get("cache-control"), /max-age=604800/);
     }
   } finally { s.close(); }
