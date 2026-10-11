@@ -15,7 +15,7 @@
       const rm = el("button", { type: "button", class: "text-link", text: "Remove" });
       rm.addEventListener("click", () => { cart.setQty(i.variantId, 0, p.maxQtyPerLine); render(); });
       return el("div", { class: "cart-line" },
-        el("img", { src: p.images[0].thumb || p.images[0].src, alt: "", width: "90", height: "70" }),
+        (img => el("img", { src: img.thumb || img.src, alt: "", width: "90", height: "70" }))(p.images.find(im => im.variant === i.variantId) || p.images[0]),
         el("div", {}, el("strong", { text: p.name }), el("p", { class: "muted", text: `Color: ${i.v.name}` }),
           !i.v.available ? el("p", { class: "form-error", text: "No longer available — please remove." }) : null, rm),
         el("div", { class: "cart-qty" }, q),

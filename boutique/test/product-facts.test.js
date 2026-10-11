@@ -17,13 +17,15 @@ test("product facts: admin-only, CSRF-protected, audited", async () => {
 
     const fresh = await s.req("GET", "/api/admin/product-facts", undefined, h);
     assert.equal(fresh.status, 200);
-    assert.equal(fresh.json.missing.length, productFacts.FIELDS.length, "nothing is pre-filled or guessed");
-    assert.equal((await s.req("GET", "/api/admin/dashboard", undefined, h)).json.productFactsMissing, productFacts.FIELDS.length);
+    const confirmed = Object.keys(productFacts.CONFIRMED).length;
+    assert.equal(fresh.json.missing.length, productFacts.FIELDS.length - confirmed, "only owner-confirmed facts are pre-filled, nothing guessed");
+    for (const [k, v] of Object.entries(productFacts.CONFIRMED)) assert.equal(fresh.json.facts[k], v, k);
+    assert.equal((await s.req("GET", "/api/admin/dashboard", undefined, h)).json.productFactsMissing, productFacts.FIELDS.length - confirmed);
 
     const ok = await s.req("POST", "/api/admin/product-facts", { dimensions: " 50 × 60 in ", powerBankIncluded: "no", inBox: "1 heated throw\r\n\r\n1 user manual\n" }, h);
     assert.equal(ok.status, 200, ok.text);
     assert.equal(ok.json.facts.dimensions, "50 × 60 in");
-    assert.equal(ok.json.missing.length, productFacts.FIELDS.length - 3);
+    assert.equal(ok.json.missing.length, productFacts.FIELDS.length - confirmed - 2, "dimensions and box contents added");
     assert.ok(s.db.prepare("SELECT COUNT(*) n FROM audit_log WHERE action='product_facts_updated'").get().n >= 1);
     // A partial save keeps the other fields
     await s.req("POST", "/api/admin/product-facts", { weight: "2 lb" }, h);
@@ -43,7 +45,7 @@ test("product facts: validation rejects bad values", async () => {
       const r = await s.req("POST", "/api/admin/product-facts", body, h);
       assert.equal(r.status, 400, JSON.stringify(body)); assert.match(r.json.error, msg);
     }
-    assert.equal((await s.req("GET", "/api/admin/product-facts", undefined, h)).json.missing.length, productFacts.FIELDS.length, "nothing saved on error");
+    assert.equal((await s.req("GET", "/api/admin/product-facts", undefined, h)).json.missing.length, productFacts.FIELDS.length - Object.keys(productFacts.CONFIRMED).length, "nothing saved on error");
   } finally { s.close(); }
 });
 
@@ -51,12 +53,16 @@ test("product facts: the public catalog only exposes confirmed values", async ()
   const s = await startStore();
   try {
     const before = (await s.req("GET", "/api/catalog")).json;
-    assert.deepEqual(before.facts, {}, "no facts are published until confirmed");
+    assert.deepEqual(before.facts, productFacts.publicFacts({ ...productFacts.CONFIRMED }), "only the owner-confirmed facts are published");
+    assert.equal(before.facts.powerBankIncluded, "no"); assert.equal(before.facts.cableLength, "1.5 m (about 4.9 ft)");
+    for (const k of ["dimensions", "materials", "heatSettings", "inBox", "care"]) assert.equal(before.facts[k], undefined, `${k} not guessed`);
     assert.equal(before.factLabels.dimensions, "Dimensions");
     const h = await s.login();
     await s.req("POST", "/api/admin/product-facts", { powerInput: "USB-A, 5 V", powerBankIncluded: "no", inBox: "1 heated throw\n\n1 manual", warranty: "" }, h);
     const after = (await s.req("GET", "/api/catalog")).json.facts;
-    assert.deepEqual(after, { powerInput: "USB-A, 5 V", powerBankIncluded: "no", inBox: ["1 heated throw", "1 manual"] });
+    const expected = { ...productFacts.publicFacts({ ...productFacts.CONFIRMED }), powerInput: "USB-A, 5 V", inBox: ["1 heated throw", "1 manual"] };
+    delete expected.warranty; // an empty value saved in the admin replaces the default
+    assert.deepEqual(after, expected);
     // Internal fields (SKU, compliance documents) are never published
     await s.req("POST", "/api/admin/product-facts", { sku: "CJ-SECRET-1", complianceDocs: "Lab report 123", manualReceived: "yes", notIncluded: "USB power bank" }, h);
     const pub = (await s.req("GET", "/api/catalog")).json;

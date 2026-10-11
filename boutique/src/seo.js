@@ -135,15 +135,17 @@ function merchantFeed(cfg) {
   if (!cfg.publicUrl) return null;
   const p = catalog(cfg);
   const base = cfg.publicUrl;
-  // Google requires the image to show the listed color: colors without their own photo are left out.
-  const items = p.variants.filter(v => v.available && v.hasPhoto).map(v => `  <item>
+  // Google requires the image to show the listed color: each color uses its own photos, and
+  // colors without their own photo are left out.
+  const photosOf = (prod, variantId) => prod.images.filter(i => i.variant === variantId);
+  const items = p.variants.filter(v => v.available && v.hasPhoto && photosOf(p, v.id).length).map(v => `  <item>
     <g:id>${esc(`${p.sku}-${v.id}`)}</g:id>
     <g:item_group_id>${esc(p.sku)}</g:item_group_id>
     <g:title>${esc(`${p.name} – ${v.name}`)}</g:title>
     <g:description>${esc("A plush throw with a raised square texture and a USB connection, made for reading, unwinding and quiet evenings at home. See the product page for confirmed specifications.")}</g:description>
     <g:link>${esc(`${base}/product`)}</g:link>
-    <g:image_link>${esc(`${base}${p.images[0].src.replace(/\.webp$/, ".jpg")}`)}</g:image_link>
-${p.images.slice(1).map(i => `    <g:additional_image_link>${esc(base + i.src.replace(/\.webp$/, ".jpg"))}</g:additional_image_link>`).join("\n")}
+    <g:image_link>${esc(`${base}${photosOf(p, v.id)[0].src.replace(/\.webp$/, ".jpg")}`)}</g:image_link>
+${photosOf(p, v.id).slice(1).map(i => `    <g:additional_image_link>${esc(base + i.src.replace(/\.webp$/, ".jpg"))}</g:additional_image_link>`).join("\n")}
     <g:availability>in_stock</g:availability>
     <g:price>${(p.priceCents / 100).toFixed(2)} USD</g:price>
     <g:condition>new</g:condition>

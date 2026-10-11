@@ -259,8 +259,14 @@ test("M8. SEO and Merchant feed only publish verified information", async () => 
     assert.match(sm, /<loc>https:\/\/shop\.example\.com\/product<\/loc>/); assert.doesNotMatch(sm, /checkout|admin/);
     const feed = (await s.req("GET", "/feeds/google-merchant.xml")).text;
     assert.match(feed, /<g:price>74\.99 USD<\/g:price>/); assert.match(feed, /<g:identifier_exists>no<\/g:identifier_exists>/);
-    assert.match(feed, /HL-THROW-camel-brown/); assert.doesNotMatch(feed, /pearl-white/, "colors without their own photo are not sent to Google");
-    for (const img of ["/images/og-product.jpg", "/images/og-default.jpg", "/images/throw-lifestyle.webp", "/images/throw-texture-800.webp"]) {
+    // Each color is listed with its own photos only
+    const items = feed.split("<item>").slice(1);
+    const camel = items.find(i => /HL-THROW-camel-brown/.test(i)); const white = items.find(i => /HL-THROW-pearl-white/.test(i));
+    assert.ok(camel && white, "both colors have their own photos");
+    assert.match(camel, /<g:image_link>[^<]*throw-lifestyle\.jpg/); assert.doesNotMatch(camel, /throw-white/);
+    assert.match(white, /<g:image_link>[^<]*throw-white-wrap\.jpg/); assert.doesNotMatch(white, /throw-lifestyle|throw-detail|throw-texture\.jpg/);
+    for (const img of ["/images/og-product.jpg", "/images/og-default.jpg", "/images/throw-lifestyle.webp", "/images/throw-texture-800.webp",
+      "/images/throw-white-wrap.webp", "/images/throw-white-wrap.jpg", "/images/throw-white-wrap-800.webp", "/images/throw-white-texture.jpg", "/images/throw-white-texture-800.webp"]) {
       const r = await s.req("GET", img); assert.equal(r.status, 200, img); assert.match(r.headers.get("cache-control"), /max-age=604800/);
     }
   } finally { s.close(); }

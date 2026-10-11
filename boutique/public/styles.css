@@ -63,10 +63,11 @@ img{max-width:100%;display:block}
 
 /* product page */
 .pdp{padding:50px 6vw 80px;display:grid;grid-template-columns:1.1fr .9fr;gap:6vw;align-items:start}
+.pdp>*{min-width:0}
 .gallery-main{background:#e9dfd2;aspect-ratio:4/3;overflow:hidden}
 .gallery-main img{width:100%;height:100%;object-fit:cover}
-.gallery-thumbs{display:flex;gap:10px;margin-top:10px}
-.thumb{border:1px solid var(--line);padding:0;background:none;cursor:pointer;width:84px;height:64px;overflow:hidden;opacity:.7}
+.gallery-thumbs{display:flex;gap:10px;margin-top:10px;overflow-x:auto;max-width:100%;padding-bottom:4px;scrollbar-width:thin}
+.thumb{border:1px solid var(--line);padding:0;background:none;cursor:pointer;width:84px;height:64px;flex:0 0 84px;overflow:hidden;opacity:.7}
 .thumb.active,.thumb:hover{opacity:1;border-color:var(--espresso)}
 .thumb img{width:100%;height:100%;object-fit:cover}
 .pdp-title{font:500 clamp(36px,4.2vw,56px)/1.08 "Playfair Display",Georgia,serif;letter-spacing:-.045em;margin:0}

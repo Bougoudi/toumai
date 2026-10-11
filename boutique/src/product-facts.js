@@ -32,6 +32,18 @@ const FIELDS = [
   { key: "complianceDocs", label: "Safety & compliance documents on file", hint: "List the documents you actually hold for this exact model (test reports, labels…). Internal only — never shown to customers.", max: 1000, multiline: true, internal: true },
 ];
 const KEY = "product_facts";
+
+// Facts confirmed by the owner (message of 2026-10-11, supplier listing: "Batteries not included").
+// Kept in code so they survive a database reset; any value saved in /admin → Product info wins.
+const CONFIRMED = {
+  powerInput: "USB",
+  powerSource: "A USB wall adapter (the cable plugs straight in) or a USB power bank",
+  powerBankIncluded: "no",
+  cableLength: "1.5 m (about 4.9 ft)",
+  autoShutoff: "Yes — automatic shut-off and overheat protection",
+  notIncluded: "USB power bank (sold separately)",
+  warranty: "If your throw is defective, we replace it or refund you (see our returns policy).",
+};
 const LISTS = ["inBox", "notIncluded"];
 
 function get(db) {
@@ -39,7 +51,7 @@ function get(db) {
   let stored = {};
   try { stored = row ? JSON.parse(row.value) : {}; } catch { stored = {}; }
   const out = {};
-  for (const f of FIELDS) out[f.key] = typeof stored[f.key] === "string" ? stored[f.key] : "";
+  for (const f of FIELDS) out[f.key] = typeof stored[f.key] === "string" ? stored[f.key] : (CONFIRMED[f.key] || "");
   return out;
 }
 
@@ -75,4 +87,4 @@ function publicFacts(facts) {
   return out;
 }
 
-module.exports = { FIELDS, get, save, missing, publicFacts, FactsError };
+module.exports = { CONFIRMED, FIELDS, get, save, missing, publicFacts, FactsError };

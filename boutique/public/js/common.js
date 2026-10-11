@@ -302,10 +302,11 @@
   // "Before You Order": what a buyer must know before paying, on the product, cart and checkout pages.
   function beforeYouOrder(facts, cfg) {
     const f = facts || {};
-    const specs = [f.dimensions && `Size ${f.dimensions}`, f.heatSettings && `heat: ${f.heatSettings}`, f.powerInput && `input: ${f.powerInput}`].filter(Boolean);
+    const specs = [f.dimensions && `Size: ${f.dimensions}`, f.heatSettings && `Heat: ${f.heatSettings}`, f.powerInput && `Power input: ${f.powerInput}`, f.cableLength && `Cable: ${f.cableLength}`].filter(Boolean);
     const rows = [
       ["Key specs", specs.length ? specs.join(" · ") + "." : "Size, heat settings and power input are being confirmed with our supplier.", "/product#specs"],
-      ["Power source", `You need a compatible USB power source${f.powerSource ? ` (${f.powerSource})` : ""}. ${powerBankText(f)}`, "/product#power"],
+      // powerBankText() already names the required source when no power bank is included.
+      ["Power source", f.powerBankIncluded === "no" ? powerBankText(f) : `You need a compatible USB power source${f.powerSource ? ` (${f.powerSource})` : ""}. ${powerBankText(f)}`, "/product#power"],
       ["In the box", Array.isArray(f.inBox) && f.inBox.length ? f.inBox.join(", ") + "." + (Array.isArray(f.notIncluded) && f.notIncluded.length ? ` Not included: ${f.notIncluded.join(", ")}.` : "") : "Exact contents being confirmed. Don't assume any accessory is included.", "/product#in-box"],
       ["Safety", "Never use it while sleeping, on infants or young children, or on anyone who can't remove it. Read the manufacturer's instructions before use.", "/product#safety"],
       ["Delivery & returns", `${deliveryText(f, cfg)} Tracking by email. ${cfg ? cfg.returnWindowDays : 30}-day returns; wrong or damaged items are on us.`, "/shipping"],
